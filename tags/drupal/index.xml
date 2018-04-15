@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Drupal on 诗与胡说</title>
+    <link>https://kylingit.com/tags/drupal/index.xml</link>
+    <description>Recent content in Drupal on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/drupal/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-002&#34;&gt;https://www.drupal.org/sa-core-2018-002&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
+
+&lt;p&gt;修复版本
+Drupal 7.58，Drupal 8.5.1&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
+
+&lt;p&gt;历史版本
+&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-流程梳理&#34;&gt;0x04 流程梳理&lt;/h4&gt;
+
+&lt;p&gt;先来理清一下Drupal处理表单的情况。更详细的可以看&lt;a href=&#34;http://www.thinkindrupal.com/node/1100&#34;&gt;文档&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Drupal提供了一个应用程序接口（API），用来生成、验证和处理HTML表单。表单API将表单抽象为一个嵌套数组，里面包含了属性和值。在生成页面时，表单呈现引擎会在适当的时候将数组呈现出来。&lt;/p&gt;
+
+&lt;p&gt;模块使用关联数组向Drupal描述表单。Drupal的表单引擎负责为要显示的表单生成HTML，并使用三个阶段来安全的处理提交了的表单：验证、提交、重定向。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Drupal比较特殊，它不像大部分cms通过html直接渲染页面，而是把接收的数据交给&lt;code&gt;core/lib/Drupal/Core/Form/FormBuilder.php&lt;/code&gt;的&lt;code&gt;buildForm()&lt;/code&gt;方法处理，&lt;code&gt;buildForm()&lt;/code&gt;经过处理后返回一个结构体(数组)，数组通过引擎生成HTML。&lt;/p&gt;
+
+&lt;p&gt;当我们提交一个表单(例如注册页面)，&lt;code&gt;buildForm()&lt;/code&gt;方法会根据&lt;code&gt;$form_id&lt;/code&gt;取出数据，经过一系列处理后返回一个树形结构，这个结构就是通过数组存储的，就是我们看到的类似&lt;code&gt;[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][]&lt;/code&gt;的结构，数组每个元素作为一个叶子节点，后续就把整个&lt;code&gt;form&lt;/code&gt;结构渲染出页面。&lt;/p&gt;
+
+&lt;p&gt;当我们在注册页面上传一张图片的时候，&lt;code&gt;form&lt;/code&gt;结构被传给&lt;code&gt;core/modules/file/src/Element/ManagedFile.php&lt;/code&gt;的&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;方法，这个方法用来处理上传文件的情况&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt; public static function uploadAjaxCallback(&amp;amp;$form, FormStateInterface &amp;amp;$form_state, Request $request) {
+    /** @var \Drupal\Core\Render\RendererInterface $renderer */
+    $renderer = \Drupal::service(&#39;renderer&#39;);
+
+    $form_parents = explode(&#39;/&#39;, $request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;));
+
+    // Retrieve the element to be rendered.
+    $form = NestedArray::getValue($form, $form_parents);
+
+    // Add the special AJAX class if a new file was added.
+    $current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
+    if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
+      $form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
+    }
+    // Otherwise just add the new content class on a placeholder.
+    else {
+      $form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
+    }
+
+    $status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
+    $form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
+    $output = $renderer-&amp;gt;renderRoot($form);
+
+    $response = new AjaxResponse();
+    $response-&amp;gt;setAttachments($form[&#39;#attached&#39;]);
+
+    return $response-&amp;gt;addCommand(new ReplaceCommand(NULL, $output));
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/8b1t3&#34; alt=&#34;upload&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Q3ys0&#34; alt=&#34;form_parents&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;问题就出现在&lt;code&gt;$request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;)&lt;/code&gt;这个地方，&lt;code&gt;$form_parents&lt;/code&gt;父节点的值是从&lt;code&gt;get()&lt;/code&gt;取出&lt;code&gt;element_parents&lt;/code&gt;参数传进去的，进入下面的&lt;code&gt;NestedArray::getValue()&lt;/code&gt;方法，&lt;code&gt;getValue()&lt;/code&gt;的作用是接收一个节点，把这个节点下的叶子节点全部遍历出来，再根据叶子节点的&lt;code&gt;key-value&lt;/code&gt;值进行后续操作。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/39ciX&#34; alt=&#34;getValue&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/f8qiO&#34; alt=&#34;user_picture&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;按理说这样的功能很正常，关键就在于这个&lt;code&gt;element_parents&lt;/code&gt;正是我们可以控制的，也就是说我们可以指定&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;渲染我们给它的参数，而这个参数可以是恶意的。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-漏洞分析&#34;&gt;0x05 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;那么我们传进去什么参数呢？我们先来测试一下，正常注册流程，&lt;code&gt;mail&lt;/code&gt;参数传进去一个数组的话会怎么样&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/KJE50&#34; alt=&#34;mail&#34; /&gt;
+可以看到我们构造的“子节点”被存储在&lt;code&gt;mail-value&lt;/code&gt;下，如果要取出这个值就得让上面提到的&lt;code&gt;getValue()&lt;/code&gt;接收这个参数，所以我们构造&lt;code&gt;element_parents=account/name/%23value&lt;/code&gt;，这样子&lt;code&gt;getValue()&lt;/code&gt;就会遍历出我们构造的参数&lt;/p&gt;
+
+&lt;p&gt;现在参数已经能够传进去了，那么在哪里执行呢？继续往下跟&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
+if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
+	$form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
+}
+// Otherwise just add the new content class on a placeholder.
+else {
+	$form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
+}
+
+$status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
+$form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
+$output = $renderer-&amp;gt;renderRoot($form);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到经过&lt;code&gt;getValue()&lt;/code&gt;遍历出来的叶子节点(就是此时的&lt;code&gt;form&lt;/code&gt;)被传进&lt;code&gt;$renderer-&amp;gt;renderRoot()&lt;/code&gt;方法，跟进去看一下&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;core/lib/Drupal/Core/Render/Renderer.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  public function render(&amp;amp;$elements, $is_root_call = FALSE) {
+...
+    try {
+      return $this-&amp;gt;doRender($elements, $is_root_call);
+    }
+    catch (\Exception $e) {
+      // Mark the ::rootRender() call finished due to this exception &amp;amp; re-throw.
+      $this-&amp;gt;isRenderingRoot = FALSE;
+      throw $e;
+    }
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;调用&lt;code&gt;doRender()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/6Htxw&#34; alt=&#34;doRender&#34; /&gt;
+这个方法比较长，但是我们从中找到了几处执行&lt;code&gt;call_user_func()&lt;/code&gt;的地方，先看一下第三处&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($elements[&#39;#post_render&#39;])) {
+    foreach ($elements[&#39;#post_render&#39;] as $callable) {
+        if (is_string($callable) &amp;amp;&amp;amp; strpos($callable, &#39;::&#39;) === FALSE) {
+            $callable = $this-&amp;gt;controllerResolver-&amp;gt;getControllerFromDefinition($callable);
+        }
+        $elements[&#39;#children&#39;] = call_user_func($callable, $elements[&#39;#children&#39;], $elements);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;接收的第一个参数&lt;code&gt;$elements[&#39;#post_render&#39;]&lt;/code&gt;作为函数，第二个参数&lt;code&gt;$elements[&#39;#children&#39;]&lt;/code&gt;作为参数，在上面被赋值&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$theme_is_implemented &amp;amp;&amp;amp; isset($elements[&#39;#markup&#39;])) {
+    $elements[&#39;#children&#39;] = Markup::create($elements[&#39;#markup&#39;] . $elements[&#39;#children&#39;]);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这两个参数都是我们可控的，于是造成一个代码执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/jHlV8&#34; alt=&#34;call_user_func&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;回头看一下这处&lt;code&gt;call_user_func_array&lt;/code&gt;，这里的&lt;code&gt;$callable&lt;/code&gt;和&lt;code&gt;$args&lt;/code&gt;两个参数实际上也是可控的，通过&lt;code&gt;#lazy_builder&lt;/code&gt;属性传进来，checkpoint的分析报告正是分析了这个地方&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/QlR23&#34; alt=&#34;call_user_func_array&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h4&gt;
+
+&lt;p&gt;关注这个漏洞也是好长时间了，当时粗略看了一下，因为补丁直接对入口进行了过滤，要找到真正触发的地方太难了，所以也迟迟不见PoC出来。checkpoint的分析报告出来后好好跟了一遍，不得不感叹人家真厉害(逃&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞关键点有两个，一个是&lt;code&gt;uploadAjaxCallback&lt;/code&gt;里&lt;code&gt;$form_parents&lt;/code&gt;由get直接传进参数，这里就存在风险；
+另一处&lt;code&gt;call_user_func&lt;/code&gt;两个参数均可控，两者结合造成一个严重的远程代码执行漏洞，看分析报告如何一步步构造利用链，可谓是十分精彩了。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/a2u/CVE-2018-7600&#34;&gt;https://github.com/a2u/CVE-2018-7600&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

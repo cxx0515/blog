@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="salt-ssh 配置使用">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - salt-ssh 配置使用 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/salt-ssh-%E9%85%8D%E7%BD%AE%E4%BD%BF%E7%94%A8/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    salt-ssh 配置使用
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Thu Sep 15 2016 14:54:29 UTC">Sep 15, 2016</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    <script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>salt-ssh 是 Saltstack 框架下的一款批量化远程操作工具，具体介绍可以看 <a href="http://opensgalaxy.com/2015/08/13/saltstack%E5%85%A5%E9%97%A8%E3%80%90salt-ssh%E3%80%91%E4%BD%BF%E7%94%A8/">这里</a>
+关于 Saltstack，它是一款自动化运维工具，具体可以浏览 <a href="https://saltstack.com">官网</a>，这里只介绍一下 salt-ssh 的使用。</p>
+
+<!-- more -->
+
+<p>salt-ssh 的配置很简单，在 /etc/salt/ 下修改 roster 文件，把需要管理的服务器 ip，用户名，密码按格式配置好即可
+&gt; vim /etc/salt/roster</p>
+
+<pre><code>server00:
+ host: x.x.x.x
+ user: root
+ passwd: root
+ 
+server01:
+ host: x.x.x.x
+ user: root
+ passwd: root
+</code></pre>
+
+<p>然后测试一下能不能连通就好了
+&gt; salt-ssh &lsquo;*&rsquo; test.ping</p>
+
+<p>&lsquo;*&rsquo; 是指所有节点，想要单独某个节点的话指定就可以了
+&gt; salt-ssh server00 test.ping</p>
+
+<p>可能需要验证是否接受密钥，不想被提示就加上参数 -i
+&gt; salt-ssh &lsquo;*&rsquo; test.ping -i</p>
+
+<p>测试能够连通就可以执行命令了，使用参数 -r
+&gt; salt-ssh &lsquo;*&rsquo; -r &lsquo;uname -a&rsquo; -i</p>
+
+<p>这里要说的是配置文件里明文记录密码是十分不安全的行为，极端情况是某台服务器被入侵，发现了这个文件，恰巧又有大量服务器配置在这，相当于把机器送到黑客手上了。
+即使是加密后的密码也不安全，总之是用文件记录敏感信息都是不负责任的做法。</p>
+
+<p>想要不在配置文件中记录密码，可以在执行命令的时候把密码作为参数
+&gt; salt-ssh &lsquo;*&rsquo; &ndash;passwd &lsquo;password&rsquo; -r &lsquo;args&rsquo; -i</p>
+
+<p>而配置文件里只要记录 ip 和用户名就可以</p>
+
+<pre><code>server00:
+ host: x.x.x.x
+ user: root
+ 
+server01:
+ host: x.x.x.x
+ user: root
+</code></pre>
+
+<p>这样做的优点是不会在文件中泄露密码，缺点是假如每台机器密码不一样，执行起来会比较麻烦，各自取舍吧。 也有通过 keys 验证身份，但测试之后发现还是得认证身份，这里就不提了。</p>
+
+<p><strong>Tips</strong></p>
+
+<p>其实直接在命令中指定密码依然十分危险，因为命令记录会把你出卖&hellip;可以执行一下</p>
+
+<blockquote>
+<p>cat ~/.bash_history</p>
+</blockquote>
+
+<p>所以涉及到输入密码的命令，可以在输入前键入一个空格，即按一下空格再正常输入命令，这样这条命令就不会被记录在历史里。</p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/salt-ssh-%E9%85%8D%E7%BD%AE%E4%BD%BF%E7%94%A8\/';
+    var disqus_title = 'salt-ssh 配置使用';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/salt-ssh-%E9%85%8D%E7%BD%AE%E4%BD%BF%E7%94%A8\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

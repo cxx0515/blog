@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Fri Jan 19 2018 15:20:32 UTC">Jan 19, 2018</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>上回分析的dede重置密码漏洞有一定局限性，一是只能影响没有设置密保问题的用户，二是不能重置管理员admin的密码，原因当时也说了，管理员信息存在另一个表<code>dede_admin</code>中，而且管理员默认不允许从前台登录，所以就算更改了<code>dede_member</code>里<code>admin</code>的密码也没法登录。但是前几天又有一个缺陷被爆出来，可以绕过一些判断条件从而从前台登录管理员账户，配合上一个重置密码漏洞，可以达到从前台修改<code>dede_admin</code>表里是密码，也就是真正修改了管理员密码。</p>
+
+<p>下面来简单分析一下</p>
+
+<h3 id="0x02-漏洞分析">0x02 漏洞分析</h3>
+
+<p>先来看一下DedeCMS判断登录用户的逻辑
+<code>include/memberlogin.class.php:292</code></p>
+
+<pre><code>function IsLogin()
+{
+    if($this-&gt;M_ID &gt; 0) return TRUE;
+    else return FALSE;
+}
+</code></pre>
+
+<p>跟进<code>$this-&gt;M_ID</code>看一下，170行</p>
+
+<pre><code>$this-&gt;M_ID = $this-&gt;GetNum(GetCookie(&quot;DedeUserID&quot;));
+</code></pre>
+
+<p>GetNum()<code>include/memberlogin.class.php:398</code></p>
+
+<pre><code>/**
+*  获取整数值
+*
+* @access    public
+* @param     string  $fnum  处理的数值
+* @return    string
+*/
+function GetNum($fnum){
+    $fnum = preg_replace(&quot;/[^0-9\.]/&quot;, '', $fnum);
+    return $fnum;
+}
+</code></pre>
+
+<p>正则匹配，去除了数字以外的字符，这里就可以构造一个利用点，一会儿再看</p>
+
+<p>看一下<code>GetCookie()</code>
+<code>include/helpers/cookie.helper.php:54</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/IO7Rf" alt="GetCookie" /></p>
+
+<p>关键点在这个判断条件</p>
+
+<pre><code>if($_COOKIE[$key.'__ckMd5'] != substr(md5($cfg_cookie_encode.$_COOKIE[$key]),0,16))
+</code></pre>
+
+<p>就是说从cookie中取到<code>DedeUserID__ckMd5</code>值，与<code>md5($cfg_cookie_encode.$_COOKIE[$key])</code>取前16位比较，相等才能进行下一步</p>
+
+<p>我们知道admin的<code>DedeUserID</code>为1，现在需要知道<code>DedeUserID__ckMd5</code>的值</p>
+
+<p>其实再思考一下，就算我们不知道admin的<code>DedeUserID__ckMd5</code>值，只要能过这个if条件就能绕过接着往下走了，那我们可不可以利用其他用户来绕过if条件呢？</p>
+
+<p>在本程序中从数据库取用户的过程其实很简单，就是简单的查询语句<code>Select * From #@__member where mid='$mid'</code>。当我们利用其他用户的cookie通过了上面的if判断，然后修改mid为admin的id(1)，就可以从前台登录到admin账户。
+那么如何在请求过程中修改<code>DedeUserID</code>的值让它能和admin的id相等呢？</p>
+
+<h4 id="利用点一">利用点一</h4>
+
+<p>我们使进入<code>GetNum</code>方法的参数为<code>数字1+字母</code>的形式，经过正则替换就会变成<code>1</code>，也就是<code>$this-&gt;M_ID</code>的值，然后带入数据库查询</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/4zlB8" alt="GetNum" />
+<code>$fnum</code>为<code>1qqqq</code>的情况，经过正则替换后值成为了1</p>
+
+<h4 id="利用点二">利用点二</h4>
+
+<p>在<code>include/memberlogin.class.php:178</code>有这么一行代码</p>
+
+<pre><code>$this-&gt;M_ID = intval($this-&gt;M_ID);
+</code></pre>
+
+<p>对<code>$this-&gt;M_ID</code>进行了整数类型转换，假设注册一个用户名，经过<code>intval</code>转换后为<code>1</code>就能使查询条件变成<code>Select * From #@__member where mid='1'</code>，也就取出了管理员在<code>dede_member</code>表里的密码，此时配合上一个漏洞，我们已经修改了<code>dede_member</code>中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Av52c" alt="intval" />
+这是调试的时候注册用户名为<code>0000001</code>的情况，经过<code>intval</code>转换后<code>M_ID</code>的值变成了1</p>
+
+<p>下面看一下如何从前台登录admin账户</p>
+
+<p>在<code>index.php</code>里有一个<code>最近访客记录</code>的功能，</p>
+
+<pre><code>else
+{
+    require_once(DEDEMEMBER.'/inc/config_space.php');
+    if($action == '')
+    {
+        include_once(DEDEINC.&quot;/channelunit.func.php&quot;);
+        $dpl = new DedeTemplate();
+        $tplfile = DEDEMEMBER.&quot;/space/{$_vars['spacestyle']}/index.htm&quot;;
+
+        //更新最近访客记录及站点统计记录
+        $vtime = time();
+        $last_vtime = GetCookie('last_vtime');
+        $last_vid = GetCookie('last_vid');
+        if(empty($last_vtime))
+        {
+            $last_vtime = 0;
+        }
+        if($vtime - $last_vtime &gt; 3600 || !preg_match('#,'.$uid.',#i', ','.$last_vid.',') )
+        {
+            if($last_vid!='')
+            {
+                $last_vids = explode(',',$last_vid);
+                $i = 0;
+                $last_vid = $uid;
+                foreach($last_vids as $lsid)
+                {
+                    if($i&gt;10)
+                    {
+                        break;
+                    }
+                    else if($lsid != $uid)
+                    {
+                        $i++;
+                        $last_vid .= ','.$last_vid;
+                    }
+                }
+            }
+            else
+            {
+                $last_vid = $uid;
+            }
+            PutCookie('last_vtime', $vtime, 3600*24, '/');
+            PutCookie('last_vid', $last_vid, 3600*24, '/');
+</code></pre>
+
+<p>else条件是当访问页面<code>http://127.0.0.1/dedecms/uploads/member/index.php?uid=1111</code>传入的uid不为空时进入</p>
+
+<p>当我们传入的<code>last_vid</code>为空的时候，<code>$last_vid = $uid;</code>而<code>uid</code>是我们能控制的，所以我们就能控制传给<code>PutCookie</code>的参数，进入<code>PutCookie</code>方法</p>
+
+<pre><code>if ( ! function_exists('PutCookie'))
+{
+    function PutCookie($key, $value, $kptime=0, $pa=&quot;/&quot;)
+    {
+        global $cfg_cookie_encode,$cfg_domain_cookie;
+        setcookie($key, $value, time()+$kptime, $pa,$cfg_domain_cookie);
+        setcookie($key.'__ckMd5', substr(md5($cfg_cookie_encode.$value),0,16), time()+$kptime, $pa,$cfg_domain_cookie);
+    }
+}
+</code></pre>
+
+<p>在这里设置了<code>last_vid__ckMd5</code>的值</p>
+
+<p>所以攻击流程已经明确了</p>
+
+<ul>
+<li>注册一个普通用户，用户名满足<code>数字1+字母</code>的形式，或者经过<code>intval()</code>后值为<code>1</code></li>
+<li>访问用户主页，记录cookie中<code>last_vid__ckMd5</code>的值</li>
+<li>访问index页面，替换cookie中<code>DedeUserID</code>和<code>DedeUserID__ckMd5</code>的值，替换成我们注册的用户名和<code>last_vid__ckMd5</code>，就能登录到前台admin</li>
+</ul>
+
+<h3 id="0x03-漏洞利用">0x03 漏洞利用</h3>
+
+<ol>
+<li>前台注册普通用户，这里注册一个<code>1qqqq</code></li>
+<li>访问<code>/member/index.php?uid=1qqqq</code>，获取<code>last_vid__ckMd5</code>的值
+<img src="https://ob5vt1k7f.qnssl.com/2izw4" alt="uid" /></li>
+<li>访问<code>/member/index.php</code>，替换<code>DedeUserID</code>和<code>DedeUserID__ckMd5</code>的值
+<img src="https://ob5vt1k7f.qnssl.com/3uAj1" alt="admin" />
+可以发现以admin身份成功登录到了前台
+<img src="https://ob5vt1k7f.qnssl.com/aGGc5" alt="admin" /></li>
+<li>同样的，修改密码访问<code>member/edit_baseinfo.php</code>，还是要修改cookie值
+<img src="https://ob5vt1k7f.qnssl.com/OacVb" alt="reset passwd" />
+原登录密码就是我们利用上一个漏洞修改的密码，也就是<code>dede_member</code>表中的admin密码，这样就达到了真正修改admin的密码
+<img src="https://ob5vt1k7f.qnssl.com/OUrvR" alt="reset admin passwd" />
+更新数据库的时候判断如果是管理员，就更新admin表中的数据</li>
+</ol>
+
+<h3 id="0x04-总结">0x04 总结</h3>
+
+<p>还是判断不够严谨，这回有两处可导致判断条件的绕过，有时候一个漏洞影响力有限的时候也不能轻视，往往配合另一处缺陷就可以造成很大的危害</p>
+
+<p>参考：
+- <a href="https://xianzhi.aliyun.com/forum/topic/1961">https://xianzhi.aliyun.com/forum/topic/1961</a>
+- <a href="https://xianzhi.aliyun.com/forum/topic/1959">https://xianzhi.aliyun.com/forum/topic/1959</a></p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81\/';
+    var disqus_title = 'DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

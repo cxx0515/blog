@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Mhn on 诗与胡说</title>
+    <link>https://kylingit.com/tags/mhn/index.xml</link>
+    <description>Recent content in Mhn on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/mhn/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>关于 MHN 的一些部署介绍</title>
+      <link>https://kylingit.com/blog/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D/</link>
+      <pubDate>Fri, 30 Sep 2016 14:32:18 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;简介&#34;&gt;简介&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://itandsecuritystuffs.wordpress.com/2015/02/03/honeypot-networks/&#34;&gt;MHN (Modern Honey Network)&lt;/a&gt; 是一个开源软件，它集成了多种蜜罐，简化了蜜罐的部署，同时便于收集和统计蜜罐的数据。
+它包括&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;Sort: &lt;a href=&#34;https://www.snort.org/&#34;&gt;https://www.snort.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Suricata: &lt;a href=&#34;http://suricata-ids.org/&#34;&gt;http://suricata-ids.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Dionaea: &lt;a href=&#34;http://dionaea.carnivore.it/&#34;&gt;http://dionaea.carnivore.it/&lt;/a&gt;, 它是一个低交互式的蜜罐，能够模拟MSSQL, SIP, HTTP, FTP, TFTP等服务 drops中有一篇介绍： &lt;a href=&#34;http://drops.wooyun.org/papers/4584&#34;&gt;http://drops.wooyun.org/papers/4584&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Conpot: &lt;a href=&#34;http://conpot.org/&#34;&gt;http://conpot.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Kippo: &lt;a href=&#34;https://github.com/desaster/kippo&#34;&gt;https://github.com/desaster/kippo&lt;/a&gt;, 它是一个中等交互的蜜罐，能够下载任意文件。 drops中有一篇介绍： &lt;a href=&#34;http://drops.wooyun.org/papers/4578&#34;&gt;http://drops.wooyun.org/papers/4578&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Amun: &lt;a href=&#34;http://amunhoney.sourceforge.net/&#34;&gt;http://amunhoney.sourceforge.net/&lt;/a&gt;, 它是一个低交互式蜜罐，但是已经从2012年之后不在维护了。&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Glastopf： &lt;a href=&#34;http://glastopf.org/&#34;&gt;http://glastopf.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Wordpot： &lt;a href=&#34;https://github.com/gbrindisi/wordpot&#34;&gt;https://github.com/gbrindisi/wordpot&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;ShockPot： &lt;a href=&#34;https://github.com/threatstream/shockpot&#34;&gt;https://github.com/threatstream/shockpot&lt;/a&gt;, 模拟的CVE-2014-6271，即破壳漏洞&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;p0f： &lt;a href=&#34;https://github.com/p0f/p0f&#34;&gt;https://github.com/p0f/p0f&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;具体的介绍可以看 WooYun Drops 的一篇文章 &lt;a href=&#34;https://ob5vt1k7f.qnssl.com/%E8%9C%9C%E7%BD%90%E7%BD%91%E7%BB%9C.html&#34;&gt;蜜罐网络&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;安装过程不再赘述，讲讲实际部署中遇到的一些问题&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h3 id=&#34;一些注意点&#34;&gt;一些注意点&lt;/h3&gt;
+
+&lt;h4 id=&#34;一&#34;&gt;一&lt;/h4&gt;
+
+&lt;p&gt;首先，MHN honeymap 是一个控制端，可以认为是“总部”，把它安装在一台机器上就好，它负责记录和显示所有子节点上的攻击数据，部署脚本也在这台机器上，想要部署一个蜜罐到多台服务器上，只要运行它提供的部署脚本就可以，安装和配置都会自动完成，结果会显示在这台控制端。&lt;/p&gt;
+
+&lt;p&gt;先上一个正常运行的页面&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/HoneyMap.jpg&#34; alt=&#34;HoneyMap&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因为部署了差不多100台蜜罐分布在全球不同的地区，这里看上去还是蛮壮观的。红色的代表正在发起攻击的 ip 地理位置，黄色的代表受攻击方，也就是蜜罐的 ip ，显示结果是实时的。&lt;/p&gt;
+
+&lt;p&gt;这是统计信息，包括 TOP 5 IPs, TOP 5 ports, TOP 5 Honey Pots, TOP 5 Sensors, TOP 5 Attacks Signatures，所有记录都会保存在 Mongodb 数据库中，这里只是显示过去 24 小时的&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Dashboard.jpg&#34; alt=&#34;Dashboard&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;二&#34;&gt;二&lt;/h4&gt;
+
+&lt;p&gt;MHN 的 HoneyMap 显示页面使用的是 3000 端口，控制页面运行在 80 端口，80 端口需要验证登录，3000 端口是开放的，建议用 iptables 对端口进行一些保护，需要注意的是，当利用脚本部署不同的蜜罐时，需要从这台服务器下载脚本和配置文件，这时候 80 端口不能被设置成不允许访问，不然没法部署成功。&lt;/p&gt;
+
+&lt;h4 id=&#34;三&#34;&gt;三&lt;/h4&gt;
+
+&lt;p&gt;Map 页面就是显示的地图，这里一开始点击会显示说 404，需要在配置文件把页面地址更改一下
+&lt;code&gt;vim /opt/mhn/server/config.py&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;把
+&lt;code&gt;HONEYMAP_URL = &#39;:3000&#39;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;改成
+&lt;code&gt;HONEYMAP_URL = &#39;http://ip:3000&#39;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;ip 即为该服务器 ip&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/map.jpg&#34; alt=&#34;Map&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Deploy 页面即保存部署蜜罐的脚本，可以下拉选择不同的蜜罐，也可以自定义脚本。它提供的脚本不一定完全适用，有些情况需要自己更改一下。复制上面的 Deploy Command 到另外的机器上执行，完成后一般就会在 Sensors 显示新安装的蜜罐节点。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Deploy.jpg&#34; alt=&#34;Deploy&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Attacks 页面显示的是具体的攻击情况，包括时间，节点，国家，源ip和源端口，使用的协议以及发生在哪个蜜罐上&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Attacks.jpg&#34; alt=&#34;Attacks&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Plyloads 页面显示一些攻击行为的 payload，包括 sql 注入，恶意扫描等，它会记录所有 url 访问&lt;/p&gt;
+
+&lt;p&gt;Rules 页面可以自定义一些触发规则，一般保持默认就好&lt;/p&gt;
+
+&lt;p&gt;Sensors 是各个蜜罐节点的情况，成功运行的蜜罐会在这里显示&lt;/p&gt;
+
+&lt;p&gt;Charts 页面会显示 ssh 蜜罐收集到的用户名密码等，这里显示的是 cowrie 捕捉到的一些 ssh 尝试登录，以及 top 用户名和密码&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/passwd.jpg&#34; alt=&#34;Charts&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;关于具体的蜜罐&#34;&gt;关于具体的蜜罐&lt;/h3&gt;
+
+&lt;h4 id=&#34;cowrie&#34;&gt;cowrie&lt;/h4&gt;
+
+&lt;p&gt;这是一个中等交互的SSH蜜罐，关于它的介绍在 Freebuf 上有一篇 &lt;a href=&#34;http://www.freebuf.com/articles/network/112065.html&#34;&gt;文章&lt;/a&gt;，如何安装如何配置在上面都有，不再赘述。
+如果运行出错，查看日志发现问题
+&amp;gt; getDSAkeys - TypeError: must be long, not mpz&lt;/p&gt;
+
+&lt;p&gt;这是由于 Twisted 库不兼容引起的，解决办法是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$ cd cowrie/data
+$ ssh-keygen -t dsa -b 1024 -f ssh_host_dsa_key
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;需要注意尽量不要将 22 端口暴露在公网，可以使用 iptables 转发到 cowrie 的运行端口，同时将正常的 ssh 服务运行在另外的端口。&lt;/p&gt;
+
+&lt;h4 id=&#34;dionaea&#34;&gt;dionaea&lt;/h4&gt;
+
+&lt;p&gt;这是一个低交互式的蜜罐，能够模拟MSSQL, SIP, HTTP, FTP, TFTP等服务，安装过程参考上面的文章
+如果运行
+&amp;gt; supervisorctl status&lt;/p&gt;
+
+&lt;p&gt;遇到问题&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;unix:///var/run/supervisor.sock refused connection
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;解决办法是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;sudo supervisord -c /etc/supervisor/supervisord.conf
+sudo supervisorctl -c /etc/supervisor/supervisord.conf
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;glastopf&#34;&gt;glastopf&lt;/h4&gt;
+
+&lt;p&gt;glastopf 是一款低交互式 Web 蜜罐，它能记录包括 sql 注入，XSS 攻击等常见的 Web 攻击类型&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Payloads.jpg&#34; alt=&#34;Payload&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;suricata&#34;&gt;suricata&lt;/h4&gt;
+
+&lt;p&gt;网络入侵检测和阻止引擎
+这个蜜罐没有运行成功，后续解决掉问题可能会更新上来。&lt;/p&gt;
+
+&lt;p&gt;目前部署的就这几个蜜罐，其它的可能会根据需要安装部署，有时间的话会更新。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

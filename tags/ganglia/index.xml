@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Ganglia on 诗与胡说</title>
+    <link>https://kylingit.com/tags/ganglia/index.xml</link>
+    <description>Recent content in Ganglia on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/ganglia/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Ganglia 扩展 Python模块</title>
+      <link>https://kylingit.com/blog/ganglia-%E6%89%A9%E5%B1%95-python%E6%A8%A1%E5%9D%97/</link>
+      <pubDate>Sat, 30 Jul 2016 14:32:18 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/ganglia-%E6%89%A9%E5%B1%95-python%E6%A8%A1%E5%9D%97/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;Ganglia支持很多模块的扩展，这里介绍python模块的扩展&lt;/p&gt;
+
+&lt;h3 id=&#34;环境需求&#34;&gt;环境需求&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Ganglia 3.1.x&lt;/li&gt;
+&lt;li&gt;Python 2.5+&lt;/li&gt;
+&lt;li&gt;Python开发头文件&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h3 id=&#34;配置&#34;&gt;配置&lt;/h3&gt;
+
+&lt;p&gt;以下两个目录必须存在，没有则创建
+&lt;code&gt;/usr/lib/ganglia/python_modules/&lt;/code&gt;
+&lt;code&gt;/etc/ganglia/conf.d/&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;修改配置文件&#34;&gt;修改配置文件&lt;/h4&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;vim /etc/ganglia/gmond.conf&lt;/code&gt;
+在&lt;code&gt;modules{}&lt;/code&gt;中添加
+&lt;code&gt;
+modules {
+module {
+name = &amp;quot;python_module&amp;quot;
+path = &amp;quot;/usr/lib/ganglia/modpython.so&amp;quot;
+params = &amp;quot;/usr/lib/ganglia/python_modules&amp;quot;
+}
+module {
+#other modules
+}
+&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;添加&lt;code&gt;include(&#39;/etc/ganglia/conf.d/*.pyconf&#39;)&lt;/code&gt;
+&lt;code&gt;
+include (&#39;/etc/ganglia/conf.d/*.conf&#39;)
+include (&#39;/etc/ganglia/conf.d/*.pyconf&#39;)
+&lt;/code&gt;
+&lt;br /&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h4 id=&#34;放置-py-及-pyconf&#34;&gt;放置 .py 及 .pyconf&lt;/h4&gt;
+
+&lt;ol&gt;
+&lt;li&gt;在&lt;code&gt;/usr/lib/ganglia/python_modules/&lt;/code&gt;下放置python模块代码(.py)
+&lt;code&gt;
+root@ubuntu:~# ls /usr/lib/ganglia/python_modules/
+process_count.py
+&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;在&lt;code&gt;/etc/ganglia/conf.d/&lt;/code&gt;下放置python模块配置文件(.pyconf)
+&lt;code&gt;
+root@ubuntu:~# ls /etc/ganglia/conf.d/
+es_syslog-ng.pyconf
+&lt;/code&gt;
+重启服务就可以了
+&lt;code&gt;service ganglia-monitor restart&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;python模块模板&#34;&gt;python模块模板&lt;/h3&gt;
+
+&lt;p&gt;模块中必须包含以下的三个方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def metric_init(params):
+def metric_cleanup():
+def metric_handler(name):
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;前面两个方法的名字必须是一定的，最后一个&lt;code&gt;metric_handler&lt;/code&gt;可以任意命名，具体可以看example&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;import random
+descriptors = list()
+Random_Max = 50
+Constant_Value = 50
+
+def Random_Numbers(name):
+    &#39;&#39;&#39;Return a random number.&#39;&#39;&#39;
+    global Random_Max
+    return int(random.uniform(0,Random_Max))
+
+def Constant_Number(name):
+    &#39;&#39;&#39;Return a constant number.&#39;&#39;&#39;
+    global Constant_Value
+    return int(Constant_Value)
+
+def metric_init(params):
+    &#39;&#39;&#39;Initialize the random number generator and create the
+    metric definition dictionary object for each metric.&#39;&#39;&#39;
+    global descriptors
+    global Random_Max
+    global Constant_Value
+    random.seed()
+
+    print &#39;[pyexample] Received the following parameters&#39;
+    print params
+
+    if &#39;RandomMax&#39; in params:
+        Random_Max = int(params[&#39;RandomMax&#39;])
+    if &#39;ConstantValue&#39; in params:
+        Constant_Value = int(params[&#39;ConstantValue&#39;])
+
+    d1 = {&#39;name&#39;: &#39;PyRandom_Numbers&#39;,
+        &#39;call_back&#39;: Random_Numbers,
+        &#39;time_max&#39;: 90,
+        &#39;value_type&#39;: &#39;uint&#39;,
+        &#39;units&#39;: &#39;N&#39;,
+        &#39;slope&#39;: &#39;both&#39;,
+        &#39;format&#39;: &#39;%u&#39;,
+        &#39;description&#39;: &#39;Example module metric (random numbers)&#39;,
+        &#39;groups&#39;: &#39;example,random&#39;}
+
+    d2 = {&#39;name&#39;: &#39;PyConstant_Number&#39;,
+        &#39;call_back&#39;: Constant_Number,
+        &#39;time_max&#39;: 90,
+        &#39;value_type&#39;: &#39;uint&#39;,
+        &#39;units&#39;: &#39;N&#39;,
+        &#39;slope&#39;: &#39;zero&#39;,
+        &#39;format&#39;: &#39;%hu&#39;,
+        &#39;description&#39;: &#39;Example module constant (constant number)&#39;}
+
+    descriptors = [d1,d2]
+    return descriptors
+
+def metric_cleanup():
+    &#39;&#39;&#39;Clean up the metric module.&#39;&#39;&#39;
+    pass
+
+#This code is for debugging and unit testing    
+if __name__ == &#39;__main__&#39;:
+    params = {&#39;RandomMax&#39;: &#39;500&#39;,
+        &#39;ConstantValue&#39;: &#39;322&#39;}
+    metric_init(params)
+    for d in descriptors:
+        v = d[&#39;call_back&#39;](d[&#39;name&#39;])
+        print &#39;value for %s is %u&#39; % (d[&#39;name&#39;],  v)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Ubuntu Server 安装配置 Ganglia</title>
+      <link>https://kylingit.com/blog/ubuntu-server-%E5%AE%89%E8%A3%85%E9%85%8D%E7%BD%AE-ganglia/</link>
+      <pubDate>Fri, 29 Jul 2016 17:54:29 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/ubuntu-server-%E5%AE%89%E8%A3%85%E9%85%8D%E7%BD%AE-ganglia/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;&lt;code&gt;Ganglia&lt;/code&gt;是一个开源的集群监控系统，它基于分层设计，使用广泛的技术，如XML数据代表，便携数据传输，&lt;code&gt;RRDtool&lt;/code&gt;用于数据存储和可视化，可以方便地对机器性能及系统运行状态进行可视化监控，广泛应用于对&lt;code&gt;Hadoop&lt;/code&gt;，&lt;code&gt;Spark&lt;/code&gt;等分布式系统的监测管理。&lt;/p&gt;
+
+&lt;h3 id=&#34;简介&#34;&gt;简介&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;Ganglia&lt;/code&gt;的核心包含gmond、gmetad以及一个Web接界面。主要是用来监控系统性能，如：cpu 、mem、硬盘利用率， I/O负载、网络流量情况等，通过曲线很容易见到每个节点的工作状态，对合理调整、分配系统资源，提高系统整体性能起到重要作用。&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ganglia.png&#34; alt=&#34;Ganglia&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;gmond&#34;&gt;Gmond&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;Ganglia monitoring&lt;/code&gt;，它是一个守护进程，用于收集机器内的metric，它还可以接受别的node发送过来的metric，并且保存一小段时间（几十秒），运行在每一个需要监测的节点上，收集监测统计，发送和接受在同一个组播或单播通道上的统计信息。Gmond可以扮演下面三种角色：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;收集metric并发送出去，同时也接收别的node发送过来的metric；&lt;/li&gt;
+&lt;li&gt;只采集metric并发送出去（关键字 deaf）；&lt;/li&gt;
+&lt;li&gt;只接收别的机器发送过来的metric（关键字 mute）；
+默认情况下，gmond监听8649端口，用来发送和接收udp，tcp数据包。&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4 id=&#34;gmetad&#34;&gt;Gmetad&lt;/h4&gt;
+
+&lt;p&gt;Ganglia meta daemon，也是一个守护进程，定期检查gmonds ，从那里拉取数据，并将他们的指标存储在RRD存储引擎中。它可以查询多个集群并聚合指标。默认情况下gmond通过multicast的方式发送自己采集到的数据，整个Multicast group里的node都拥有整个cluster的全部metrics。而gmetad可以从一个cluster的任意一个node拿到整个cluster的全部metric并记录到rrd数据库。
+默认情况下，gmetad监听8651端口，从这里可以拿到gmetad存放的最新metric数据，也可以给更高层的gmetad使用；监听8652端口，提供数据查询接口，供web使用。&lt;/p&gt;
+
+&lt;h4 id=&#34;rrd&#34;&gt;RRD&lt;/h4&gt;
+
+&lt;p&gt;运行在主节点的一个工具，轮询调度数据库，用于存储数据和可视化时间序列。RRD也被用于生成用户界面的web前端。&lt;/p&gt;
+
+&lt;h3 id=&#34;安装&#34;&gt;安装&lt;/h3&gt;
+
+&lt;h4 id=&#34;安装环境&#34;&gt;安装环境&lt;/h4&gt;
+
+&lt;p&gt;Ubuntu Server 12.04 (10.24.84.23    master node)
+Ubuntu Server 16.04 (10.24.84.24    client node)
+均需要安装apache服务&lt;/p&gt;
+
+&lt;h4 id=&#34;主节点-master-node&#34;&gt;主节点 master node&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;sudo apt-get install ganglia-monitor 
+sudo apt-get install rrdtool 
+sudo apt-get install gmetad 
+sudo apt-get install ganglia-webfrontend
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;子节点-client-node&#34;&gt;子节点 client node&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;sudo apt-get install -y ganglia-monitor
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;配置&#34;&gt;配置&lt;/h3&gt;
+
+&lt;h4 id=&#34;主节点-master-node-1&#34;&gt;主节点 master node&lt;/h4&gt;
+
+&lt;h5 id=&#34;修改-gmetad-配置&#34;&gt;修改 gmetad 配置&lt;/h5&gt;
+
+&lt;p&gt;&lt;code&gt;vim /etc/ganglia/gmetad.conf&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;# data_source,cluster的名字,可以自定义，但要与gmond配置对应起来
+data_source &amp;quot;my cluster&amp;quot; localhost
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;修改-gmetad-配置-1&#34;&gt;修改 gmetad 配置&lt;/h5&gt;
+
+&lt;p&gt;&lt;code&gt;vim /etc/ganglia/gmond.conf&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;# 修改 cluster name
+cluster {
+  name = &amp;quot;my cluster&amp;quot; ## use the name from gmetad.conf
+  owner = &amp;quot;unspecified&amp;quot;
+  latlong = &amp;quot;unspecified&amp;quot;
+  url = &amp;quot;unspecified&amp;quot;
+}
+# 修改 udp_send_channel，添加 host
+udp_send_channel = {
+  # mcast_join = xxx.xxx.xxx.xxx
+  host = localhost
+  port = 8649
+  ttl = 1
+}
+# 修改 udp_recv_channel，注释掉 mcast_join, bind
+udp_recv_channel = {
+  # mcast_join = xxx.xxx.xxx.xxx
+  port = 8649
+  # bind = xxx.xxx.xxx.xx
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;重启-ganglia-monitor-和-gmetad-服务&#34;&gt;重启 ganglia-monitor 和 gmetad 服务&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code&gt;service gmetad restart
+service ganglia-monitor restart
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;子节点-client-node-1&#34;&gt;子节点 client node&lt;/h4&gt;
+
+&lt;h5 id=&#34;修改-gmetad-配置-2&#34;&gt;修改 gmetad 配置&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code&gt;# 修改 cluster name
+cluster {
+  name = &amp;quot;my cluster&amp;quot;
+  owner = &amp;quot;unspecified&amp;quot;
+  latlong = &amp;quot;unspecified&amp;quot;
+  url = &amp;quot;unspecified&amp;quot;
+}
+# 修改 udp_send_channel host
+udp_send_channel {
+  # mcast_join = xxx.xxx.xxx.xxx
+  host = master node ip
+  port = 8649
+  ttl = 1
+}
+udp_recv_channel {
+  # mcast_join = xxx.xxx.xxx.xxx
+  port = 8649
+  # bind = xxx.xxx.xxx.xx
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;重启-ganglia-monitor-服务&#34;&gt;重启 ganglia-monitor 服务&lt;/h5&gt;
+
+&lt;p&gt;&lt;code&gt;service ganglia-monitor restart&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;配置apche2&#34;&gt;配置apche2&lt;/h4&gt;
+
+&lt;h5 id=&#34;复制到apache-www目录&#34;&gt;复制到apache www目录&lt;/h5&gt;
+
+&lt;p&gt;&lt;code&gt;sudo cp -r /usr/share/ganglia-webfrontend /var/www/ganglia&lt;/code&gt;&lt;/p&gt;
+
+&lt;h5 id=&#34;重启apache服务&#34;&gt;重启apache服务&lt;/h5&gt;
+
+&lt;p&gt;&lt;code&gt;sudo /etc/init.d/apache2 restart&lt;/code&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;使用&#34;&gt;使用&lt;/h3&gt;
+
+&lt;p&gt;直接访问&lt;code&gt;http://10.24.84.23/ganglia&lt;/code&gt;就能看到ganglia成功运行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ganglia_master.png&#34; alt=&#34;ganglia_master&#34; /&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

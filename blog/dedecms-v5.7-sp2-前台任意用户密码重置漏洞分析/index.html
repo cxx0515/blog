@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Thu Jan 11 2018 14:12:17 UTC">Jan 11, 2018</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<h4 id="0x01-概述">0x01 概述</h4>
+
+<p>DEDECMS在2018-01-09更新了V5.7 SP2正式版，然后在<a href="https://www.seebug.org/vuldb/ssvid-97074">seebug</a>有人提交存在前台任意用户密码修改漏洞。下面简单分析一下。</p>
+
+<h4 id="0x02-影响版本">0x02 影响版本</h4>
+
+<p>2018-01-09及之前的版本</p>
+
+<h4 id="0x03-漏洞分析">0x03 漏洞分析</h4>
+
+<p>问题出现在<code>member/resetpassword.php</code>75行:</p>
+
+<pre><code class="language-php">else if($dopost == &quot;safequestion&quot;)
+{
+    $mid = preg_replace(&quot;#[^0-9]#&quot;, &quot;&quot;, $id);
+    $sql = &quot;SELECT safequestion,safeanswer,userid,email FROM #@__member WHERE mid = '$mid'&quot;;
+    $row = $db-&gt;GetOne($sql);
+    if(empty($safequestion)) $safequestion = '';
+
+    if(empty($safeanswer)) $safeanswer = '';
+
+    if($row['safequestion'] == $safequestion &amp;&amp; $row['safeanswer'] == $safeanswer)
+    {
+        sn($mid, $row['userid'], $row['email'], 'N');
+        exit();
+    }
+    else
+    {
+        ShowMsg(&quot;对不起，您的安全问题或答案回答错误&quot;,&quot;-1&quot;);
+        exit();
+    }
+}
+</code></pre>
+
+<p>重置密码的时候需要进入<code>sn</code>函数，在这之前进行if判断<code>if($row['safequestion'] == $safequestion &amp;&amp; $row['safeanswer'] == $safeanswer)</code>
+当用户没有设置安全问题和答案时<code>$row['safeanswer']</code>为<code>0</code>，后面一个条件成立，所以只要前面<code>$row['safequestion'] == $safequestion</code>成立就可以进入<code>sn</code>函数</p>
+
+<p>此时默认的<code>$row['safequestion']</code>即为<code>0</code>，我们可以控制的变量是<code>$safequestion</code>，在此之前还需经过<code>if(empty($safequestion)) $safequestion = '';</code>判断，如果这个if成立即当<code>$safequestion = ''</code>时就不能通过前半个if判断了，所以我们要让<code>$safequestion</code>不为空而且让<code>'0' == $safequestion</code>成立</p>
+
+<p>下面来看php中弱类型转换问题</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/edFq9" alt="php" /></p>
+
+<p>可以看到当我们传进<code>0.0</code>时，<code>empty($safequestion)</code>就不成立了，而<code>$row['safequestion'] == $safequestion</code>即<code>'0' == '0.0'</code>成立，所以可以进入<code>sn</code>方法。除了<code>'0.0'</code>，<code>'0.'</code> <code>'0e123'</code>等都可以绕过这个判断，因为<code>0en</code>被认为是0的n次方</p>
+
+<p>跟进<code>sn</code>方法</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/xZxqc" alt="sn" /></p>
+
+<p>从数据库取出一个临时密码<code>SELECT * FROM #@__pwd_tmp WHERE mid = '$mid'</code>，这里的<code>mid</code>我们可以控制，如果用户存在，发送含有临时密码的邮件，并且有个10分钟的限制(这里为了调试方便我把时间缩短了)</p>
+
+<p>跟进<code>newmail</code>函数</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/0nL4H" alt="newmail" /></p>
+
+<p>可以看到<code>$randval</code>是一个8位随机字符串，而且先进行了md5再插入到数据库，理论上我们不好破解，但是注意85行和98行的<code>return ShowMsg('稍后跳转到修改页', $cfg_basehost . $cfg_memberurl . &quot;/resetpassword.php?dopost=getpasswd&amp;amp;id=&quot; . $mid . &quot;&amp;amp;key=&quot; . $randval);</code>，把含有<code>$randval</code>的链接直接返回显示在页面上，所以这里就没有必要去猜这个临时密码。有了这个临时密码就可以重置任意用户的密码。</p>
+
+<h4 id="0x04-漏洞利用">0x04 漏洞利用</h4>
+
+<p>我们先注册一个用户，然后构造一个请求，<code>GET /dedecms/uploads/member/resetpassword.php?i=0.0&amp;dopost=safequestion&amp;safequestion=0e123&amp;safeanswer=&amp;id=1</code>，发送后可以看到页面跳转，然后返回含有key的链接，</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/eSNsc" alt="key" />
+利用这个key可以进入重置密码流程，简单看一下</p>
+
+<p>重置密码<code>/member/resetpassword.php?dopost=getpasswd&amp;id=5</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/oV7zo" alt="resetpwd1" />
+先从<code>dede_pwd_tmp</code>表取出<code>mid</code>为5的临时密码</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/aIWLU" alt="resetpwd2" />
+与传入的临时密码MD5比较，通过验证就更新用户表<code>dede_member</code>为新的密码，同时删除临时密码</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/J1mks" alt="resetpwd3" />
+<img src="https://ob5vt1k7f.qnssl.com/EMzcr" alt="newpwd" /></p>
+
+<p>这样我们就可以重置任意用户的密码了——除了管理员，因为管理员信息存在另一个表<code>dede_admin</code>中，而且管理员默认不允许从前台登录，所以就算更改了<code>dede_member</code>里<code>admin</code>的密码也没法登录。</p>
+
+<h4 id="0x05-总结">0x05 总结</h4>
+
+<p>总的来说这个漏洞不算复杂，关键点就是php弱类型安全问题，这个已经有很多案例了，同时页面跳转的过程中泄露了临时的key，实际中一个尽量避免这种关键的参数泄露。</p>
+
+<p>参考：<a href="https://www.seebug.org/vuldb/ssvid-97074">https://www.seebug.org/vuldb/ssvid-97074</a></p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

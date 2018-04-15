@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Python 使用 Mysql 存储 Emoji 表情">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Python 使用 Mysql 存储 Emoji 表情 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/python-%E4%BD%BF%E7%94%A8-mysql-%E5%AD%98%E5%82%A8-emoji-%E8%A1%A8%E6%83%85/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Python 使用 Mysql 存储 Emoji 表情
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Mon Feb 20 2017 19:43:18 UTC">Feb 20, 2017</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>最近使用 Python 处理数据的时候遇到 mysql 存储 emoji 表情的问题，觉得可以总结一下。</p>
+
+<h3 id="一-报错信息">一. 报错信息</h3>
+
+<pre><code>Incorrect string value: '\xF0\x9F\x91\x8D' for column 'xxx'
+</code></pre>
+
+<h3 id="二-错误分析">二. 错误分析</h3>
+
+<p>从异常能看出这是编码的问题，当前的配置是数据库连接使用 utf8，字符集也是 utf-8。查阅资料发现，在 mysql 中 utf8 的字段只能存储 1 至 3 字节的字符，而 emoji 表情是使用 4 字节字符来表示的，这就导致 <code>Incorrect string value</code> 错误。</p>
+
+<h3 id="三-解决办法">三. 解决办法</h3>
+
+<h4 id="1-使用-utf8mb4-编码存储数据-utf8mb4-is-a-superset-of-utf8">1. 使用 <code>utf8mb4</code> 编码存储数据，<code>utf8mb4 is a superset of utf8</code></h4>
+
+<p>utf8mb4 向下兼容 utf8，在 Mysql 5.5.3 以上版本支持 utf8mb4</p>
+
+<h4 id="方法-1">方法(1)</h4>
+
+<p>修改 mysql 配置. 编辑 my.ini 文件，之后要重启 mysql 服务</p>
+
+<pre><code>[client]
+default-character-set = utf8mb4		# 客户端来源数据的默认字符集
+
+[mysqld]
+character-set-server = utf8mb4		# 服务端默认字符集
+collation-server = utf8mb4_unicode_ci	# 连接层默认字符集
+
+[mysql]
+default-character-set = utf8mb4		# 数据库默认字符集
+
+</code></pre>
+
+<h4 id="方法-2">方法(2)</h4>
+
+<!-- more  -->
+
+<p>在 python 连接数据库和创建表时指定编码</p>
+
+<pre><code>import MySQLdb
+# 连接
+conn = MySQLdb.connect(&quot;127.0.0.1&quot;, &quot;user&quot;, &quot;passwd&quot;)
+cursor = self.conn.cursor()
+cursor.execute(&quot;SET NAMES utf8mb4&quot;)
+cursor.execute(&quot;SET CHARACTER SET utf8mb4&quot;)
+cursor.execute(&quot;SET character_set_connection = utf8mb4&quot;)
+
+# 建库
+cursor.execute('CREATE DATABASE IF NOT EXISTS %s CHARACTER SET utf8mb4 \ 
+	COLLATE utf8mb4_unicode_ci' % dbname)
+
+# 建表
+cursor.execute('CREATE TABLE table(id int primary key, name char(10))') \
+	ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+</code></pre>
+
+<p>可以查询 mysql 编码方式
+<code>show variables like 'character_set_%';</code>
+<img src="https://ob5vt1k7f.qnssl.com/mysql_charset.png" alt="mysql_charset" /></p>
+
+<h4 id="2-使用正则表达式过滤-emoji-字符">2. 使用正则表达式过滤 emoji 字符</h4>
+
+<pre><code>#!/usr/bin/env python
+import re
+
+text = u'This dog \U0001f602'
+print(text) # with emoji
+
+emoji_pattern = re.compile(&quot;[&quot;
+        u&quot;\U0001F600-\U0001F64F&quot;  # emoticons
+        u&quot;\U0001F300-\U0001F5FF&quot;  # symbols &amp; pictographs
+        u&quot;\U0001F680-\U0001F6FF&quot;  # transport &amp; map symbols
+        u&quot;\U0001F1E0-\U0001F1FF&quot;  # flags (iOS)
+                           &quot;]+&quot;, flags=re.UNICODE)
+print(emoji_pattern.sub(r'', text)) # no emoji
+</code></pre>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/python-%E4%BD%BF%E7%94%A8-mysql-%E5%AD%98%E5%82%A8-emoji-%E8%A1%A8%E6%83%85\/';
+    var disqus_title = 'Python 使用 Mysql 存储 Emoji 表情';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/python-%E4%BD%BF%E7%94%A8-mysql-%E5%AD%98%E5%82%A8-emoji-%E8%A1%A8%E6%83%85\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

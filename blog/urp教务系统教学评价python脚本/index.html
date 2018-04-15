@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="URP教务系统教学评价Python脚本">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - URP教务系统教学评价Python脚本 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/urp%E6%95%99%E5%8A%A1%E7%B3%BB%E7%BB%9F%E6%95%99%E5%AD%A6%E8%AF%84%E4%BB%B7python%E8%84%9A%E6%9C%AC/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    URP教务系统教学评价Python脚本
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Wed Jun 8 2016 23:14:22 UTC">Jun 08, 2016</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<h2 id="简述">简述</h2>
+
+<p>夏天到了，又到了 <del>繁殖</del> 评课的季节→_→</p>
+
+<p>URP评课程序2.0，针对第二学期的情况作了一些修改，又可以欢乐地一键评课了~</p>
+
+<p>针对URP教务系统教学评价的python脚本，本地验证码登录，python版本要求3.4，自行更改相应教务处网站地址，运行
+<code>python3 URP_instructional_evaluation_v2.0.py</code></p>
+
+<h2 id="项目地址">项目地址</h2>
+
+<p><a href="https://github.com/kylingit/URP_instructional_evaluation">Github</a></p>
+
+<!-- more -->
+
+<h2 id="部分代码">部分代码</h2>
+
+<pre><code>##登录##
+def login(user, password, code):
+
+##获取cookie##
+def setCookie():
+
+##提取验证码(手动输入验证码)##
+def getVerify():
+
+##获取选课信息##
+def getInfo():
+
+##提交评课信息##
+def postPj(br, pr, bm, pm):
+</code></pre>
+
+<pre><code>##获取cookie##
+def setCookie():
+    cookie = http.cookiejar.CookieJar() 
+    cookieProc = urllib.request.HTTPCookieProcessor(cookie) 
+    opener = urllib.request.build_opener(cookieProc) 
+    urllib.request.install_opener(opener)
+</code></pre>
+
+<pre><code>##提取验证码(手动输入验证码)##
+def getVerify():
+    setCookie()
+    vrifycodeUrl = 'http://xxx.edu.cn/validateCodeAction.do'
+    file = urllib.request.urlopen(vrifycodeUrl)
+    pic= file.read()
+    #path = '/home/username/code.jpg'
+    path = 'D:/code.jpg'
+    try:
+        localpic = open(path, 'wb')
+        localpic.write(pic)
+        localpic.close()
+        print ('获取验证码成功,%s.' %path)
+    except IOError:
+        print ('获取验证码失败,请重新运行程序.')
+    code = input(&quot;验证码: &quot;)
+    return code
+</code></pre>
+
+<pre><code>##模拟登录##
+url = 'http://xxx.edu.cn/loginAction.do'         ##登录地址
+header = {}
+    header['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    header['Accept-Encoding'] = 'gzip, deflate'
+    header['Accept-Language'] = 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3'
+    header['Connection'] = 'keep-alive'
+    header['Host'] = 'xxx.edu.cn'
+    header['Referer'] = 'http://xxx.edu.cn/loginAction.do'
+    header['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.3; WOW64; rv:39.0) Gecko/20100101 Firefox/39.0'
+    data = urllib.parse.urlencode(data).encode('gb2312')
+    req = urllib.request.Request(url,data,header)
+    response = urllib.request.urlopen(req)
+    html = response.read().decode('gb2312')
+</code></pre>
+
+<pre><code>##提交评价数据包##
+data = urllib.parse.urlencode(data).encode('gb2312')
+    pjurl = 'http://xxx.edu.cn/jxpgXsAction.do?oper=wjpg'            ##提交评价结果页面
+    pjreq = urllib.request.Request(pjurl,data,pjheader)
+    pjresponse = urllib.request.urlopen(pjreq)
+    pjhtml = pjresponse.read().decode('gb2312')
+</code></pre>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/urp%E6%95%99%E5%8A%A1%E7%B3%BB%E7%BB%9F%E6%95%99%E5%AD%A6%E8%AF%84%E4%BB%B7python%E8%84%9A%E6%9C%AC\/';
+    var disqus_title = 'URP教务系统教学评价Python脚本';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/urp%E6%95%99%E5%8A%A1%E7%B3%BB%E7%BB%9F%E6%95%99%E5%AD%A6%E8%AF%84%E4%BB%B7python%E8%84%9A%E6%9C%AC\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

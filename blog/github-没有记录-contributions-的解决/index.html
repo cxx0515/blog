@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Github 没有记录 Contributions 的解决">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Github 没有记录 Contributions 的解决 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Github 没有记录 Contributions 的解决
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Fri Mar 17 2017 16:46:07 UTC">Mar 17, 2017</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>最近更新文章的时候发现github没有记录Contributions，也就是小绿墙没有增加小方块，看了下<code>git log</code>发现是提交的时候用户邮箱写错了，多打了一个字母&hellip;于是Github认为这些commits都不是我提交的 =_=#
+网上找到了解决办法</p>
+
+<!-- more -->
+
+<h3 id="1-重新克隆一个repo">1. 重新克隆一个repo</h3>
+
+<pre><code>git clone --bare https://github.com/user/repo.git
+cd repo.git
+</code></pre>
+
+<h3 id="2-新建一个脚本">2. 新建一个脚本</h3>
+
+<pre><code>#!/bin/sh
+git filter-branch --env-filter '
+OLD_EMAIL=&quot;旧的Email地址&quot;
+CORRECT_NAME=&quot;正确的用户名&quot;
+CORRECT_EMAIL=&quot;正确的Email地址&quot;
+if [ &quot;$GIT_COMMITTER_EMAIL&quot; = &quot;$OLD_EMAIL&quot; ]
+then
+    export GIT_COMMITTER_NAME=&quot;$CORRECT_NAME&quot;
+    export GIT_COMMITTER_EMAIL=&quot;$CORRECT_EMAIL&quot;
+fi
+if [ &quot;$GIT_AUTHOR_EMAIL&quot; = &quot;$OLD_EMAIL&quot; ]
+then
+    export GIT_AUTHOR_NAME=&quot;$CORRECT_NAME&quot;
+    export GIT_AUTHOR_EMAIL=&quot;$CORRECT_EMAIL&quot;
+fi
+' --tag-name-filter cat -- --branches --tags
+</code></pre>
+
+<h3 id="3-更改旧的邮箱-以及填写正确的用户名和邮箱-执行">3. 更改旧的邮箱，以及填写正确的用户名和邮箱，执行</h3>
+
+<h3 id="4-把正确历史-push-到-github">4. 把正确历史 push 到 Github</h3>
+
+<pre><code>git push --force --tags origin 'refs/heads/*'
+</code></pre>
+
+<h3 id="5-查看-git-log-检查push历史是否被更正-没有错误的话就可以删掉这个clone了">5. 查看<code>git log</code> 检查push历史是否被更正，没有错误的话就可以删掉这个clone了</h3>
+
+<h3 id="6-done">6. done</h3>
+
+<p>参考:</p>
+
+<ol>
+<li><p><a href="https://help.github.com/articles/changing-author-info/">Changing author info</a></p></li>
+
+<li><p><a href="https://segmentfault.com/a/1190000004318632">为什么Github没有记录你的Contributions</a></p></li>
+</ol>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3\/';
+    var disqus_title = 'Github 没有记录 Contributions 的解决';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

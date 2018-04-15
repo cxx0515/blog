@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Dedecms on 诗与胡说</title>
+    <link>https://kylingit.com/tags/dedecms/index.xml</link>
+    <description>Recent content in Dedecms on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/dedecms/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码</title>
+      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
+      <pubDate>Fri, 19 Jan 2018 15:20:32 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;上回分析的dede重置密码漏洞有一定局限性，一是只能影响没有设置密保问题的用户，二是不能重置管理员admin的密码，原因当时也说了，管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。但是前几天又有一个缺陷被爆出来，可以绕过一些判断条件从而从前台登录管理员账户，配合上一个重置密码漏洞，可以达到从前台修改&lt;code&gt;dede_admin&lt;/code&gt;表里是密码，也就是真正修改了管理员密码。&lt;/p&gt;
+
+&lt;p&gt;下面来简单分析一下&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;先来看一下DedeCMS判断登录用户的逻辑
+&lt;code&gt;include/memberlogin.class.php:292&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;function IsLogin()
+{
+    if($this-&amp;gt;M_ID &amp;gt; 0) return TRUE;
+    else return FALSE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;跟进&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;看一下，170行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = $this-&amp;gt;GetNum(GetCookie(&amp;quot;DedeUserID&amp;quot;));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;GetNum()&lt;code&gt;include/memberlogin.class.php:398&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;/**
+*  获取整数值
+*
+* @access    public
+* @param     string  $fnum  处理的数值
+* @return    string
+*/
+function GetNum($fnum){
+    $fnum = preg_replace(&amp;quot;/[^0-9\.]/&amp;quot;, &#39;&#39;, $fnum);
+    return $fnum;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;正则匹配，去除了数字以外的字符，这里就可以构造一个利用点，一会儿再看&lt;/p&gt;
+
+&lt;p&gt;看一下&lt;code&gt;GetCookie()&lt;/code&gt;
+&lt;code&gt;include/helpers/cookie.helper.php:54&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/IO7Rf&#34; alt=&#34;GetCookie&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;关键点在这个判断条件&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;if($_COOKIE[$key.&#39;__ckMd5&#39;] != substr(md5($cfg_cookie_encode.$_COOKIE[$key]),0,16))
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;就是说从cookie中取到&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，与&lt;code&gt;md5($cfg_cookie_encode.$_COOKIE[$key])&lt;/code&gt;取前16位比较，相等才能进行下一步&lt;/p&gt;
+
+&lt;p&gt;我们知道admin的&lt;code&gt;DedeUserID&lt;/code&gt;为1，现在需要知道&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值&lt;/p&gt;
+
+&lt;p&gt;其实再思考一下，就算我们不知道admin的&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，只要能过这个if条件就能绕过接着往下走了，那我们可不可以利用其他用户来绕过if条件呢？&lt;/p&gt;
+
+&lt;p&gt;在本程序中从数据库取用户的过程其实很简单，就是简单的查询语句&lt;code&gt;Select * From #@__member where mid=&#39;$mid&#39;&lt;/code&gt;。当我们利用其他用户的cookie通过了上面的if判断，然后修改mid为admin的id(1)，就可以从前台登录到admin账户。
+那么如何在请求过程中修改&lt;code&gt;DedeUserID&lt;/code&gt;的值让它能和admin的id相等呢？&lt;/p&gt;
+
+&lt;h4 id=&#34;利用点一&#34;&gt;利用点一&lt;/h4&gt;
+
+&lt;p&gt;我们使进入&lt;code&gt;GetNum&lt;/code&gt;方法的参数为&lt;code&gt;数字1+字母&lt;/code&gt;的形式，经过正则替换就会变成&lt;code&gt;1&lt;/code&gt;，也就是&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;的值，然后带入数据库查询&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/4zlB8&#34; alt=&#34;GetNum&#34; /&gt;
+&lt;code&gt;$fnum&lt;/code&gt;为&lt;code&gt;1qqqq&lt;/code&gt;的情况，经过正则替换后值成为了1&lt;/p&gt;
+
+&lt;h4 id=&#34;利用点二&#34;&gt;利用点二&lt;/h4&gt;
+
+&lt;p&gt;在&lt;code&gt;include/memberlogin.class.php:178&lt;/code&gt;有这么一行代码&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = intval($this-&amp;gt;M_ID);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;对&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;进行了整数类型转换，假设注册一个用户名，经过&lt;code&gt;intval&lt;/code&gt;转换后为&lt;code&gt;1&lt;/code&gt;就能使查询条件变成&lt;code&gt;Select * From #@__member where mid=&#39;1&#39;&lt;/code&gt;，也就取出了管理员在&lt;code&gt;dede_member&lt;/code&gt;表里的密码，此时配合上一个漏洞，我们已经修改了&lt;code&gt;dede_member&lt;/code&gt;中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Av52c&#34; alt=&#34;intval&#34; /&gt;
+这是调试的时候注册用户名为&lt;code&gt;0000001&lt;/code&gt;的情况，经过&lt;code&gt;intval&lt;/code&gt;转换后&lt;code&gt;M_ID&lt;/code&gt;的值变成了1&lt;/p&gt;
+
+&lt;p&gt;下面看一下如何从前台登录admin账户&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;index.php&lt;/code&gt;里有一个&lt;code&gt;最近访客记录&lt;/code&gt;的功能，&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;else
+{
+    require_once(DEDEMEMBER.&#39;/inc/config_space.php&#39;);
+    if($action == &#39;&#39;)
+    {
+        include_once(DEDEINC.&amp;quot;/channelunit.func.php&amp;quot;);
+        $dpl = new DedeTemplate();
+        $tplfile = DEDEMEMBER.&amp;quot;/space/{$_vars[&#39;spacestyle&#39;]}/index.htm&amp;quot;;
+
+        //更新最近访客记录及站点统计记录
+        $vtime = time();
+        $last_vtime = GetCookie(&#39;last_vtime&#39;);
+        $last_vid = GetCookie(&#39;last_vid&#39;);
+        if(empty($last_vtime))
+        {
+            $last_vtime = 0;
+        }
+        if($vtime - $last_vtime &amp;gt; 3600 || !preg_match(&#39;#,&#39;.$uid.&#39;,#i&#39;, &#39;,&#39;.$last_vid.&#39;,&#39;) )
+        {
+            if($last_vid!=&#39;&#39;)
+            {
+                $last_vids = explode(&#39;,&#39;,$last_vid);
+                $i = 0;
+                $last_vid = $uid;
+                foreach($last_vids as $lsid)
+                {
+                    if($i&amp;gt;10)
+                    {
+                        break;
+                    }
+                    else if($lsid != $uid)
+                    {
+                        $i++;
+                        $last_vid .= &#39;,&#39;.$last_vid;
+                    }
+                }
+            }
+            else
+            {
+                $last_vid = $uid;
+            }
+            PutCookie(&#39;last_vtime&#39;, $vtime, 3600*24, &#39;/&#39;);
+            PutCookie(&#39;last_vid&#39;, $last_vid, 3600*24, &#39;/&#39;);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;else条件是当访问页面&lt;code&gt;http://127.0.0.1/dedecms/uploads/member/index.php?uid=1111&lt;/code&gt;传入的uid不为空时进入&lt;/p&gt;
+
+&lt;p&gt;当我们传入的&lt;code&gt;last_vid&lt;/code&gt;为空的时候，&lt;code&gt;$last_vid = $uid;&lt;/code&gt;而&lt;code&gt;uid&lt;/code&gt;是我们能控制的，所以我们就能控制传给&lt;code&gt;PutCookie&lt;/code&gt;的参数，进入&lt;code&gt;PutCookie&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;if ( ! function_exists(&#39;PutCookie&#39;))
+{
+    function PutCookie($key, $value, $kptime=0, $pa=&amp;quot;/&amp;quot;)
+    {
+        global $cfg_cookie_encode,$cfg_domain_cookie;
+        setcookie($key, $value, time()+$kptime, $pa,$cfg_domain_cookie);
+        setcookie($key.&#39;__ckMd5&#39;, substr(md5($cfg_cookie_encode.$value),0,16), time()+$kptime, $pa,$cfg_domain_cookie);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在这里设置了&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/p&gt;
+
+&lt;p&gt;所以攻击流程已经明确了&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;注册一个普通用户，用户名满足&lt;code&gt;数字1+字母&lt;/code&gt;的形式，或者经过&lt;code&gt;intval()&lt;/code&gt;后值为&lt;code&gt;1&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;访问用户主页，记录cookie中&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/li&gt;
+&lt;li&gt;访问index页面，替换cookie中&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值，替换成我们注册的用户名和&lt;code&gt;last_vid__ckMd5&lt;/code&gt;，就能登录到前台admin&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;0x03-漏洞利用&#34;&gt;0x03 漏洞利用&lt;/h3&gt;
+
+&lt;ol&gt;
+&lt;li&gt;前台注册普通用户，这里注册一个&lt;code&gt;1qqqq&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;访问&lt;code&gt;/member/index.php?uid=1qqqq&lt;/code&gt;，获取&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/2izw4&#34; alt=&#34;uid&#34; /&gt;&lt;/li&gt;
+&lt;li&gt;访问&lt;code&gt;/member/index.php&lt;/code&gt;，替换&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/3uAj1&#34; alt=&#34;admin&#34; /&gt;
+可以发现以admin身份成功登录到了前台
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aGGc5&#34; alt=&#34;admin&#34; /&gt;&lt;/li&gt;
+&lt;li&gt;同样的，修改密码访问&lt;code&gt;member/edit_baseinfo.php&lt;/code&gt;，还是要修改cookie值
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OacVb&#34; alt=&#34;reset passwd&#34; /&gt;
+原登录密码就是我们利用上一个漏洞修改的密码，也就是&lt;code&gt;dede_member&lt;/code&gt;表中的admin密码，这样就达到了真正修改admin的密码
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OUrvR&#34; alt=&#34;reset admin passwd&#34; /&gt;
+更新数据库的时候判断如果是管理员，就更新admin表中的数据&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h3&gt;
+
+&lt;p&gt;还是判断不够严谨，这回有两处可导致判断条件的绕过，有时候一个漏洞影响力有限的时候也不能轻视，往往配合另一处缺陷就可以造成很大的危害&lt;/p&gt;
+
+&lt;p&gt;参考：
+- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1961&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1961&lt;/a&gt;
+- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1959&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1959&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析</title>
+      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Thu, 11 Jan 2018 14:12:17 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;DEDECMS在2018-01-09更新了V5.7 SP2正式版，然后在&lt;a href=&#34;https://www.seebug.org/vuldb/ssvid-97074&#34;&gt;seebug&lt;/a&gt;有人提交存在前台任意用户密码修改漏洞。下面简单分析一下。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;p&gt;2018-01-09及之前的版本&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;问题出现在&lt;code&gt;member/resetpassword.php&lt;/code&gt;75行:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;else if($dopost == &amp;quot;safequestion&amp;quot;)
+{
+    $mid = preg_replace(&amp;quot;#[^0-9]#&amp;quot;, &amp;quot;&amp;quot;, $id);
+    $sql = &amp;quot;SELECT safequestion,safeanswer,userid,email FROM #@__member WHERE mid = &#39;$mid&#39;&amp;quot;;
+    $row = $db-&amp;gt;GetOne($sql);
+    if(empty($safequestion)) $safequestion = &#39;&#39;;
+
+    if(empty($safeanswer)) $safeanswer = &#39;&#39;;
+
+    if($row[&#39;safequestion&#39;] == $safequestion &amp;amp;&amp;amp; $row[&#39;safeanswer&#39;] == $safeanswer)
+    {
+        sn($mid, $row[&#39;userid&#39;], $row[&#39;email&#39;], &#39;N&#39;);
+        exit();
+    }
+    else
+    {
+        ShowMsg(&amp;quot;对不起，您的安全问题或答案回答错误&amp;quot;,&amp;quot;-1&amp;quot;);
+        exit();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;重置密码的时候需要进入&lt;code&gt;sn&lt;/code&gt;函数，在这之前进行if判断&lt;code&gt;if($row[&#39;safequestion&#39;] == $safequestion &amp;amp;&amp;amp; $row[&#39;safeanswer&#39;] == $safeanswer)&lt;/code&gt;
+当用户没有设置安全问题和答案时&lt;code&gt;$row[&#39;safeanswer&#39;]&lt;/code&gt;为&lt;code&gt;0&lt;/code&gt;，后面一个条件成立，所以只要前面&lt;code&gt;$row[&#39;safequestion&#39;] == $safequestion&lt;/code&gt;成立就可以进入&lt;code&gt;sn&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;p&gt;此时默认的&lt;code&gt;$row[&#39;safequestion&#39;]&lt;/code&gt;即为&lt;code&gt;0&lt;/code&gt;，我们可以控制的变量是&lt;code&gt;$safequestion&lt;/code&gt;，在此之前还需经过&lt;code&gt;if(empty($safequestion)) $safequestion = &#39;&#39;;&lt;/code&gt;判断，如果这个if成立即当&lt;code&gt;$safequestion = &#39;&#39;&lt;/code&gt;时就不能通过前半个if判断了，所以我们要让&lt;code&gt;$safequestion&lt;/code&gt;不为空而且让&lt;code&gt;&#39;0&#39; == $safequestion&lt;/code&gt;成立&lt;/p&gt;
+
+&lt;p&gt;下面来看php中弱类型转换问题&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/edFq9&#34; alt=&#34;php&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到当我们传进&lt;code&gt;0.0&lt;/code&gt;时，&lt;code&gt;empty($safequestion)&lt;/code&gt;就不成立了，而&lt;code&gt;$row[&#39;safequestion&#39;] == $safequestion&lt;/code&gt;即&lt;code&gt;&#39;0&#39; == &#39;0.0&#39;&lt;/code&gt;成立，所以可以进入&lt;code&gt;sn&lt;/code&gt;方法。除了&lt;code&gt;&#39;0.0&#39;&lt;/code&gt;，&lt;code&gt;&#39;0.&#39;&lt;/code&gt; &lt;code&gt;&#39;0e123&#39;&lt;/code&gt;等都可以绕过这个判断，因为&lt;code&gt;0en&lt;/code&gt;被认为是0的n次方&lt;/p&gt;
+
+&lt;p&gt;跟进&lt;code&gt;sn&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/xZxqc&#34; alt=&#34;sn&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;从数据库取出一个临时密码&lt;code&gt;SELECT * FROM #@__pwd_tmp WHERE mid = &#39;$mid&#39;&lt;/code&gt;，这里的&lt;code&gt;mid&lt;/code&gt;我们可以控制，如果用户存在，发送含有临时密码的邮件，并且有个10分钟的限制(这里为了调试方便我把时间缩短了)&lt;/p&gt;
+
+&lt;p&gt;跟进&lt;code&gt;newmail&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/0nL4H&#34; alt=&#34;newmail&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;$randval&lt;/code&gt;是一个8位随机字符串，而且先进行了md5再插入到数据库，理论上我们不好破解，但是注意85行和98行的&lt;code&gt;return ShowMsg(&#39;稍后跳转到修改页&#39;, $cfg_basehost . $cfg_memberurl . &amp;quot;/resetpassword.php?dopost=getpasswd&amp;amp;amp;id=&amp;quot; . $mid . &amp;quot;&amp;amp;amp;key=&amp;quot; . $randval);&lt;/code&gt;，把含有&lt;code&gt;$randval&lt;/code&gt;的链接直接返回显示在页面上，所以这里就没有必要去猜这个临时密码。有了这个临时密码就可以重置任意用户的密码。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h4&gt;
+
+&lt;p&gt;我们先注册一个用户，然后构造一个请求，&lt;code&gt;GET /dedecms/uploads/member/resetpassword.php?i=0.0&amp;amp;dopost=safequestion&amp;amp;safequestion=0e123&amp;amp;safeanswer=&amp;amp;id=1&lt;/code&gt;，发送后可以看到页面跳转，然后返回含有key的链接，&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/eSNsc&#34; alt=&#34;key&#34; /&gt;
+利用这个key可以进入重置密码流程，简单看一下&lt;/p&gt;
+
+&lt;p&gt;重置密码&lt;code&gt;/member/resetpassword.php?dopost=getpasswd&amp;amp;id=5&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/oV7zo&#34; alt=&#34;resetpwd1&#34; /&gt;
+先从&lt;code&gt;dede_pwd_tmp&lt;/code&gt;表取出&lt;code&gt;mid&lt;/code&gt;为5的临时密码&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aIWLU&#34; alt=&#34;resetpwd2&#34; /&gt;
+与传入的临时密码MD5比较，通过验证就更新用户表&lt;code&gt;dede_member&lt;/code&gt;为新的密码，同时删除临时密码&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/J1mks&#34; alt=&#34;resetpwd3&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/EMzcr&#34; alt=&#34;newpwd&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这样我们就可以重置任意用户的密码了——除了管理员，因为管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h4&gt;
+
+&lt;p&gt;总的来说这个漏洞不算复杂，关键点就是php弱类型安全问题，这个已经有很多案例了，同时页面跳转的过程中泄露了临时的key，实际中一个尽量避免这种关键的参数泄露。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;a href=&#34;https://www.seebug.org/vuldb/ssvid-97074&#34;&gt;https://www.seebug.org/vuldb/ssvid-97074&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

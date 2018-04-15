@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Ganglia 扩展 Python模块">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Ganglia 扩展 Python模块 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/ganglia-%E6%89%A9%E5%B1%95-python%E6%A8%A1%E5%9D%97/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Ganglia 扩展 Python模块
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Sat Jul 30 2016 14:32:18 UTC">Jul 30, 2016</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>Ganglia支持很多模块的扩展，这里介绍python模块的扩展</p>
+
+<h3 id="环境需求">环境需求</h3>
+
+<ul>
+<li>Ganglia 3.1.x</li>
+<li>Python 2.5+</li>
+<li>Python开发头文件</li>
+</ul>
+
+<!-- more -->
+
+<h3 id="配置">配置</h3>
+
+<p>以下两个目录必须存在，没有则创建
+<code>/usr/lib/ganglia/python_modules/</code>
+<code>/etc/ganglia/conf.d/</code></p>
+
+<h4 id="修改配置文件">修改配置文件</h4>
+
+<ol>
+<li><code>vim /etc/ganglia/gmond.conf</code>
+在<code>modules{}</code>中添加
+<code>
+modules {
+module {
+name = &quot;python_module&quot;
+path = &quot;/usr/lib/ganglia/modpython.so&quot;
+params = &quot;/usr/lib/ganglia/python_modules&quot;
+}
+module {
+#other modules
+}
+</code></li>
+<li>添加<code>include('/etc/ganglia/conf.d/*.pyconf')</code>
+<code>
+include ('/etc/ganglia/conf.d/*.conf')
+include ('/etc/ganglia/conf.d/*.pyconf')
+</code>
+<br /></li>
+</ol>
+
+<h4 id="放置-py-及-pyconf">放置 .py 及 .pyconf</h4>
+
+<ol>
+<li>在<code>/usr/lib/ganglia/python_modules/</code>下放置python模块代码(.py)
+<code>
+root@ubuntu:~# ls /usr/lib/ganglia/python_modules/
+process_count.py
+</code></li>
+<li>在<code>/etc/ganglia/conf.d/</code>下放置python模块配置文件(.pyconf)
+<code>
+root@ubuntu:~# ls /etc/ganglia/conf.d/
+es_syslog-ng.pyconf
+</code>
+重启服务就可以了
+<code>service ganglia-monitor restart</code></li>
+</ol>
+
+<h3 id="python模块模板">python模块模板</h3>
+
+<p>模块中必须包含以下的三个方法</p>
+
+<pre><code>def metric_init(params):
+def metric_cleanup():
+def metric_handler(name):
+</code></pre>
+
+<p>前面两个方法的名字必须是一定的，最后一个<code>metric_handler</code>可以任意命名，具体可以看example</p>
+
+<pre><code>import random
+descriptors = list()
+Random_Max = 50
+Constant_Value = 50
+
+def Random_Numbers(name):
+    '''Return a random number.'''
+    global Random_Max
+    return int(random.uniform(0,Random_Max))
+
+def Constant_Number(name):
+    '''Return a constant number.'''
+    global Constant_Value
+    return int(Constant_Value)
+
+def metric_init(params):
+    '''Initialize the random number generator and create the
+    metric definition dictionary object for each metric.'''
+    global descriptors
+    global Random_Max
+    global Constant_Value
+    random.seed()
+
+    print '[pyexample] Received the following parameters'
+    print params
+
+    if 'RandomMax' in params:
+        Random_Max = int(params['RandomMax'])
+    if 'ConstantValue' in params:
+        Constant_Value = int(params['ConstantValue'])
+
+    d1 = {'name': 'PyRandom_Numbers',
+        'call_back': Random_Numbers,
+        'time_max': 90,
+        'value_type': 'uint',
+        'units': 'N',
+        'slope': 'both',
+        'format': '%u',
+        'description': 'Example module metric (random numbers)',
+        'groups': 'example,random'}
+
+    d2 = {'name': 'PyConstant_Number',
+        'call_back': Constant_Number,
+        'time_max': 90,
+        'value_type': 'uint',
+        'units': 'N',
+        'slope': 'zero',
+        'format': '%hu',
+        'description': 'Example module constant (constant number)'}
+
+    descriptors = [d1,d2]
+    return descriptors
+
+def metric_cleanup():
+    '''Clean up the metric module.'''
+    pass
+
+#This code is for debugging and unit testing    
+if __name__ == '__main__':
+    params = {'RandomMax': '500',
+        'ConstantValue': '322'}
+    metric_init(params)
+    for d in descriptors:
+        v = d['call_back'](d['name'])
+        print 'value for %s is %u' % (d['name'],  v)
+</code></pre>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/ganglia-%E6%89%A9%E5%B1%95-python%E6%A8%A1%E5%9D%97\/';
+    var disqus_title = 'Ganglia 扩展 Python模块';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/ganglia-%E6%89%A9%E5%B1%95-python%E6%A8%A1%E5%9D%97\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

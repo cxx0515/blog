@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Honeypot on 诗与胡说</title>
+    <link>https://kylingit.com/tags/honeypot/index.xml</link>
+    <description>Recent content in Honeypot on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/honeypot/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>关于 MHN 的一些部署介绍</title>
+      <link>https://kylingit.com/blog/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D/</link>
+      <pubDate>Fri, 30 Sep 2016 14:32:18 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;简介&#34;&gt;简介&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://itandsecuritystuffs.wordpress.com/2015/02/03/honeypot-networks/&#34;&gt;MHN (Modern Honey Network)&lt;/a&gt; 是一个开源软件，它集成了多种蜜罐，简化了蜜罐的部署，同时便于收集和统计蜜罐的数据。
+它包括&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;Sort: &lt;a href=&#34;https://www.snort.org/&#34;&gt;https://www.snort.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Suricata: &lt;a href=&#34;http://suricata-ids.org/&#34;&gt;http://suricata-ids.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Dionaea: &lt;a href=&#34;http://dionaea.carnivore.it/&#34;&gt;http://dionaea.carnivore.it/&lt;/a&gt;, 它是一个低交互式的蜜罐，能够模拟MSSQL, SIP, HTTP, FTP, TFTP等服务 drops中有一篇介绍： &lt;a href=&#34;http://drops.wooyun.org/papers/4584&#34;&gt;http://drops.wooyun.org/papers/4584&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Conpot: &lt;a href=&#34;http://conpot.org/&#34;&gt;http://conpot.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Kippo: &lt;a href=&#34;https://github.com/desaster/kippo&#34;&gt;https://github.com/desaster/kippo&lt;/a&gt;, 它是一个中等交互的蜜罐，能够下载任意文件。 drops中有一篇介绍： &lt;a href=&#34;http://drops.wooyun.org/papers/4578&#34;&gt;http://drops.wooyun.org/papers/4578&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Amun: &lt;a href=&#34;http://amunhoney.sourceforge.net/&#34;&gt;http://amunhoney.sourceforge.net/&lt;/a&gt;, 它是一个低交互式蜜罐，但是已经从2012年之后不在维护了。&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Glastopf： &lt;a href=&#34;http://glastopf.org/&#34;&gt;http://glastopf.org/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Wordpot： &lt;a href=&#34;https://github.com/gbrindisi/wordpot&#34;&gt;https://github.com/gbrindisi/wordpot&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;ShockPot： &lt;a href=&#34;https://github.com/threatstream/shockpot&#34;&gt;https://github.com/threatstream/shockpot&lt;/a&gt;, 模拟的CVE-2014-6271，即破壳漏洞&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;p0f： &lt;a href=&#34;https://github.com/p0f/p0f&#34;&gt;https://github.com/p0f/p0f&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;具体的介绍可以看 WooYun Drops 的一篇文章 &lt;a href=&#34;https://ob5vt1k7f.qnssl.com/%E8%9C%9C%E7%BD%90%E7%BD%91%E7%BB%9C.html&#34;&gt;蜜罐网络&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;安装过程不再赘述，讲讲实际部署中遇到的一些问题&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h3 id=&#34;一些注意点&#34;&gt;一些注意点&lt;/h3&gt;
+
+&lt;h4 id=&#34;一&#34;&gt;一&lt;/h4&gt;
+
+&lt;p&gt;首先，MHN honeymap 是一个控制端，可以认为是“总部”，把它安装在一台机器上就好，它负责记录和显示所有子节点上的攻击数据，部署脚本也在这台机器上，想要部署一个蜜罐到多台服务器上，只要运行它提供的部署脚本就可以，安装和配置都会自动完成，结果会显示在这台控制端。&lt;/p&gt;
+
+&lt;p&gt;先上一个正常运行的页面&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/HoneyMap.jpg&#34; alt=&#34;HoneyMap&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因为部署了差不多100台蜜罐分布在全球不同的地区，这里看上去还是蛮壮观的。红色的代表正在发起攻击的 ip 地理位置，黄色的代表受攻击方，也就是蜜罐的 ip ，显示结果是实时的。&lt;/p&gt;
+
+&lt;p&gt;这是统计信息，包括 TOP 5 IPs, TOP 5 ports, TOP 5 Honey Pots, TOP 5 Sensors, TOP 5 Attacks Signatures，所有记录都会保存在 Mongodb 数据库中，这里只是显示过去 24 小时的&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Dashboard.jpg&#34; alt=&#34;Dashboard&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;二&#34;&gt;二&lt;/h4&gt;
+
+&lt;p&gt;MHN 的 HoneyMap 显示页面使用的是 3000 端口，控制页面运行在 80 端口，80 端口需要验证登录，3000 端口是开放的，建议用 iptables 对端口进行一些保护，需要注意的是，当利用脚本部署不同的蜜罐时，需要从这台服务器下载脚本和配置文件，这时候 80 端口不能被设置成不允许访问，不然没法部署成功。&lt;/p&gt;
+
+&lt;h4 id=&#34;三&#34;&gt;三&lt;/h4&gt;
+
+&lt;p&gt;Map 页面就是显示的地图，这里一开始点击会显示说 404，需要在配置文件把页面地址更改一下
+&lt;code&gt;vim /opt/mhn/server/config.py&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;把
+&lt;code&gt;HONEYMAP_URL = &#39;:3000&#39;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;改成
+&lt;code&gt;HONEYMAP_URL = &#39;http://ip:3000&#39;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;ip 即为该服务器 ip&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/map.jpg&#34; alt=&#34;Map&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Deploy 页面即保存部署蜜罐的脚本，可以下拉选择不同的蜜罐，也可以自定义脚本。它提供的脚本不一定完全适用，有些情况需要自己更改一下。复制上面的 Deploy Command 到另外的机器上执行，完成后一般就会在 Sensors 显示新安装的蜜罐节点。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Deploy.jpg&#34; alt=&#34;Deploy&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Attacks 页面显示的是具体的攻击情况，包括时间，节点，国家，源ip和源端口，使用的协议以及发生在哪个蜜罐上&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Attacks.jpg&#34; alt=&#34;Attacks&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Plyloads 页面显示一些攻击行为的 payload，包括 sql 注入，恶意扫描等，它会记录所有 url 访问&lt;/p&gt;
+
+&lt;p&gt;Rules 页面可以自定义一些触发规则，一般保持默认就好&lt;/p&gt;
+
+&lt;p&gt;Sensors 是各个蜜罐节点的情况，成功运行的蜜罐会在这里显示&lt;/p&gt;
+
+&lt;p&gt;Charts 页面会显示 ssh 蜜罐收集到的用户名密码等，这里显示的是 cowrie 捕捉到的一些 ssh 尝试登录，以及 top 用户名和密码&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/passwd.jpg&#34; alt=&#34;Charts&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;关于具体的蜜罐&#34;&gt;关于具体的蜜罐&lt;/h3&gt;
+
+&lt;h4 id=&#34;cowrie&#34;&gt;cowrie&lt;/h4&gt;
+
+&lt;p&gt;这是一个中等交互的SSH蜜罐，关于它的介绍在 Freebuf 上有一篇 &lt;a href=&#34;http://www.freebuf.com/articles/network/112065.html&#34;&gt;文章&lt;/a&gt;，如何安装如何配置在上面都有，不再赘述。
+如果运行出错，查看日志发现问题
+&amp;gt; getDSAkeys - TypeError: must be long, not mpz&lt;/p&gt;
+
+&lt;p&gt;这是由于 Twisted 库不兼容引起的，解决办法是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$ cd cowrie/data
+$ ssh-keygen -t dsa -b 1024 -f ssh_host_dsa_key
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;需要注意尽量不要将 22 端口暴露在公网，可以使用 iptables 转发到 cowrie 的运行端口，同时将正常的 ssh 服务运行在另外的端口。&lt;/p&gt;
+
+&lt;h4 id=&#34;dionaea&#34;&gt;dionaea&lt;/h4&gt;
+
+&lt;p&gt;这是一个低交互式的蜜罐，能够模拟MSSQL, SIP, HTTP, FTP, TFTP等服务，安装过程参考上面的文章
+如果运行
+&amp;gt; supervisorctl status&lt;/p&gt;
+
+&lt;p&gt;遇到问题&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;unix:///var/run/supervisor.sock refused connection
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;解决办法是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;sudo supervisord -c /etc/supervisor/supervisord.conf
+sudo supervisorctl -c /etc/supervisor/supervisord.conf
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;glastopf&#34;&gt;glastopf&lt;/h4&gt;
+
+&lt;p&gt;glastopf 是一款低交互式 Web 蜜罐，它能记录包括 sql 注入，XSS 攻击等常见的 Web 攻击类型&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Payloads.jpg&#34; alt=&#34;Payload&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;suricata&#34;&gt;suricata&lt;/h4&gt;
+
+&lt;p&gt;网络入侵检测和阻止引擎
+这个蜜罐没有运行成功，后续解决掉问题可能会更新上来。&lt;/p&gt;
+
+&lt;p&gt;目前部署的就这几个蜜罐，其它的可能会根据需要安装部署，有时间的话会更新。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Ubuntu 16.04 安装 Glastopf</title>
+      <link>https://kylingit.com/blog/ubuntu-16.04-%E5%AE%89%E8%A3%85-glastopf/</link>
+      <pubDate>Fri, 22 Jul 2016 14:32:18 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/ubuntu-16.04-%E5%AE%89%E8%A3%85-glastopf/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;&lt;code&gt;glastopf&lt;/code&gt;是一个开源的低交互式Web应用蜜罐，用python编写，可以在各种操作系统上部署，可以方便监控和捕获恶意文件样本，攻击方式等，后期也有开源脚本利于统计分析，同时方便安装配置。&lt;/p&gt;
+
+&lt;h3 id=&#34;项目地址&#34;&gt;项目地址&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;a href=&#34;https://github.com/mushorg/glastopf&#34;&gt;https://github.com/mushorg/glastopf&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&#34;安装依赖&#34;&gt;安装依赖&lt;/h3&gt;
+
+&lt;p&gt;python要求2.7+，pip要求2.7+&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h4 id=&#34;pymongo&#34;&gt;pymongo&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;pip2.7 install --upgrade pymongo&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;numpy-and-other-deps&#34;&gt;numpy and other deps&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;pip2.7 install numpy
+pip2.7 install chardet sqlalchemy lxml beautifulsoup pyOpenSSL requests MySQL-python
+pip2.7 install scipy 
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;(be warned: pip installs software from alpha centauri so expect &lt;em&gt;some&lt;/em&gt; delays. also compiling can take a while.)&lt;/p&gt;
+
+&lt;h4 id=&#34;antlr&#34;&gt;antlr&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;wget http://www.antlr3.org/download/antlr-3.1.3.tar.gz
+tar xzf antlr-3.1.3.tar.gz
+cd antlr-3.1.3/runtime/Python
+python2.7 setup.py install
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;sklearn&#34;&gt;SKLearn&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;git clone git://github.com/scikit-learn/scikit-learn.git
+cd scikit-learn
+python2.7 setup.py install
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;evnet&#34;&gt;evnet&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;git clone git://github.com/rep/evnet.git
+cd evnet
+python2.7 setup.py install
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;或者直接安装&#34;&gt;或者直接安装&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;sudo apt-get update
+sudo apt-get install python2.7 python-openssl python-gevent libevent-dev python2.7-dev build-essential make
+sudo apt-get install python-chardet python-requests python-sqlalchemy python-lxml
+sudo apt-get install python-beautifulsoup mongodb python-pip python-dev python-setuptools
+sudo apt-get install g++ git php5 php5-dev liblapack-dev gfortran libmysqlclient-dev
+sudo apt-get install libxml2-dev libxslt-dev
+sudo pip install --upgrade distribute
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;安装php-sandbox&#34;&gt;安装PHP sandbox&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;cd /opt
+sudo git clone git://github.com/mushorg/BFR.git
+cd BFR
+sudo phpize
+sudo ./configure --enable-bfr
+sudo make &amp;amp;&amp;amp; sudo make install
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在&lt;code&gt;/etc/php/5/cli/php.ini&lt;/code&gt;添加
+&lt;code&gt;zend_extension = /usr/lib/php5/20090626+lfs/bfr.so&lt;/code&gt;
+或者
+&lt;code&gt;zend_extension = /usr/lib64/php/modules/bfr.so&lt;/code&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;安装glastopf&#34;&gt;安装Glastopf&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;sudo pip install glastopf&lt;/code&gt;
+或者编译安装&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;sudo git clone https://github.com/mushorg/glastopf.git
+cd glastopf
+sudo python setup.py install
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;配置运行&#34;&gt;配置运行&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;sudo glastopf-runner&lt;/code&gt;
+在目录下会产生db, data, log文件夹和一个glastopf.cfg配置文件，可以配置ip和端口，注意端口不要冲突
+db存放本地sqlite数据库文件
+运行&lt;code&gt;glastopf-runner&lt;/code&gt;
+浏览器访问Web
+可以看到如下输出&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;2013-03-14 08:34:08,129 (glastopf.glastopf) Initializing Glastopf using &amp;quot;/opt/myhoneypot&amp;quot; as work directory.
+2013-03-14 08:34:08,130 (glastopf.glastopf) Connecting to main database with: sqlite:///db/glastopf.db
+2013-03-14 08:34:08,152 (glastopf.modules.reporting.auxiliary.log_hpfeeds) Connecting to feed broker.
+2013-03-14 08:34:08,227 (glastopf.modules.reporting.auxiliary.log_hpfeeds) Connected to hpfeed broker.
+2013-03-14 08:34:11,265 (glastopf.glastopf) Glastopf started and privileges dropped.
+2013-03-14 08:34:32,853 (glastopf.glastopf) 192.168.10.85 requested GET / on 192.168.10.102
+2013-03-14 08:34:32,960 (glastopf.glastopf) 192.168.10.85 requested GET /style.css on 192.168.10.102
+2013-03-14 08:34:33,021 (glastopf.glastopf) 192.168.10.85 requested GET /favicon.ico on 192.168.10.102
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;参考&#34;&gt;参考&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;a href=&#34;https://github.com/mushorg/glastopf/blob/master/docs/source/installation/installation_ubuntu.rst&#34;&gt;https://github.com/mushorg/glastopf/blob/master/docs/source/installation/installation_ubuntu.rst&lt;/a&gt;
+&lt;a href=&#34;http://seccentral.blogspot.com/2013/02/how-to-install-glastopf-on-centos-6-in.html&#34;&gt;http://seccentral.blogspot.com/2013/02/how-to-install-glastopf-on-centos-6-in.html&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

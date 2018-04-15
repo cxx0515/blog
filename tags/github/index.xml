@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Github on 诗与胡说</title>
+    <link>https://kylingit.com/tags/github/index.xml</link>
+    <description>Recent content in Github on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/github/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Github 没有记录 Contributions 的解决</title>
+      <link>https://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</link>
+      <pubDate>Fri, 17 Mar 2017 16:46:07 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;最近更新文章的时候发现github没有记录Contributions，也就是小绿墙没有增加小方块，看了下&lt;code&gt;git log&lt;/code&gt;发现是提交的时候用户邮箱写错了，多打了一个字母&amp;hellip;于是Github认为这些commits都不是我提交的 =_=#
+网上找到了解决办法&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h3 id=&#34;1-重新克隆一个repo&#34;&gt;1. 重新克隆一个repo&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;git clone --bare https://github.com/user/repo.git
+cd repo.git
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;2-新建一个脚本&#34;&gt;2. 新建一个脚本&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;#!/bin/sh
+git filter-branch --env-filter &#39;
+OLD_EMAIL=&amp;quot;旧的Email地址&amp;quot;
+CORRECT_NAME=&amp;quot;正确的用户名&amp;quot;
+CORRECT_EMAIL=&amp;quot;正确的Email地址&amp;quot;
+if [ &amp;quot;$GIT_COMMITTER_EMAIL&amp;quot; = &amp;quot;$OLD_EMAIL&amp;quot; ]
+then
+    export GIT_COMMITTER_NAME=&amp;quot;$CORRECT_NAME&amp;quot;
+    export GIT_COMMITTER_EMAIL=&amp;quot;$CORRECT_EMAIL&amp;quot;
+fi
+if [ &amp;quot;$GIT_AUTHOR_EMAIL&amp;quot; = &amp;quot;$OLD_EMAIL&amp;quot; ]
+then
+    export GIT_AUTHOR_NAME=&amp;quot;$CORRECT_NAME&amp;quot;
+    export GIT_AUTHOR_EMAIL=&amp;quot;$CORRECT_EMAIL&amp;quot;
+fi
+&#39; --tag-name-filter cat -- --branches --tags
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;3-更改旧的邮箱-以及填写正确的用户名和邮箱-执行&#34;&gt;3. 更改旧的邮箱，以及填写正确的用户名和邮箱，执行&lt;/h3&gt;
+
+&lt;h3 id=&#34;4-把正确历史-push-到-github&#34;&gt;4. 把正确历史 push 到 Github&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;git push --force --tags origin &#39;refs/heads/*&#39;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;5-查看-git-log-检查push历史是否被更正-没有错误的话就可以删掉这个clone了&#34;&gt;5. 查看&lt;code&gt;git log&lt;/code&gt; 检查push历史是否被更正，没有错误的话就可以删掉这个clone了&lt;/h3&gt;
+
+&lt;h3 id=&#34;6-done&#34;&gt;6. done&lt;/h3&gt;
+
+&lt;p&gt;参考:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://help.github.com/articles/changing-author-info/&#34;&gt;Changing author info&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://segmentfault.com/a/1190000004318632&#34;&gt;为什么Github没有记录你的Contributions&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

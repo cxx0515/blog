@@ -1,0 +1,697 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Qzone on 诗与胡说</title>
+    <link>https://kylingit.com/tags/qzone/index.xml</link>
+    <description>Recent content in Qzone on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/qzone/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>QQ 空间爬虫之爬取说说</title>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</link>
+      <pubDate>Mon, 03 Apr 2017 19:37:30 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;今天来讲获取说说~&lt;/p&gt;
+
+&lt;p&gt;为什么把获取说说放在后面讲呢，主要是说说的结构相对来说复杂一点，跟留言不一样，它包括三层结构，一是说说内容本身，二是说说的评论以及回复，第三就是这条说说获得的赞同数，从空间的角度来看可能这三者结合地很好，层次关系和赞同关系一目了然，但是我们从接口获取到的数据并非如此，一层一层来看。&lt;/p&gt;
+
+&lt;h3 id=&#34;接口地址&#34;&gt;接口地址&lt;/h3&gt;
+
+&lt;h4 id=&#34;所有说说&#34;&gt;所有说说&lt;/h4&gt;
+
+&lt;p&gt;首先还是数据的接口地址。方法还是和上篇获取留言一样，从控制台查看请求，从返回的json数据着手处理。
+说说的接口地址如下：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msglist_v6?uin=目标qq&amp;amp;pos=起始位置&amp;amp;num=10&amp;amp;format=jsonp&amp;amp;g_tk=g_tk值
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;url本身就不分析了，和留言的相似，也是需要循环得到&lt;strong&gt;所有说说&lt;/strong&gt;。&lt;/p&gt;
+
+&lt;h4 id=&#34;详细信息&#34;&gt;详细信息&lt;/h4&gt;
+
+&lt;p&gt;之所以强调所有说说，是因为在这里我们可以只取&lt;code&gt;tid&lt;/code&gt;值，这是说说的唯一标识，对于每一条具体的说说还有一个更详细的接口:
+&lt;!-- more --&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msgdetail_v6?uin=目标qq&amp;amp;tid=说说id&amp;amp;format=jsonp&amp;amp;g_tk=g_tk值
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到这是一个&lt;code&gt;detail&lt;/code&gt;的接口，返回的就是更详细的说说信息，由于太长了就不截图了，可以自己打开看一下。这个地址的关键参数便是刚刚提到的&lt;code&gt;tid&lt;/code&gt;，把&lt;code&gt;tid&lt;/code&gt;传过来，根据这个&lt;code&gt;tid&lt;/code&gt;和发布者，以及登录的&lt;code&gt;g_tk&lt;/code&gt;值，就能得到一条说说包括评论在内的详细信息。&lt;/p&gt;
+
+&lt;h4 id=&#34;点赞情况&#34;&gt;点赞情况&lt;/h4&gt;
+
+&lt;p&gt;上面两个地址能够得到所有说说以及每一条说说的详细内容，但还少了点东西，就是点赞数。上面两个接口的返回数据都没有点赞情况对应的数据，一开始也有点纳闷，这应该是在一个整体里面的，但看了好多遍，确实是没有。后来点了几次&lt;code&gt;xx等x人觉得很赞&lt;/code&gt;，从请求里看到点赞情况是有另外一个接口的：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/users.qzone.qq.com/cgi-bin/likes/get_like_list_app?uin=目标qq&amp;amp;unikey=unikey&amp;amp;begin_uin=0&amp;amp;query_count=60&amp;amp;if_first_page=1&amp;amp;g_tk=g_tk值
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;其中&lt;code&gt;unikey&lt;/code&gt;是这条说说的地址：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;http://user.qzone.qq.com/目标qq/mood/说说id
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Nt7FN&#34; alt=&#34;moods like&#34; /&gt;
+需要特别注意的是，这个接口和上面两个不太一样，频繁访问会导致&lt;code&gt;403&lt;/code&gt;，所以若非必要，点赞部分不爬取也是可以的&amp;hellip;或者想一个避免403的方法，比如sleep，可这肯定会使整个程序慢下来，毕竟不敢贸然上多线程&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;一个小Tips: 点赞数据的获取是不一定要有好友关系的，也就是说可以用小号对赞同数另外爬取，避免被封号&amp;hellip;不是真正的封号，只是无法再访问这个地址了，一般是一天，泪的教训&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;通过上面第一个地址，可以得到一个好友的所有说说的&lt;code&gt;tid&lt;/code&gt;，根据每个&lt;code&gt;tid&lt;/code&gt;去获取它的详细内容和点赞情况，这样就能把所有说说爬下来了~&lt;/p&gt;
+
+&lt;h3 id=&#34;数据分析&#34;&gt;数据分析&lt;/h3&gt;
+
+&lt;p&gt;前面提到过了，说说和留言不一样，它除了内容本身，还有下面的评论，以及在评论下面的回复，它可能是互动双方，也有可能是第三个好友的回复(留言下面只能是双方的互动)，最后还有点赞的好友的情况&lt;/p&gt;
+
+&lt;p&gt;分析一下返回的数据，这是说说内容和评论内容，图片太长分两次截吧&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/T1o7g&#34; alt=&#34;moods&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/vXyMM&#34; alt=&#34;moods&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;点赞的情况如下，乱码是因为网站本身的问题&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s84i0&#34; alt=&#34;moods like&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;数据库设计&#34;&gt;数据库设计&lt;/h3&gt;
+
+&lt;p&gt;刚才提到了，说说的结构相对复杂，考虑到一张表无法将所有字段包括进去，于是设计了三张表，分别是说说内容表，评论及回复表，点赞表&lt;/p&gt;
+
+&lt;h4 id=&#34;说说表-qq-moods&#34;&gt;说说表&lt;code&gt;qq_moods&lt;/code&gt;&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
+    (id int primary key, \
+    moodid varchar(30), \			#说说id
+    uin varchar(15), \				#发布者
+    nickname varchar(50), \			#发布者昵称
+    secret int(2), \				#有时候qq签名会同步为说说，设置为仅自己可见时该字段为1
+    pubtime varchar(20), \			#发布时间
+    phone varchar(30), \			#发布平台
+    content TEXT, \				#说说内容，注意TEXT
+    pictotal int(4), \				#图片总数
+    cmtnum int(4), \				#评论总数
+    fwdnum int(4), \				#转发总数
+    locate varchar(50), \			#地理位置
+    position varchar(50), \
+    pos_x varchar(20), \			#经纬度
+    pos_y varchar(20))&#39; % tablename
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;效果如下
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/WEMTS&#34; alt=&#34;moods table&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;评论表-qq-moods-reply&#34;&gt;评论表&lt;code&gt;qq_moods_reply&lt;/code&gt;&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
+    (id int primary key, \
+    moodid varchar(30), \			#说说id
+    cmtuin varchar(15), \			#评论者
+    cmtnickname varchar(80), \			#评论者昵称
+    cmtcount varchar(4), \			#该说说评论数
+    cmtpubtime varchar(20), \			#评论发布时间
+    comtcontent TEXT, \				#评论内容
+    replycount varchar(4), \			#该评论下的回复数
+    rpypubtime varchar(20), \			#回复发布时间
+    replycontent TEXT \				#回复内容
+    )&#39; % tablename
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可能有人会问，这怎么表示评论和回复之间的层次关系呢？不急，我们先来看一下效果&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/kmOxu&#34; alt=&#34;moods reply&#34; /&gt;
+通过对同一层次的评论和回复插入空值，可以表示出层次关系，这和留言部分是一样的&lt;/p&gt;
+
+&lt;h4 id=&#34;点赞表-qq-moods-like&#34;&gt;点赞表&lt;code&gt;qq_moods_like&lt;/code&gt;&lt;/h4&gt;
+
+&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
+    (id int primary key, \
+    moodid varchar(30), \			#说说id
+    likecount  varchar(6), \			#点赞总数
+    uin varchar(15), \				#点赞者
+    nickname varchar(50), \			#昵称
+    gender varchar(4), \			#性别
+    constellation varchar(10), \		#星座
+    addr varchar(10), \				#城市
+    if_qq_friend int(2), \			#是否是好友
+    if_special_care int(2) \			#是否特别关心
+    )&#39; % tablename
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;效果如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/DkbbK&#34; alt=&#34;moods like&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;同样的，同一说说的点赞适当插入空值可以表现出层次关系&lt;/p&gt;
+
+&lt;h3 id=&#34;核心代码&#34;&gt;核心代码&lt;/h3&gt;
+
+&lt;p&gt;考虑到数据解析本身难度并不大，但爬取的逻辑还是挺重要的，所以这里贴一部分关键的代码&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;while True:
+    url = &#39;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msglist_v6?uin=&#39;+ target_qq + &#39;&amp;amp;pos=&#39; + str(self.moodstatus[&#39;moodPos&#39;]) + &#39;&amp;amp;num=10&amp;amp;format=jsonp&amp;amp;g_tk=&#39; + g_tk
+    r = s.get(url, headers = header)
+    dict = self.data2json(r.content[10:-2].strip().replace(&#39;\n&#39;,&#39;&#39;))
+    if self.moodstatus[&#39;moodPos&#39;] &amp;lt; dict[&#39;usrinfo&#39;][&#39;msgnum&#39;] - 1:				#get 10 items at a time
+        self.moodstatus[&#39;moodPos&#39;] += 10
+        print &#39;current qq: %s, current pos: %s&#39; % (target_qq, str(self.moodstatus[&#39;moodPos&#39;]))
+    else:
+   		break
+
+    if dict[&#39;msglist&#39;] == None:
+        print u&#39;\n之前动态被封存，无法获取.&#39;
+        break
+
+    for item in dict[&#39;msglist&#39;]:
+        print &#39;get moodId: %s, moods tid: %s&#39; % (self.moodstatus[&#39;moodId&#39;], item[&#39;tid&#39;])
+        url = &#39;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msgdetail_v6?uin=&#39;+ target_qq + &#39;&amp;amp;tid=&#39;+ item[&#39;tid&#39;] + &#39;&amp;amp;format=jsonp&amp;amp;g_tk=&#39; + g_tk
+        r = s.get(url, headers = header)
+        data = self.data2json(r.content[10:-2].strip().replace(&#39;\n&#39;,&#39;&#39;).replace(&#39;\\&#39;,&#39;&#39;))
+
+        self.operate_db_moods(db, &#39;qq_moods&#39;, data)							#get moods details
+		
+        if item.has_key(&#39;commentlist&#39;):
+            self.operate_db_moods_reply(db, &#39;qq_moods_reply&#39;, data)			#get moods reply
+        self.get_moods_like(qq, target_qq, cookie, item[&#39;tid&#39;], db)			#get moods like
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;解释&#34;&gt;解释&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;moodstatus&lt;/code&gt;是用来存放当前爬虫的状态的，便于程序意外中断后断点续爬。关于如何保存状态，如果有需要的话单独拿出来讲，这里只要关心这个&lt;code&gt;moodstatus&lt;/code&gt;包含的键值对就好了。&lt;code&gt;is_last_mood&lt;/code&gt;用来标识是否爬到了最后一条说说，下次爬取只要检测这个值就能判断是否继续了。
+&lt;code&gt;
+self.moodstatus = {&amp;quot;moodTid&amp;quot;: &#39;&#39;, &amp;quot;is_last_mood&amp;quot;: 0, &amp;quot;moodPos&amp;quot;: 0, &amp;quot;moodId&amp;quot;: 0, &amp;quot;moodcmtId&amp;quot;: 0, &amp;quot;moodlikeId&amp;quot;: 0}
+&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;data2json(data)&lt;/code&gt;是将&lt;code&gt;request&lt;/code&gt;获取的内容转换为&lt;code&gt;json&lt;/code&gt;对象
+&lt;code&gt;
+def data2json(self, data):
+json_obj = json.loads(data.decode(&#39;utf-8&#39;))
+return json_obj
+&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;operate_db*(self, db, tablename, data)&lt;/code&gt;方法是用来操作数据库的，有建表和插入数据的实现&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h4 id=&#34;流程图&#34;&gt;流程图&lt;/h4&gt;
+
+&lt;p&gt;画了一个简单的流程图&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/pGVFE&#34; alt=&#34;get moods&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;结束语&#34;&gt;结束语&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;说说部分的代码比其他复杂一些，主要是信息相对较多，数据之间的关系也相对复杂，除了常规边界判断，特殊字符等，还要注意如何正确表示层次关系，以及爬虫状态的保存(谁也不想爬了几千条中断了然后重新开始爬= =)&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;分享一条查询Top 20评论数的sql语句，对于说说表，留言表也是是用的&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;SELECT cmtnickname, count(cmtnickname) AS count
+FROM qq_moods_reply
+WHERE cmtnickname != &#39;&#39;
+GROUP BY cmtnickname
+ORDER BY count DESC
+LIMIT 20
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>QQ 空间爬虫之爬取留言</title>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E7%95%99%E8%A8%80/</link>
+      <pubDate>Sat, 01 Apr 2017 19:50:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E7%95%99%E8%A8%80/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;今天来讲爬取所有留言吧~&lt;/p&gt;
+
+&lt;h3 id=&#34;接口分析&#34;&gt;接口分析&lt;/h3&gt;
+
+&lt;p&gt;惯例，从url接口入手&lt;/p&gt;
+
+&lt;p&gt;我们分析一个请求首先要抓到与服务器交互的数据包，这就要用到抓包工具，像&lt;code&gt;Burpsuite&lt;/code&gt;,&lt;code&gt;Fiddler&lt;/code&gt;等，为了方便有时候也直接用&lt;code&gt;chrome&lt;/code&gt;的审查元素&lt;/p&gt;
+
+&lt;p&gt;登录空间，打开&lt;code&gt;f12&lt;/code&gt;，切换到&lt;code&gt;network&lt;/code&gt;选项卡，然后点击留言板，注意下面的请求，找到获取留言的链接
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/xNpNZ&#34; alt=&#34;http request&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;它长这样&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/m.qzone.qq.com/cgi-bin/new/get_msgb?uin=登录qq&amp;amp;hostUin=目标qq&amp;amp;start=起始位置&amp;amp;num=一次获取数量&amp;amp;format=jsonp&amp;amp;inCharset=utf-8&amp;amp;outCharset=utf-8&amp;amp;g_tk=g_tk值
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;关键参数是：&lt;code&gt;uin&lt;/code&gt;,&lt;code&gt;hostUin&lt;/code&gt;,&lt;code&gt;start&lt;/code&gt;,&lt;code&gt;num&lt;/code&gt;,&lt;code&gt;g_tk&lt;/code&gt;,分别对应&lt;code&gt;登录qq&lt;/code&gt;，&lt;code&gt;目标qq&lt;/code&gt;，&lt;code&gt;起始位置&lt;/code&gt;，&lt;code&gt;一次性获取的留言条数&lt;/code&gt;，&lt;code&gt;g_tk值&lt;/code&gt;，构造出这些参数，就能获取一个好友的所有留言了&lt;/p&gt;
+
+&lt;p&gt;值得注意的是&lt;code&gt;start&lt;/code&gt;和&lt;code&gt;num&lt;/code&gt;，由于该接口的限制，一次最多只能获取20条留言，也就是说&lt;code&gt;num&lt;/code&gt;值最大为20，这就无法一次性获取所有的留言，需要按&lt;code&gt;20条每份&lt;/code&gt;切割开来，每获取20条就让&lt;code&gt;start&lt;/code&gt;增加20，留言总数可以在返回的数据中获取到，然后注意控制边界，我们就能&lt;code&gt;一份一份&lt;/code&gt;获取所有数据了&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h3 id=&#34;数据分析&#34;&gt;数据分析&lt;/h3&gt;
+
+&lt;p&gt;右键新标签页打开这个链接，分析返回的数据&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/PFpqZ&#34; alt=&#34;http reply&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这也是一串json格式的数据，这样我们就能看到一条留言的存储结构，包括留言总数，留言者，留言内容，留言时间，回复内容等等，所有都get到了，然后设计数据库，存下来就ok了&lt;/p&gt;
+
+&lt;p&gt;可是真的这么顺利吗&amp;hellip;&lt;/p&gt;
+
+&lt;h3 id=&#34;踩坑&#34;&gt;踩坑&lt;/h3&gt;
+
+&lt;h4 id=&#34;坑一&#34;&gt;坑一&lt;/h4&gt;
+
+&lt;p&gt;当一切准备就绪，摩拳擦掌准备大干一场的时候，忽然发现，对方设置了访问权限&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/IqCvJ&#34; alt=&#34;cannot access&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ljsdK&#34; alt=&#34;sad&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;好吧，再正常不过的事了，谁还没有个小秘密呢(&lt;del&gt;人家根本就不想让你看好嘛&lt;/del&gt;)&lt;/p&gt;
+
+&lt;p&gt;不能看到留言就不能抓到数据了，那如何判断对方是不是不让你访问ta的空间呢？可以看到，当对方设置访问权限的时候，返回的状态码是不一样的，我们可以根据这个状态码&lt;code&gt;code&lt;/code&gt;来判断&lt;/p&gt;
+
+&lt;p&gt;但是再想一下，如果我们要获取说说数据，碰到同样的情况，难道也是来先请求一次留言的接口？也不是不可以，但最好把这两者独立开，避免不同内容混杂在一起。也有可能获取说说的时候又有不一样的状态码，那到时候再判断行不行呢？当然也是可以的&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;呃&amp;hellip;其实关键的是我们最好找到一个通用的接口，根据这个接口返回的状态做一次判断，这样就能在所有子模块中决定是否对这个好友继续爬取数据，那这个接口是什么呢？&lt;/p&gt;
+
+&lt;p&gt;在上次&lt;a href=&#34;https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/&#34;&gt;获取好友信息&lt;/a&gt;的那部分中，有一步是根据qq获取&lt;a href=&#34;https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/#详细信息&#34;&gt;详细信息&lt;/a&gt;，这个详细信息的获取是有好友权限的，不然就可以得到任意qq的信息了&amp;hellip;扯远了，好友权限意味着你必须可以访问ta的空间，这对于设置了访问限制的好友也是一样的，我们同样无法获取到被限制访问的好友的具体信息，于是我们可以再次利用这个接口&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/base.qzone.qq.com/cgi-bin/user/cgi_userinfo_get_all?uin=qq&amp;amp;fupdate=1&amp;amp;outCharset=utf-8&amp;amp;g_tk=g_tk
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;当对方限制了我们的访问权限，同样返回一个&lt;code&gt;-4009&lt;/code&gt;状态码，还有&lt;code&gt;您无权访问&lt;/code&gt;的提示信息，这两个都可以用来判断对方是否对我们设置了访问权限&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/pfccO&#34; alt=&#34;cannot access&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;坑二&#34;&gt;坑二&lt;/h4&gt;
+
+&lt;p&gt;好了，现在我们解决了没有访问权限的问题，抛弃了那些早已抛弃我们的小伙伴，再次兴致勃勃地准备大干一场(雾)的时候，忽然发现，私密留言&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/y81Qe&#34; alt=&#34;secret message&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/3I4Aj&#34; alt=&#34;so sad&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;好吧，再正常不过的事了，谁还没有好几个小秘密呢(&lt;del&gt;人家双方都不想让你看好嘛&lt;/del&gt;)&lt;/p&gt;
+
+&lt;p&gt;私密留言是看不到具体内容的，一味地取&lt;code&gt;Content&lt;/code&gt;的内容肯定是会出错的，所以还是提前加个判断，判断&lt;code&gt;secret&lt;/code&gt;的值就好了，很简单&lt;/p&gt;
+
+&lt;p&gt;好吧，其实这也不能算是坑了，都是设计过程中要注意的地方，把所有情况都要考虑到。&lt;/p&gt;
+
+&lt;h3 id=&#34;数据库设计&#34;&gt;数据库设计&lt;/h3&gt;
+
+&lt;p&gt;接下来设计数据库，还是为每个好友建立一个独立的表，暂且叫做&lt;code&gt;qq_messages&lt;/code&gt;吧&lt;/p&gt;
+
+&lt;p&gt;留言信息跟好友信息不一样，因为它还有回复，回复也有自己的内容，时间，回复者等信息，所以有一个层次关系，回复的内容嵌在留言内容下面，类似树的结构，所以靠一张表不能很好地表示整个留言关系，于是设计再建一张表，叫做&lt;code&gt;qq_messages_reply&lt;/code&gt;，专门存放一条留言下的回复信息，和留言表有一个key对应，也就是每条留言独有的&lt;code&gt;msgid&lt;/code&gt;，可以认为是外键吧，但这里没有设置成外键，因为感觉不需要&amp;hellip;&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;qq_messages&lt;/code&gt;结构&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
+    (id int primary key, \
+    msgid varchar(15), \			#留言的唯一标识
+    uin varchar(15), \
+    nickname varchar(50), \
+    secret int(2), \				#私密留言标识
+    bmp varchar(20), \
+    pubtime varchar(20), \
+    modifytime varchar(20), \
+    effect char(10), \				#下面三个字段不清楚做什么的，但还是留着吧
+    type int(2), \
+    capacity varchar(10), \
+    ubbContent TEXT, \				#留言内容，注意TEXT
+    replyFlag int(2))&#39; % tablename		#是否有回复
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;注意：由于无法确定留言内容的长度，所以不能确定用多大的存储空间来存储，所以这里将存储结构设置成&lt;code&gt;TEXT&lt;/code&gt;，&lt;code&gt;TEXT&lt;/code&gt;的存储空间是&lt;code&gt;65 535&lt;/code&gt;个字节，大约可以存储&lt;code&gt;20000&lt;/code&gt;个汉字&lt;/p&gt;
+
+&lt;p&gt;关于MySQL可以存储的数据类型以及存储空间，可以参考&lt;a href=&#34;https://www.runoob.com/mysql/mysql-data-types.html&#34;&gt;文档&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;可以注意到在&lt;code&gt;qq_messages&lt;/code&gt;中多了一个&lt;code&gt;replyFlag&lt;/code&gt;字段，这个字段是自己加的，用来区分该留言有没有回复，这是根据&lt;code&gt;replyList&lt;/code&gt;是否为空来判断的&lt;/p&gt;
+
+&lt;p&gt;预览&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/cIIY1&#34; alt=&#34;qq messages&#34; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;qq_messages_reply&lt;/code&gt;结构&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
+    (id int primary key, \
+    msgid varchar(15), \
+    replycount char(4), \
+    uin varchar(15), \
+    nickname varchar(50), \
+    pubtime varchar(20), \
+    content TEXT)&#39; % tablename
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;回复表跟上面差不多，就不解释了&lt;/p&gt;
+
+&lt;p&gt;预览&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/5pPWS&#34; alt=&#34;qq message reply&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;插入数据的时候根据回复数插入空值，使看上去有层次关系&lt;/p&gt;
+
+&lt;h3 id=&#34;结束语&#34;&gt;结束语&lt;/h3&gt;
+
+&lt;p&gt;剩下的就是一些小细节了，比如说私密留言获取不到留言者的&lt;code&gt;uin&lt;/code&gt;以及具体的内容，而表的字段已经固定了，无法正确插入怎么办呢？&lt;/p&gt;
+
+&lt;p&gt;留言的内容含有一些特殊字符，比如&lt;code&gt;\&lt;/code&gt;，&lt;code&gt;&#39;&lt;/code&gt;等，让sql语句被转义或被截断，又该怎么办呢？&lt;/p&gt;
+
+&lt;p&gt;还有，留言的回复中又有对话，而且有很多条，这个情况又怎么处理呢？&lt;/p&gt;
+
+&lt;p&gt;╮(╯_╰)╭&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>QQ 空间爬虫之获取好友</title>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</link>
+      <pubDate>Wed, 29 Mar 2017 20:53:43 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;网上有些QQ空间爬虫都是首先设置访问权限为qq好友访问，然后获取所有好友信息。&lt;/p&gt;
+
+&lt;p&gt;其实QQ空间是有接口能够直接获取到所有好友的&lt;/p&gt;
+
+&lt;h3 id=&#34;获取好友&#34;&gt;获取好友&lt;/h3&gt;
+
+&lt;h4 id=&#34;普通信息&#34;&gt;普通信息&lt;/h4&gt;
+
+&lt;h5 id=&#34;接口地址&#34;&gt;接口地址&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/r.qzone.qq.com/cgi-bin/tfriend/friend_show_qqfriends.cgi?uin=qq&amp;amp;fupdate=1&amp;amp;outCharset=utf-8&amp;amp;g_tk=g_tk
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;g_tk&lt;/code&gt;如何获取&lt;a href=&#34;https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/&#34;&gt;上篇文章&lt;/a&gt;已经提过了&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h5 id=&#34;数据形式&#34;&gt;数据形式&lt;/h5&gt;
+
+&lt;p&gt;请求后返回的是json&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;_Callback(
+{
+code: 0,
+subcode: 0,
+message: &amp;quot;&amp;quot;,
+default: 0,
+data: {
+    items: [
+        {
+            uin: 12345,
+            groupid: 2,
+            name: &amp;quot;nick0&amp;quot;,
+            remark: &amp;quot;remark0&amp;quot;,
+            img: &amp;quot;http://qlogo4.store.qq.com/qzone/12345/12345/30&amp;quot;,
+            yellow: -1,
+            online: 0,
+            v6: 1
+        },
+        {
+            uin: 23456,
+            groupid: 8,
+            name: &amp;quot;nick1&amp;quot;,
+            remark: &amp;quot;remark1&amp;quot;,
+            img: &amp;quot;http://qlogo3.store.qq.com/qzone/23456/23456/30&amp;quot;,
+            yellow: -1,
+            online: 0,
+            v6: 1
+        },
+        {
+            uin: 34567,
+            groupid: 1,
+            name: &amp;quot;nick2&amp;quot;,
+            remark: &amp;quot;remark2&amp;quot;,
+            img: &amp;quot;http://qlogo4.store.qq.com/qzone/34567/34567/30&amp;quot;,
+            yellow: -1,
+            online: 0,
+            v6: 1
+        }
+    ],
+  	gpnames: [
+        {
+            gpid: 0,
+            gpname: &amp;quot;group0&amp;quot;
+        },
+        {
+            gpid: 1,
+            gpname: &amp;quot;group1&amp;quot;
+        },
+        {
+            gpid: 2,
+            gpname: &amp;quot;group2&amp;quot;
+        }
+    ]
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;关键的是data中的数据，除了所有好友的昵称备注头像外，还有所属的分组id等，本来可以根据这个&lt;code&gt;gpid&lt;/code&gt;进行分组，可是找了一圈没找到如何显示所有分组信息的接口，于是这串数据就没派上用场了&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;用一个session带上cookie请求这个接口就能获取所有好友了，可以先存下来，方便后面用。&lt;/p&gt;
+
+&lt;h4 id=&#34;详细信息&#34;&gt;详细信息&lt;/h4&gt;
+
+&lt;p&gt;可能有人认为这些信息还是太少了，既然抓取了就索性彻底一些，最好能获取到更详细的信息，于是又经过一番摸索，终于又get到一个接口：&lt;/p&gt;
+
+&lt;h5 id=&#34;接口地址-1&#34;&gt;接口地址&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/base.qzone.qq.com/cgi-bin/user/cgi_userinfo_get_all?uin=qq&amp;amp;fupdate=1&amp;amp;outCharset=utf-8&amp;amp;g_tk=g_tk
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;数据形式-1&#34;&gt;数据形式&lt;/h5&gt;
+
+&lt;p&gt;这是一个&amp;rdquo;详细版&amp;rdquo;的好友信息，包括空间名称，空间描述，出生年月，历史地理位置，现在地理位置等信息，以及更具体的邮箱，手机号等(如果有设置的话)&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;_Callback(
+{
+    code: 0,
+    subcode: 0,
+    message: &amp;quot;获取成功&amp;quot;,
+    default: 0,
+    data: {
+        uin: 12345
+        is_famous: false,
+        famous_custom_homepage: false,
+        nickname: &amp;quot;nickname&amp;quot;,
+        emoji: [ ],
+        spacename: &amp;quot;someone&#39;s qzone&amp;quot;,
+        desc: &amp;quot;&amp;quot;,
+        signature: &amp;quot;this is a signature&amp;quot;,
+        avatar: &amp;quot;http://b125.photo.store.qq.com/psb?/blabla&amp;quot;,
+        sex_type: 0,
+        sex: 1,
+        animalsign_type: 0,
+        constellation_type: 0,
+        constellation: 9,
+        age_type: 0,
+        age: 18,
+        islunar: 0,
+        birthday_type: 0,
+        birthyear: 1999,
+        birthday: &amp;quot;01-01&amp;quot;,
+        bloodtype: 0,
+        address_type: 0,
+        country: &amp;quot;中国&amp;quot;,
+        province: &amp;quot;&amp;quot;,
+        city: &amp;quot;北京&amp;quot;,
+        home_type: 0,
+        hco: &amp;quot;中国&amp;quot;,
+        hp: &amp;quot;北京&amp;quot;,
+        hc: &amp;quot;东城&amp;quot;,
+        marriage: 0,
+        career: &amp;quot;&amp;quot;,
+        company: &amp;quot;&amp;quot;,
+        cco: &amp;quot;&amp;quot;,
+        cp: &amp;quot;&amp;quot;,
+        cc: &amp;quot;&amp;quot;,
+        cb: &amp;quot;&amp;quot;,
+        mailname: &amp;quot;&amp;quot;,
+        mailcellphone: &amp;quot;&amp;quot;,
+        mailaddr: &amp;quot;&amp;quot;,
+        qzworkexp: [ ],
+        qzeduexp: [ ],
+        ptimestamp: 1450773545
+    }
+}
+)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;嗯&amp;hellip;只要获取到每个好友的qq后接着请求这个接口，更详细的信息就得到了～乖乖存下来&lt;/p&gt;
+
+&lt;h3 id=&#34;数据库设计&#34;&gt;数据库设计&lt;/h3&gt;
+
+&lt;p&gt;对了，本爬虫是基于Python和MySQL的，所以数据都会存在MySQL数据库中，设计为每个好友一个库，含有说说表，说说评论表，说说点赞表，留言表，留言回复表等。
+首先好友信息只要获取一遍，存在登录qq的好友表中，字段都是上面获取的数据&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
+    (id int primary key, \
+    uin varchar(15), \
+    sex int(2), \
+    groupid int(2), \
+    nickname varchar(40), \
+    remark varchar(20), \
+    spacename varchar(50), \
+    age int(2), \
+    birthday varchar(20), \
+    city varchar(20), \
+    img varchar(60), \
+    yellow int(2), \
+    online int(2), \
+    v6 int(2)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4&#39; % tablename		#change mysql encoding to support emoji
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这里建表最后的&lt;code&gt;ENGINE=InnoDB DEFAULT CHARSET=utf8mb4&lt;/code&gt;需要解释一下，因为有好多好友的昵称，签名等都是含有emoji表情的，emoji虽然也有编码，但它是用4字节来存储的，而 MySQL 中 utf8 的字段只能存储 1 至 3 字节的字符，所有直接存储会出错，这里就在建表的时候设置表的编码格式为&lt;code&gt;utf8mb4&lt;/code&gt;，该编码是&lt;code&gt;utf8&lt;/code&gt;的超集，向下兼容&lt;code&gt;utf8&lt;/code&gt;，可以参考前阵子写的文章 &lt;a href=&#34;https://kylingit.com/blog/python-%E4%BD%BF%E7%94%A8-mysql-%E5%AD%98%E5%82%A8-emoji-%E8%A1%A8%E6%83%85/&#34;&gt;PYTHON 使用 MYSQL 存储 EMOJI 表情&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;字段含义就不用解释了，注意一下的是&lt;code&gt;birthday&lt;/code&gt;字段是拼接出生年份和具体月日的，就不细分了，&lt;code&gt;city&lt;/code&gt;字段拼接国家省份和城市。&lt;code&gt;sex&lt;/code&gt;字段为&lt;code&gt;0&lt;/code&gt;的表示无法获取该好友的信息&lt;/p&gt;
+
+&lt;p&gt;预览&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/DNYkv&#34; alt=&#34;qq friends&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;结束语&#34;&gt;结束语&lt;/h3&gt;
+
+&lt;p&gt;看似普通的get访问，用request方便又轻松，实际上背后有很多坑&amp;hellip;比如说有些上个年代遗留的火星文&amp;hellip;又比如说各种有意无意在签名中啊说说中啊等带各种&amp;rdquo;特殊字符&amp;rdquo;的，不做过滤直接让程序逼停&amp;hellip;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>QQ 空间爬虫之模拟登录</title>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</link>
+      <pubDate>Fri, 24 Mar 2017 14:48:15 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;想要抓取 QQ 空间数据的第一步就是登录空间，通过好友关系获取说说，日志，留言等。&lt;/p&gt;
+
+&lt;p&gt;话说 QQ 空间登录算法好变态&amp;hellip;4000+ 行 &lt;a href=&#34;https://qzonestyle.gtimg.cn/c/=/qzone/v8/engine/migrate-plugin.js,/qzone/v8/engine/console-plus/console-plus.js,/qzone/v8/engine/request/request_61221.js,/qzone/v8/core/interface_mini.js&#34;&gt;js&lt;/a&gt; 加密，想要读懂该算法也是需要耗费大段时间，好在 github 上有大神实现了该算法，感谢 &lt;a href=&#34;https://github.com/gera2ld&#34;&gt;gera2ld&lt;/a&gt; 大神提供的登录库，为我们省去了大量时间，详情戳 &lt;a href=&#34;https://github.com/gera2ld/qqlib&#34;&gt;qqlib&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;关于 QQ 空间具体是如何登录的，分析起来比较复杂，关联的 url 也比较多，需要处理的参数更多，如果需要的话会单独拿出来分析，这里跟我们的项目关系不是很大，我们只要能够登录上并且保持登录状态就可以了，所以偷个懒&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;可以直接用&lt;code&gt;pip&lt;/code&gt;安装&lt;code&gt;qqlib&lt;/code&gt;, 然后&lt;code&gt;import qqlib&lt;/code&gt;使用该库，但由于&lt;code&gt;qqlib&lt;/code&gt;更新频繁，怕到后来有些不兼容，这里选用 2017-03-04 更新的版本，自己加了几个方法的实现。&lt;/p&gt;
+
+&lt;p&gt;本爬虫一个特点就是可以利用上次登录的 cookies 登录，不必每次都通过账号密码登录，当然第一次登录还是要通过账号密码认证，之后从保存的 cookies文件获取内容。cookies 有一定有效期，读取之前会判断该 cookies 是否失效。&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h4 id=&#34;1-登录流程&#34;&gt;1. 登录流程&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/vrtFN&#34; alt=&#34;login&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;2-常规登录&#34;&gt;2. 常规登录&lt;/h4&gt;
+
+&lt;p&gt;这段是&lt;code&gt;qqlib&lt;/code&gt;的示例，可以处理含验证码的登录&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def login(self):
+	exc = None
+	while True:
+		try:
+			if exc is None:
+				self.qq.login()
+				break
+			else:
+				verifier = exc.verifier
+				open(&#39;verify.jpg&#39;, &#39;wb&#39;).write(verifier.fetch_image())
+				print(&#39;saved verify.jpg&#39;)
+				vcode = input(&#39;input verify:&#39;)
+				verifier.verify(vcode)
+				exc = None
+		except qqlib.NeedVerifyCode as e:
+			if e.message != None:
+				print e.message
+			exc = e
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;3-从-cookies-登录&#34;&gt;3. 从 cookies 登录&lt;/h4&gt;
+
+&lt;h5 id=&#34;3-1-保存-cookies&#34;&gt;3.1 保存 cookies&lt;/h5&gt;
+
+&lt;p&gt;登录成功后将 cookies 保存下来，以便下次直接从文件中获取 cookies 用以认证，省去每次从账号密码登录的繁琐，同时也能防止检测到频繁登录(虽然并没有什么用&amp;hellip;)
+利用 &lt;code&gt;requests&lt;/code&gt; 库的 &lt;a href=&#34;http://docs.python-requests.org/zh_CN/latest/api.html#requests.utils.dict_from_cookiejar&#34;&gt;dict_from_cookiejar()&lt;/a&gt; 方法可以将 &lt;code&gt;cookiejar&lt;/code&gt; 对象转换为字典，然后利用 &lt;code&gt;pickle&lt;/code&gt; 模块的 &lt;a href=&#34;https://docs.python.org/2/library/pickle.html#pickle.dump&#34;&gt;dump()&lt;/a&gt; 方法将对象存储在文件中&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def save_cookie_to_file(cookie, cookie_file):
+	with open(cookie_file, &#39;w&#39;) as f:
+		pickle.dump(requests.utils.dict_from_cookiejar(cookie), f)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;3-2-读取-cookies&#34;&gt;3.2 读取 cookies&lt;/h5&gt;
+
+&lt;p&gt;读取 cookies 方法和保存时一样，只不过把上面的方法反过来执行，利用 &lt;a href=&#34;http://docs.python-requests.org/zh_CN/latest/api.html#requests.utils.cookiejar_from_dict&#34;&gt;cookiejar_from_dict()&lt;/a&gt; 和 &lt;a href=&#34;https://docs.python.org/2/library/pickle.html#pickle.load&#34;&gt;load()&lt;/a&gt; 方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def load_cookie_from_file(cookie_file):
+	if os.path.isfile(cookie_file):
+		with open(cookie_file) as f:
+			cookie = requests.utils.cookiejar_from_dict(pickle.load(f))
+			return cookie
+	return None
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;3-3-cookiejar-对象转字符串&#34;&gt;3.3 &lt;code&gt;cookiejar&lt;/code&gt; 对象转字符串&lt;/h5&gt;
+
+&lt;p&gt;由于 cookies 直接附带在 Headers 中一起发给服务器，所以要将 &lt;code&gt;cookiejar&lt;/code&gt; 对象转成字符串，和其他字段一起组成 Headers&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def cookiejar_to_string(cookies):
+	if cookies == None:
+		return None
+	else:
+		cookie = &#39;&#39;
+		for keys, values in cookies.iteritems():
+			cookie += keys+ &#39;=&#39; + values + &#39;;&#39;
+		cookie = cookie[:len(cookie)-1]
+		return cookie
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;4-g-tk-值&#34;&gt;4. &lt;code&gt;g_tk&lt;/code&gt; 值&lt;/h4&gt;
+
+&lt;p&gt;不管是直接登录还是从 cookies 登录，非常重要的一点是为了获取 &lt;code&gt;p_skey&lt;/code&gt; 或 &lt;code&gt;skey&lt;/code&gt; 值，这两个值用来计算 &lt;code&gt;g_tk&lt;/code&gt; 值，计算方法已经有代码能够实现了&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;def g_tk(self):
+	h = 5381
+	cookies = self.session.cookies
+	s = cookies.get(&#39;p_skey&#39;) or cookies.get(&#39;skey&#39;) or &#39;&#39;
+	for c in s:
+		h += (h &amp;lt;&amp;lt; 5) + ord(c)
+	return h &amp;amp; 0x7fffffff
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;5-检查登录&#34;&gt;5. 检查登录&lt;/h4&gt;
+
+&lt;p&gt;检查是否登录成功思想就是访问该 qq 的用户资料界面，如果能获取成功说明模拟登录成功
+该请求是这样子的&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/r.qzone.qq.com/cgi-bin/user/cgi_personal_card?uin=用户qq&amp;amp;g_tk=g_tk值
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;请求成功返回一段 json，如果 &lt;code&gt;g_tk&lt;/code&gt; 值错误或者请求不合法的话返回错误码 403
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/jQpGH&#34; alt=&#34;user info&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;6-后续&#34;&gt;6. 后续&lt;/h4&gt;
+
+&lt;p&gt;这样我们有了可用的 cookies ，从 cookies 计算&lt;code&gt;g_tk&lt;/code&gt;值，有了&lt;code&gt;g_tk&lt;/code&gt;和好友 qq 号就可以拼接 url 批量获取好友数据了~&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Linux on 诗与胡说</title>
+    <link>https://kylingit.com/tags/linux/index.xml</link>
+    <description>Recent content in Linux on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/linux/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>分享几个有用的小程序</title>
+      <link>https://kylingit.com/blog/%E5%88%86%E4%BA%AB%E5%87%A0%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84%E5%B0%8F%E7%A8%8B%E5%BA%8F/</link>
+      <pubDate>Sat, 18 Mar 2017 23:21:02 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%88%86%E4%BA%AB%E5%87%A0%E4%B8%AA%E6%9C%89%E7%94%A8%E7%9A%84%E5%B0%8F%E7%A8%8B%E5%BA%8F/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;1-一個改良的-ping-http-fangpeishi-com-improved-ping-html&#34;&gt;1. &lt;a href=&#34;http://fangpeishi.com/improved_ping.html&#34;&gt;一個改良的 Ping&lt;/a&gt;&lt;/h3&gt;
+
+&lt;p&gt;有时候想 ping 一个网址，直接从浏览器复制会带上&lt;code&gt;http://&lt;/code&gt;，粘进命令行就出错了&amp;hellip;
+于是可以用这个脚本代替 ping 程序，改成&lt;code&gt;pin&lt;/code&gt;放在&lt;code&gt;/bin&lt;/code&gt;下就 OK 了&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;#!/usr/bin/env bash
+#author: fangpeishi@gmail.com
+#issues:
+#  - http(s)://xxx.xx/xxx/xx?xxx
+#  - 192.168.1.1/32
+
+new_args=`echo $@ |sed  &#39;s/http.*\:\/\///&#39; |sed &#39;s/\/[^ ]*//&#39;`
+#echo ${new_args}
+ping -c 4 ${new_args}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://fangpeishi.com&#34;&gt;作者&lt;/a&gt;还带上另一个功能，一个网段的也能用
+&lt;code&gt;ping 192.168.1.1/32&lt;/code&gt; &amp;mdash;-&amp;gt; &lt;code&gt;ping 192.168.1.1&lt;/code&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/QSTrD&#34; alt=&#34;Untitled Image&#34; /&gt;&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h3 id=&#34;2-随机密码生成脚本&#34;&gt;2. 随机密码生成脚本&lt;/h3&gt;
+
+&lt;p&gt;可以自定义长度&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;#!/bin/bash
+L=$2
+if [ ! -z $1 ];then
+  if [[ &amp;quot;$1&amp;quot; =~ ^[0-9]+$ ]];then
+    L=$1
+  fi
+fi
+&amp;lt;/dev/urandom tr -dc &#39;0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ~!@#$%^&amp;amp;*()_+&#39; | head -c${L}; echo &amp;quot;&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ooNjB&#34; alt=&#34;Untitled Image&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;3-不定期更新&#34;&gt;3. 不定期更新&lt;/h3&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>salt-ssh 配置使用</title>
+      <link>https://kylingit.com/blog/salt-ssh-%E9%85%8D%E7%BD%AE%E4%BD%BF%E7%94%A8/</link>
+      <pubDate>Thu, 15 Sep 2016 14:54:29 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/salt-ssh-%E9%85%8D%E7%BD%AE%E4%BD%BF%E7%94%A8/</guid>
+      <description>&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;salt-ssh 是 Saltstack 框架下的一款批量化远程操作工具，具体介绍可以看 &lt;a href=&#34;http://opensgalaxy.com/2015/08/13/saltstack%E5%85%A5%E9%97%A8%E3%80%90salt-ssh%E3%80%91%E4%BD%BF%E7%94%A8/&#34;&gt;这里&lt;/a&gt;
+关于 Saltstack，它是一款自动化运维工具，具体可以浏览 &lt;a href=&#34;https://saltstack.com&#34;&gt;官网&lt;/a&gt;，这里只介绍一下 salt-ssh 的使用。&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;p&gt;salt-ssh 的配置很简单，在 /etc/salt/ 下修改 roster 文件，把需要管理的服务器 ip，用户名，密码按格式配置好即可
+&amp;gt; vim /etc/salt/roster&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;server00:
+ host: x.x.x.x
+ user: root
+ passwd: root
+ 
+server01:
+ host: x.x.x.x
+ user: root
+ passwd: root
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;然后测试一下能不能连通就好了
+&amp;gt; salt-ssh &amp;lsquo;*&amp;rsquo; test.ping&lt;/p&gt;
+
+&lt;p&gt;&amp;lsquo;*&amp;rsquo; 是指所有节点，想要单独某个节点的话指定就可以了
+&amp;gt; salt-ssh server00 test.ping&lt;/p&gt;
+
+&lt;p&gt;可能需要验证是否接受密钥，不想被提示就加上参数 -i
+&amp;gt; salt-ssh &amp;lsquo;*&amp;rsquo; test.ping -i&lt;/p&gt;
+
+&lt;p&gt;测试能够连通就可以执行命令了，使用参数 -r
+&amp;gt; salt-ssh &amp;lsquo;*&amp;rsquo; -r &amp;lsquo;uname -a&amp;rsquo; -i&lt;/p&gt;
+
+&lt;p&gt;这里要说的是配置文件里明文记录密码是十分不安全的行为，极端情况是某台服务器被入侵，发现了这个文件，恰巧又有大量服务器配置在这，相当于把机器送到黑客手上了。
+即使是加密后的密码也不安全，总之是用文件记录敏感信息都是不负责任的做法。&lt;/p&gt;
+
+&lt;p&gt;想要不在配置文件中记录密码，可以在执行命令的时候把密码作为参数
+&amp;gt; salt-ssh &amp;lsquo;*&amp;rsquo; &amp;ndash;passwd &amp;lsquo;password&amp;rsquo; -r &amp;lsquo;args&amp;rsquo; -i&lt;/p&gt;
+
+&lt;p&gt;而配置文件里只要记录 ip 和用户名就可以&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;server00:
+ host: x.x.x.x
+ user: root
+ 
+server01:
+ host: x.x.x.x
+ user: root
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这样做的优点是不会在文件中泄露密码，缺点是假如每台机器密码不一样，执行起来会比较麻烦，各自取舍吧。 也有通过 keys 验证身份，但测试之后发现还是得认证身份，这里就不提了。&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;Tips&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;其实直接在命令中指定密码依然十分危险，因为命令记录会把你出卖&amp;hellip;可以执行一下&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;cat ~/.bash_history&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;所以涉及到输入密码的命令，可以在输入前键入一个空格，即按一下空格再正常输入命令，这样这条命令就不会被记录在历史里。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

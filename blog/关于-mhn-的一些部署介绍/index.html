@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="关于 MHN 的一些部署介绍">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - 关于 MHN 的一些部署介绍 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    关于 MHN 的一些部署介绍
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Fri Sep 30 2016 14:32:18 UTC">Sep 30, 2016</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<h3 id="简介">简介</h3>
+
+<p><a href="https://itandsecuritystuffs.wordpress.com/2015/02/03/honeypot-networks/">MHN (Modern Honey Network)</a> 是一个开源软件，它集成了多种蜜罐，简化了蜜罐的部署，同时便于收集和统计蜜罐的数据。
+它包括</p>
+
+<ul>
+<li><p>Sort: <a href="https://www.snort.org/">https://www.snort.org/</a></p></li>
+
+<li><p>Suricata: <a href="http://suricata-ids.org/">http://suricata-ids.org/</a></p></li>
+
+<li><p>Dionaea: <a href="http://dionaea.carnivore.it/">http://dionaea.carnivore.it/</a>, 它是一个低交互式的蜜罐，能够模拟MSSQL, SIP, HTTP, FTP, TFTP等服务 drops中有一篇介绍： <a href="http://drops.wooyun.org/papers/4584">http://drops.wooyun.org/papers/4584</a></p></li>
+
+<li><p>Conpot: <a href="http://conpot.org/">http://conpot.org/</a></p></li>
+
+<li><p>Kippo: <a href="https://github.com/desaster/kippo">https://github.com/desaster/kippo</a>, 它是一个中等交互的蜜罐，能够下载任意文件。 drops中有一篇介绍： <a href="http://drops.wooyun.org/papers/4578">http://drops.wooyun.org/papers/4578</a></p></li>
+
+<li><p>Amun: <a href="http://amunhoney.sourceforge.net/">http://amunhoney.sourceforge.net/</a>, 它是一个低交互式蜜罐，但是已经从2012年之后不在维护了。</p></li>
+
+<li><p>Glastopf： <a href="http://glastopf.org/">http://glastopf.org/</a></p></li>
+
+<li><p>Wordpot： <a href="https://github.com/gbrindisi/wordpot">https://github.com/gbrindisi/wordpot</a></p></li>
+
+<li><p>ShockPot： <a href="https://github.com/threatstream/shockpot">https://github.com/threatstream/shockpot</a>, 模拟的CVE-2014-6271，即破壳漏洞</p></li>
+
+<li><p>p0f： <a href="https://github.com/p0f/p0f">https://github.com/p0f/p0f</a></p></li>
+</ul>
+
+<p>具体的介绍可以看 WooYun Drops 的一篇文章 <a href="https://ob5vt1k7f.qnssl.com/%E8%9C%9C%E7%BD%90%E7%BD%91%E7%BB%9C.html">蜜罐网络</a></p>
+
+<p>安装过程不再赘述，讲讲实际部署中遇到的一些问题</p>
+
+<!-- more -->
+
+<h3 id="一些注意点">一些注意点</h3>
+
+<h4 id="一">一</h4>
+
+<p>首先，MHN honeymap 是一个控制端，可以认为是“总部”，把它安装在一台机器上就好，它负责记录和显示所有子节点上的攻击数据，部署脚本也在这台机器上，想要部署一个蜜罐到多台服务器上，只要运行它提供的部署脚本就可以，安装和配置都会自动完成，结果会显示在这台控制端。</p>
+
+<p>先上一个正常运行的页面</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/HoneyMap.jpg" alt="HoneyMap" /></p>
+
+<p>因为部署了差不多100台蜜罐分布在全球不同的地区，这里看上去还是蛮壮观的。红色的代表正在发起攻击的 ip 地理位置，黄色的代表受攻击方，也就是蜜罐的 ip ，显示结果是实时的。</p>
+
+<p>这是统计信息，包括 TOP 5 IPs, TOP 5 ports, TOP 5 Honey Pots, TOP 5 Sensors, TOP 5 Attacks Signatures，所有记录都会保存在 Mongodb 数据库中，这里只是显示过去 24 小时的</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Dashboard.jpg" alt="Dashboard" /></p>
+
+<h4 id="二">二</h4>
+
+<p>MHN 的 HoneyMap 显示页面使用的是 3000 端口，控制页面运行在 80 端口，80 端口需要验证登录，3000 端口是开放的，建议用 iptables 对端口进行一些保护，需要注意的是，当利用脚本部署不同的蜜罐时，需要从这台服务器下载脚本和配置文件，这时候 80 端口不能被设置成不允许访问，不然没法部署成功。</p>
+
+<h4 id="三">三</h4>
+
+<p>Map 页面就是显示的地图，这里一开始点击会显示说 404，需要在配置文件把页面地址更改一下
+<code>vim /opt/mhn/server/config.py</code></p>
+
+<p>把
+<code>HONEYMAP_URL = ':3000'</code></p>
+
+<p>改成
+<code>HONEYMAP_URL = 'http://ip:3000'</code></p>
+
+<p>ip 即为该服务器 ip</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/map.jpg" alt="Map" /></p>
+
+<p>Deploy 页面即保存部署蜜罐的脚本，可以下拉选择不同的蜜罐，也可以自定义脚本。它提供的脚本不一定完全适用，有些情况需要自己更改一下。复制上面的 Deploy Command 到另外的机器上执行，完成后一般就会在 Sensors 显示新安装的蜜罐节点。</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Deploy.jpg" alt="Deploy" /></p>
+
+<p>Attacks 页面显示的是具体的攻击情况，包括时间，节点，国家，源ip和源端口，使用的协议以及发生在哪个蜜罐上</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Attacks.jpg" alt="Attacks" /></p>
+
+<p>Plyloads 页面显示一些攻击行为的 payload，包括 sql 注入，恶意扫描等，它会记录所有 url 访问</p>
+
+<p>Rules 页面可以自定义一些触发规则，一般保持默认就好</p>
+
+<p>Sensors 是各个蜜罐节点的情况，成功运行的蜜罐会在这里显示</p>
+
+<p>Charts 页面会显示 ssh 蜜罐收集到的用户名密码等，这里显示的是 cowrie 捕捉到的一些 ssh 尝试登录，以及 top 用户名和密码</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/passwd.jpg" alt="Charts" /></p>
+
+<h3 id="关于具体的蜜罐">关于具体的蜜罐</h3>
+
+<h4 id="cowrie">cowrie</h4>
+
+<p>这是一个中等交互的SSH蜜罐，关于它的介绍在 Freebuf 上有一篇 <a href="http://www.freebuf.com/articles/network/112065.html">文章</a>，如何安装如何配置在上面都有，不再赘述。
+如果运行出错，查看日志发现问题
+&gt; getDSAkeys - TypeError: must be long, not mpz</p>
+
+<p>这是由于 Twisted 库不兼容引起的，解决办法是</p>
+
+<pre><code>$ cd cowrie/data
+$ ssh-keygen -t dsa -b 1024 -f ssh_host_dsa_key
+</code></pre>
+
+<p>需要注意尽量不要将 22 端口暴露在公网，可以使用 iptables 转发到 cowrie 的运行端口，同时将正常的 ssh 服务运行在另外的端口。</p>
+
+<h4 id="dionaea">dionaea</h4>
+
+<p>这是一个低交互式的蜜罐，能够模拟MSSQL, SIP, HTTP, FTP, TFTP等服务，安装过程参考上面的文章
+如果运行
+&gt; supervisorctl status</p>
+
+<p>遇到问题</p>
+
+<pre><code>unix:///var/run/supervisor.sock refused connection
+</code></pre>
+
+<p>解决办法是</p>
+
+<pre><code>sudo supervisord -c /etc/supervisor/supervisord.conf
+sudo supervisorctl -c /etc/supervisor/supervisord.conf
+</code></pre>
+
+<h4 id="glastopf">glastopf</h4>
+
+<p>glastopf 是一款低交互式 Web 蜜罐，它能记录包括 sql 注入，XSS 攻击等常见的 Web 攻击类型</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/Payloads.jpg" alt="Payload" /></p>
+
+<h4 id="suricata">suricata</h4>
+
+<p>网络入侵检测和阻止引擎
+这个蜜罐没有运行成功，后续解决掉问题可能会更新上来。</p>
+
+<p>目前部署的就这几个蜜罐，其它的可能会根据需要安装部署，有时间的话会更新。</p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D\/';
+    var disqus_title = '关于 MHN 的一些部署介绍';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

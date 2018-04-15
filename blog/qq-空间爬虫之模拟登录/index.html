@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="QQ 空间爬虫之模拟登录">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - QQ 空间爬虫之模拟登录 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    QQ 空间爬虫之模拟登录
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Fri Mar 24 2017 14:48:15 UTC">Mar 24, 2017</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>想要抓取 QQ 空间数据的第一步就是登录空间，通过好友关系获取说说，日志，留言等。</p>
+
+<p>话说 QQ 空间登录算法好变态&hellip;4000+ 行 <a href="https://qzonestyle.gtimg.cn/c/=/qzone/v8/engine/migrate-plugin.js,/qzone/v8/engine/console-plus/console-plus.js,/qzone/v8/engine/request/request_61221.js,/qzone/v8/core/interface_mini.js">js</a> 加密，想要读懂该算法也是需要耗费大段时间，好在 github 上有大神实现了该算法，感谢 <a href="https://github.com/gera2ld">gera2ld</a> 大神提供的登录库，为我们省去了大量时间，详情戳 <a href="https://github.com/gera2ld/qqlib">qqlib</a></p>
+
+<p>关于 QQ 空间具体是如何登录的，分析起来比较复杂，关联的 url 也比较多，需要处理的参数更多，如果需要的话会单独拿出来分析，这里跟我们的项目关系不是很大，我们只要能够登录上并且保持登录状态就可以了，所以偷个懒&hellip;</p>
+
+<p>可以直接用<code>pip</code>安装<code>qqlib</code>, 然后<code>import qqlib</code>使用该库，但由于<code>qqlib</code>更新频繁，怕到后来有些不兼容，这里选用 2017-03-04 更新的版本，自己加了几个方法的实现。</p>
+
+<p>本爬虫一个特点就是可以利用上次登录的 cookies 登录，不必每次都通过账号密码登录，当然第一次登录还是要通过账号密码认证，之后从保存的 cookies文件获取内容。cookies 有一定有效期，读取之前会判断该 cookies 是否失效。</p>
+
+<!-- more -->
+
+<h4 id="1-登录流程">1. 登录流程</h4>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/vrtFN" alt="login" /></p>
+
+<h4 id="2-常规登录">2. 常规登录</h4>
+
+<p>这段是<code>qqlib</code>的示例，可以处理含验证码的登录</p>
+
+<pre><code>def login(self):
+	exc = None
+	while True:
+		try:
+			if exc is None:
+				self.qq.login()
+				break
+			else:
+				verifier = exc.verifier
+				open('verify.jpg', 'wb').write(verifier.fetch_image())
+				print('saved verify.jpg')
+				vcode = input('input verify:')
+				verifier.verify(vcode)
+				exc = None
+		except qqlib.NeedVerifyCode as e:
+			if e.message != None:
+				print e.message
+			exc = e
+</code></pre>
+
+<h4 id="3-从-cookies-登录">3. 从 cookies 登录</h4>
+
+<h5 id="3-1-保存-cookies">3.1 保存 cookies</h5>
+
+<p>登录成功后将 cookies 保存下来，以便下次直接从文件中获取 cookies 用以认证，省去每次从账号密码登录的繁琐，同时也能防止检测到频繁登录(虽然并没有什么用&hellip;)
+利用 <code>requests</code> 库的 <a href="http://docs.python-requests.org/zh_CN/latest/api.html#requests.utils.dict_from_cookiejar">dict_from_cookiejar()</a> 方法可以将 <code>cookiejar</code> 对象转换为字典，然后利用 <code>pickle</code> 模块的 <a href="https://docs.python.org/2/library/pickle.html#pickle.dump">dump()</a> 方法将对象存储在文件中</p>
+
+<pre><code>def save_cookie_to_file(cookie, cookie_file):
+	with open(cookie_file, 'w') as f:
+		pickle.dump(requests.utils.dict_from_cookiejar(cookie), f)
+</code></pre>
+
+<h5 id="3-2-读取-cookies">3.2 读取 cookies</h5>
+
+<p>读取 cookies 方法和保存时一样，只不过把上面的方法反过来执行，利用 <a href="http://docs.python-requests.org/zh_CN/latest/api.html#requests.utils.cookiejar_from_dict">cookiejar_from_dict()</a> 和 <a href="https://docs.python.org/2/library/pickle.html#pickle.load">load()</a> 方法</p>
+
+<pre><code>def load_cookie_from_file(cookie_file):
+	if os.path.isfile(cookie_file):
+		with open(cookie_file) as f:
+			cookie = requests.utils.cookiejar_from_dict(pickle.load(f))
+			return cookie
+	return None
+</code></pre>
+
+<h5 id="3-3-cookiejar-对象转字符串">3.3 <code>cookiejar</code> 对象转字符串</h5>
+
+<p>由于 cookies 直接附带在 Headers 中一起发给服务器，所以要将 <code>cookiejar</code> 对象转成字符串，和其他字段一起组成 Headers</p>
+
+<pre><code>def cookiejar_to_string(cookies):
+	if cookies == None:
+		return None
+	else:
+		cookie = ''
+		for keys, values in cookies.iteritems():
+			cookie += keys+ '=' + values + ';'
+		cookie = cookie[:len(cookie)-1]
+		return cookie
+</code></pre>
+
+<h4 id="4-g-tk-值">4. <code>g_tk</code> 值</h4>
+
+<p>不管是直接登录还是从 cookies 登录，非常重要的一点是为了获取 <code>p_skey</code> 或 <code>skey</code> 值，这两个值用来计算 <code>g_tk</code> 值，计算方法已经有代码能够实现了</p>
+
+<pre><code>def g_tk(self):
+	h = 5381
+	cookies = self.session.cookies
+	s = cookies.get('p_skey') or cookies.get('skey') or ''
+	for c in s:
+		h += (h &lt;&lt; 5) + ord(c)
+	return h &amp; 0x7fffffff
+</code></pre>
+
+<h4 id="5-检查登录">5. 检查登录</h4>
+
+<p>检查是否登录成功思想就是访问该 qq 的用户资料界面，如果能获取成功说明模拟登录成功
+该请求是这样子的</p>
+
+<pre><code>https://h5.qzone.qq.com/proxy/domain/r.qzone.qq.com/cgi-bin/user/cgi_personal_card?uin=用户qq&amp;g_tk=g_tk值
+</code></pre>
+
+<p>请求成功返回一段 json，如果 <code>g_tk</code> 值错误或者请求不合法的话返回错误码 403
+<img src="https://ob5vt1k7f.qnssl.com/jQpGH" alt="user info" /></p>
+
+<h4 id="6-后续">6. 后续</h4>
+
+<p>这样我们有了可用的 cookies ，从 cookies 计算<code>g_tk</code>值，有了<code>g_tk</code>和好友 qq 号就可以拼接 url 批量获取好友数据了~</p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95\/';
+    var disqus_title = 'QQ 空间爬虫之模拟登录';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

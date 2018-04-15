@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Writing on 诗与胡说</title>
+    <link>https://kylingit.com/categories/writing/index.xml</link>
+    <description>Recent content in Writing on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2018 kylinking</copyright>
+    <atom:link href="https://kylingit.com/categories/writing/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>notes</title>
+      <link>https://kylingit.com/notes/</link>
+      <pubDate>Thu, 23 Jun 2016 10:35:49 +0000</pubDate>
+      
+      <guid>https://kylingit.com/notes/</guid>
+      <description>&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;不知道为什么首页文章排序不按照发布日期排序，而且如果发布时间是当天的话无法生成html页面，需要把时间往前改才行，很奇怪&lt;/p&gt;
+
+&lt;p&gt;事实证明是hugo版本导致的&amp;hellip;换成0.19版本问题解决
+&lt;div align = right&gt;2018-01-12&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;阿廖沙，不要怕！火车在上面停下啦！他一笑天就亮啦！
+&lt;div align = right&gt;2017-05-16&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;毕业设计&lt;br /&gt;
+自然有很多人是没有去实习的，理所当然也就没有实习经历&lt;br /&gt;
+可是似乎并不影响他们在一周内完成十几周的实习周记和几千字的实习报告&amp;hellip;&lt;br /&gt;
+也有公司简介和公司盖章哦&amp;hellip;&lt;br /&gt;
+哇当他们展现出这些令我叹为观止的技能之后没有任何哪怕一丁点儿的惭愧或者内疚,&lt;br /&gt;
+甚至有点&lt;br /&gt;
+得意？&lt;br /&gt;
+感觉心里有什么东西崩塌了&amp;hellip;&lt;br /&gt;
+&lt;div align = right&gt;2017-05-04&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;一棵树摇动一棵树&lt;br /&gt;
+一朵云推动一朵云&lt;br /&gt;
+一个灵魂唤醒另一个灵魂&lt;br /&gt;
+&lt;div align = right&gt;2017-02-20&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/IMG_1141.PNG?imageMogr2/thumbnail/!50p&#34; alt=&#34;&#34; /&gt;
+&lt;div align = right&gt;2016-08-29&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;我要给马丁老爷子寄刀片&amp;hellip;٩(ŏ﹏ŏ、)۶
+&lt;div align = right&gt;2016-07-29&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;在地铁上看到一对可爱的母女。&lt;br /&gt;
+“妈妈下一站是公主坟站。”&lt;br /&gt;
+“嗯。”&lt;br /&gt;
+“妈妈你说公主坟下面是什么啊？”&lt;br /&gt;
+“公主坟下面当然是公主咯~”
+&lt;div align = right&gt;2016-07-26&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;发现一个新的测速方法，适合VPS测速&lt;br /&gt;
+Speedtest cli 测速&lt;br /&gt;
+&lt;code&gt;wget -O speedtest_cli https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest_cli.py&lt;/code&gt;
+&lt;code&gt;chmod +x speedtest_cli&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;查看国内节点
+&lt;code&gt;./speedtest_cli --list | grep China&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;洛杉矶节点
+&lt;code&gt;./speedtest_cli --server=3864 --share&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;上海节点
+&lt;code&gt;./speedtest_cli --server=3633 --share&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;服务器列表
+&lt;code&gt;https://www.speedtest.net/speedtest-servers-static.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;截图&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/5495426634.png&#34; alt=&#34;Untitled Image&#34; /&gt;&lt;/p&gt;
+
+&lt;div align = right&gt;2016-07-20&lt;/div&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;刘看山的女朋友是谁？&lt;br /&gt;
+唔…
+&lt;div align = right&gt;2016-07-12&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;又到了期末考试的时期了。&lt;br /&gt;
+&amp;ldquo;拼命背概念有用嘛？记下了策略路由的概念能找到工作吗？&amp;rdquo;&lt;br /&gt;
+已经过了分分必争的阶段了&amp;hellip;&lt;br /&gt;
+考试前一晚上总是全宿舍都在努力学习，十分和谐。&lt;br /&gt;
+&amp;ldquo;要是每天晚上都能见到这样的场景，大清就不会亡了！&amp;rdquo;&lt;br /&gt;
+讲段子，哈哈大笑。做小抄，乐此不疲。&lt;br /&gt;
+interesting。
+&lt;div align = right&gt;2016-06-27&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;推荐WordMark编辑器，可一键部署到Github Pages，支持七牛图床，同时支持多平台。
+&lt;div align = right&gt;2016-06-23&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;你说到最后会不会都走了，就像到站下车了，一转身尽是背影…&lt;br /&gt;
+嗯…也许吧…&lt;br /&gt;
+那…&lt;br /&gt;
+没有不走的道理。&lt;br /&gt;
+你是说我们本就不属于这里？&lt;br /&gt;
+…别再想了，走吧。&lt;br /&gt;
+&lt;div align = right&gt;2016-06-21&lt;/div&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>参加知乎live是怎样一种体验</title>
+      <link>https://kylingit.com/blog/%E5%8F%82%E5%8A%A0%E7%9F%A5%E4%B9%8Elive%E6%98%AF%E6%80%8E%E6%A0%B7%E4%B8%80%E7%A7%8D%E4%BD%93%E9%AA%8C/</link>
+      <pubDate>Mon, 06 Jun 2016 22:54:29 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%8F%82%E5%8A%A0%E7%9F%A5%E4%B9%8Elive%E6%98%AF%E6%80%8E%E6%A0%B7%E4%B8%80%E7%A7%8D%E4%BD%93%E9%AA%8C/</guid>
+      <description>&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;知乎的新产品知乎live，以全新的方式进行高质量内容分享，用廉价的“门票”就能获得大V满满的干货，有优秀的实时问答互动体验。正值NBA总决赛打得正酣，平时一直关注张公子的NBA系列赛的文章，恰巧张公子开了live，于是毫不犹豫地报名参加，勇士VS骑士 G2。&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;p&gt;比赛过程波澜不惊，金州几乎两节就带走了比赛，一边听张公子讲球一边和知友分享和吐槽，体验十分不错。于是就有了小插曲，张公子忽然“掉线”了，500人的live人数已经爆满，唯独缺了主讲，这&amp;hellip;于是live俨然成了聊天室。后来知友式微代张公子转发公子那边的消息，原来是因为法国当地运营商到知乎机房的线路不稳定造成的，辛苦了张公子换了所有可换的终端终于重新登上了知乎，期间连张亮大V都出来了，对这次live的体验不佳感到抱歉，并说明了在赛后会为所有参加的知友退款。&lt;/p&gt;
+
+&lt;p&gt;中午前后果然收到了知乎live团队的私信:
+&amp;gt;在比赛直播期间收听解说、实时交流，是这场 Live 本可以带给大家的独特体验，这一体验未能完美是任何退款和补偿都难以弥补的。我们希望能为您寄送一个小刘看山，略表歉意。在您回复此封私信留下邮寄地址后，我们会尽快寄出，希望它的抵达能带去我们的歉意和遗憾。&lt;/p&gt;
+
+&lt;p&gt;看到知乎如此用心对待每一次用户体验，心中惊喜不已，简直就是业界良心。于是给live回复说不用退款了，算是对知乎和张公子的一点点小心意，可是好想要一个刘看山啊～然后就臭不要脸地发了地址&amp;hellip;听了张公子一场球，还能获得一只刘看山，真是太美好了～&lt;/p&gt;
+
+&lt;p&gt;第一次参加live虽然没有那么地完美，却有了意外的收获，对知乎好感大增，同时也感叹原来张公子还这么年轻啊，支持张公子。最后也希望知乎和live能越办越好，给我们带来更多的分享与感动。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>Hello World</title>
+      <link>https://kylingit.com/blog/hello-world/</link>
+      <pubDate>Sat, 04 Jun 2016 00:00:00 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/hello-world/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;Welcome to &lt;a href=&#34;https://hexo.io/&#34;&gt;Hexo&lt;/a&gt;! This is your very first post. Check &lt;a href=&#34;https://hexo.io/docs/&#34;&gt;documentation&lt;/a&gt; for more info. If you get any problems when using Hexo, you can find the answer in &lt;a href=&#34;https://hexo.io/docs/troubleshooting.html&#34;&gt;troubleshooting&lt;/a&gt; or you can ask me on &lt;a href=&#34;https://github.com/hexojs/hexo/issues&#34;&gt;GitHub&lt;/a&gt;.&lt;/p&gt;
+
+&lt;!-- more --&gt;
+
+&lt;h2 id=&#34;quick-start&#34;&gt;Quick Start&lt;/h2&gt;
+
+&lt;h3 id=&#34;create-a-new-post&#34;&gt;Create a new post&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-bash&#34;&gt;$ hexo new &amp;quot;My New Post&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/writing.html&#34;&gt;Writing&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;run-server&#34;&gt;Run server&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-bash&#34;&gt;$ hexo server
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/server.html&#34;&gt;Server&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;generate-static-files&#34;&gt;Generate static files&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-bash&#34;&gt;$ hexo generate
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/generating.html&#34;&gt;Generating&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;deploy-to-remote-sites&#34;&gt;Deploy to remote sites&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-bash&#34;&gt;$ hexo deploy
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/deployment.html&#34;&gt;Deployment&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>
