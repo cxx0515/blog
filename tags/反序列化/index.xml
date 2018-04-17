@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>反序列化 on 诗与胡说</title>
-    <link>http://kylingit.com/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/index.xml</link>
+    <link>https://kylingit.com/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/index.xml</link>
     <description>Recent content in 反序列化 on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <atom:link href="http://kylingit.com/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="https://kylingit.com/tags/%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Typecho install.php 反序列化漏洞分析</title>
-      <link>http://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <link>https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Mon, 30 Oct 2017 14:32:18 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <guid>https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;

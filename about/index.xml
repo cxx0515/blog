@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>About on 诗与胡说</title>
-    <link>http://kylingit.com/about/index.xml</link>
+    <link>https://kylingit.com/about/index.xml</link>
     <description>Recent content in About on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <atom:link href="http://kylingit.com/about/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="https://kylingit.com/about/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>关于我</title>
-      <link>http://kylingit.com/about/</link>
+      <link>https://kylingit.com/about/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://kylingit.com/about/</guid>
+      <guid>https://kylingit.com/about/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;

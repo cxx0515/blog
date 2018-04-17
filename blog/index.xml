@@ -2,20 +2,20 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Blog on 诗与胡说</title>
-    <link>http://kylingit.com/blog/index.xml</link>
+    <link>https://kylingit.com/blog/index.xml</link>
     <description>Recent content in Blog on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
     <lastBuildDate>Fri, 13 Apr 2018 23:05:34 +0000</lastBuildDate>
-    <atom:link href="http://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
-      <link>http://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
@@ -179,10 +179,10 @@ $output = $renderer-&amp;gt;renderRoot($form);
     
     <item>
       <title>CVE-2018-1270 spring-messaging Remote Code Execution 分析</title>
-      <link>http://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</link>
+      <link>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</link>
       <pubDate>Wed, 11 Apr 2018 11:07:18 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</guid>
+      <guid>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
@@ -280,10 +280,10 @@ protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(
     
     <item>
       <title>第二届强网杯Web部分 Writeup</title>
-      <link>http://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</link>
+      <link>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</link>
       <pubDate>Tue, 27 Mar 2018 18:06:02 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</guid>
+      <guid>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</guid>
       <description>
 
 &lt;p&gt;强网杯Web部分的题难度不小，还是比较有意思的，收获很大，这里简单分析一下其中两道题&lt;/p&gt;
@@ -521,10 +521,10 @@ print &#39;0x&#39; + shellcode .encode(&#39;hex&#39;)
     
     <item>
       <title>vBulletin 论坛定向攻击脚本分析</title>
-      <link>http://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</link>
+      <link>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</link>
       <pubDate>Mon, 05 Feb 2018 17:18:38 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</guid>
+      <guid>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -690,10 +690,10 @@ e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
     
     <item>
       <title>DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码</title>
-      <link>http://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
+      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
       <pubDate>Fri, 19 Jan 2018 15:20:32 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
+      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -881,10 +881,10 @@ function GetNum($fnum){
     
     <item>
       <title>DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析</title>
-      <link>http://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Thu, 11 Jan 2018 14:12:17 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -978,10 +978,10 @@ function GetNum($fnum){
     
     <item>
       <title>Weblogic XMLDecoder RCE之RMI利用</title>
-      <link>http://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
+      <link>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
       <pubDate>Tue, 09 Jan 2018 10:45:49 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
+      <guid>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1221,10 +1221,10 @@ PoC&lt;/p&gt;
     
     <item>
       <title>Weblogic 0day 复现</title>
-      <link>http://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
+      <link>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
       <pubDate>Fri, 22 Dec 2017 15:43:02 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
+      <guid>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1369,10 +1369,10 @@ Github上&lt;a href=&#34;https://github.com/3xp10it/exploit/blob/cbc8d61859b9c4c
     
     <item>
       <title>CVE-2017-11882 复现</title>
-      <link>http://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
+      <link>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
       <pubDate>Tue, 21 Nov 2017 18:40:29 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
+      <guid>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1458,10 +1458,10 @@ demo
     
     <item>
       <title>Typecho install.php 反序列化漏洞分析</title>
-      <link>http://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <link>https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Mon, 30 Oct 2017 14:32:18 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <guid>https://kylingit.com/blog/typecho-install.php-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1589,10 +1589,10 @@ PoC执行流程: base64编码后的序列化内容经过解码后反序列化，
     
     <item>
       <title>MSWord Code Exec Without Macro</title>
-      <link>http://kylingit.com/blog/msword-code-exec-without-macro/</link>
+      <link>https://kylingit.com/blog/msword-code-exec-without-macro/</link>
       <pubDate>Thu, 12 Oct 2017 12:54:29 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/msword-code-exec-without-macro/</guid>
+      <guid>https://kylingit.com/blog/msword-code-exec-without-macro/</guid>
       <description>&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;昨天复现了一个 Microsoft Office Word 的一个执行任意代码的姿势，跟之前爆出的两个CVE (CVE-2017-0199, CVE-2017-8759) 可以组成三板斧，这里简单记录一下&lt;/p&gt;
@@ -1673,10 +1673,10 @@ MERGEBARCODE
     
     <item>
       <title>QQ 空间爬虫之爬取说说</title>
-      <link>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</link>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</link>
       <pubDate>Mon, 03 Apr 2017 19:37:30 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</guid>
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1884,10 +1884,10 @@ LIMIT 20
     
     <item>
       <title>QQ 空间爬虫之爬取留言</title>
-      <link>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E7%95%99%E8%A8%80/</link>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E7%95%99%E8%A8%80/</link>
       <pubDate>Sat, 01 Apr 2017 19:50:04 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E7%95%99%E8%A8%80/</guid>
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E7%95%99%E8%A8%80/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -2038,10 +2038,10 @@ LIMIT 20
     
     <item>
       <title>QQ 空间爬虫之获取好友</title>
-      <link>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</link>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</link>
       <pubDate>Wed, 29 Mar 2017 20:53:43 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</guid>
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -2236,10 +2236,10 @@ data: {
     
     <item>
       <title>QQ 空间爬虫之模拟登录</title>
-      <link>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</link>
+      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</link>
       <pubDate>Fri, 24 Mar 2017 14:48:15 +0000</pubDate>
       
-      <guid>http://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</guid>
+      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
