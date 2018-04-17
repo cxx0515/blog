@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Sec on 诗与胡说</title>
-    <link>https://kylingit.com/tags/sec/index.xml</link>
+    <link>http://kylingit.com/tags/sec/index.xml</link>
     <description>Recent content in Sec on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <atom:link href="https://kylingit.com/tags/sec/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://kylingit.com/tags/sec/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <link>http://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <guid>http://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
@@ -158,7 +158,7 @@ $output = $renderer-&amp;gt;renderRoot($form);
 
 &lt;p&gt;回头看一下这处&lt;code&gt;call_user_func_array&lt;/code&gt;，这里的&lt;code&gt;$callable&lt;/code&gt;和&lt;code&gt;$args&lt;/code&gt;两个参数实际上也是可控的，通过&lt;code&gt;#lazy_builder&lt;/code&gt;属性传进来，checkpoint的分析报告正是分析了这个地方&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/QlR23&#34; alt=&#34;call_user_func_array&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Gj3xu&#34; alt=&#34;call_user_func_array&#34; /&gt;&lt;/p&gt;
 
 &lt;h4 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h4&gt;
 
@@ -178,10 +178,10 @@ $output = $renderer-&amp;gt;renderRoot($form);
     
     <item>
       <title>CVE-2018-1270 spring-messaging Remote Code Execution 分析</title>
-      <link>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</link>
+      <link>http://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</link>
       <pubDate>Wed, 11 Apr 2018 11:07:18 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</guid>
+      <guid>http://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
@@ -279,10 +279,10 @@ protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(
     
     <item>
       <title>vBulletin 论坛定向攻击脚本分析</title>
-      <link>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</link>
+      <link>http://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</link>
       <pubDate>Mon, 05 Feb 2018 17:18:38 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</guid>
+      <guid>http://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -448,10 +448,10 @@ e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
     
     <item>
       <title>DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码</title>
-      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
+      <link>http://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
       <pubDate>Fri, 19 Jan 2018 15:20:32 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
+      <guid>http://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -639,10 +639,10 @@ function GetNum($fnum){
     
     <item>
       <title>DedeCMS V5.7 SP2 前台任意用户密码重置漏洞分析</title>
-      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <link>http://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Thu, 11 Jan 2018 14:12:17 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <guid>http://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -736,10 +736,10 @@ function GetNum($fnum){
     
     <item>
       <title>Weblogic XMLDecoder RCE之RMI利用</title>
-      <link>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
+      <link>http://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
       <pubDate>Tue, 09 Jan 2018 10:45:49 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
+      <guid>http://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -979,10 +979,10 @@ PoC&lt;/p&gt;
     
     <item>
       <title>Weblogic 0day 复现</title>
-      <link>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
+      <link>http://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
       <pubDate>Fri, 22 Dec 2017 15:43:02 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
+      <guid>http://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1127,10 +1127,10 @@ Github上&lt;a href=&#34;https://github.com/3xp10it/exploit/blob/cbc8d61859b9c4c
     
     <item>
       <title>CVE-2017-11882 复现</title>
-      <link>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
+      <link>http://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
       <pubDate>Tue, 21 Nov 2017 18:40:29 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
+      <guid>http://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
@@ -1216,10 +1216,10 @@ demo
     
     <item>
       <title>MSWord Code Exec Without Macro</title>
-      <link>https://kylingit.com/blog/msword-code-exec-without-macro/</link>
+      <link>http://kylingit.com/blog/msword-code-exec-without-macro/</link>
       <pubDate>Thu, 12 Oct 2017 12:54:29 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/msword-code-exec-without-macro/</guid>
+      <guid>http://kylingit.com/blog/msword-code-exec-without-macro/</guid>
       <description>&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;昨天复现了一个 Microsoft Office Word 的一个执行任意代码的姿势，跟之前爆出的两个CVE (CVE-2017-0199, CVE-2017-8759) 可以组成三板斧，这里简单记录一下&lt;/p&gt;

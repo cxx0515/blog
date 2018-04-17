@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Writeup on 诗与胡说</title>
-    <link>https://kylingit.com/tags/writeup/index.xml</link>
+    <link>http://kylingit.com/tags/writeup/index.xml</link>
     <description>Recent content in Writeup on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <atom:link href="https://kylingit.com/tags/writeup/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://kylingit.com/tags/writeup/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>第二届强网杯Web部分 Writeup</title>
-      <link>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</link>
+      <link>http://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</link>
       <pubDate>Tue, 27 Mar 2018 18:06:02 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</guid>
+      <guid>http://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</guid>
       <description>
 
 &lt;p&gt;强网杯Web部分的题难度不小，还是比较有意思的，收获很大，这里简单分析一下其中两道题&lt;/p&gt;

@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>0day on 诗与胡说</title>
-    <link>https://kylingit.com/tags/0day/index.xml</link>
+    <link>http://kylingit.com/tags/0day/index.xml</link>
     <description>Recent content in 0day on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <atom:link href="https://kylingit.com/tags/0day/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://kylingit.com/tags/0day/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Weblogic 0day 复现</title>
-      <link>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
+      <link>http://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</link>
       <pubDate>Fri, 22 Dec 2017 15:43:02 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
+      <guid>http://kylingit.com/blog/weblogic-0day-%E5%A4%8D%E7%8E%B0/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;

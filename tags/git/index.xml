@@ -2,19 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Git on 诗与胡说</title>
-    <link>https://kylingit.com/tags/git/index.xml</link>
+    <link>http://kylingit.com/tags/git/index.xml</link>
     <description>Recent content in Git on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <atom:link href="https://kylingit.com/tags/git/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://kylingit.com/tags/git/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
       <title>Github 没有记录 Contributions 的解决</title>
-      <link>https://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</link>
+      <link>http://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</link>
       <pubDate>Fri, 17 Mar 2017 16:46:07 +0000</pubDate>
       
-      <guid>https://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</guid>
+      <guid>http://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</guid>
       <description>
 
 &lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
