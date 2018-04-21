@@ -7,8 +7,243 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <lastBuildDate>Fri, 13 Apr 2018 23:05:34 +0000</lastBuildDate>
+    <lastBuildDate>Fri, 20 Apr 2018 23:05:34 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2018-7600 Drupal 7.x 版本代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 20 Apr 2018 23:05:34 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;CVE-2018-7600影响范围包括了Drupal 6.x，7.x，8.x版本，前几天8.x版本的PoC出来之后大家都赶紧分析了一波，然后热度似乎慢慢退去了。两天前&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;Drupalgeddon2&lt;/a&gt;项目更新了7.x版本的exp，实际环境也出现了利用，下面就简单来看一下&lt;/p&gt;
+
+&lt;p&gt;看到项目上这样写&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Drupal &amp;lt; 7.58 ~ user/password URL, attacking triggering_element_name form &amp;amp; #post_render parameter, using PHP&amp;rsquo;s passthru function&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;提示了问题出在&lt;code&gt;user/password&lt;/code&gt;路径下，通过&lt;code&gt;#post_render&lt;/code&gt;传递恶意参数，问题出现在&lt;code&gt;triggering_element_name&lt;/code&gt;表单处理下&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;我们从三个问题入手，为什么PoC发了两个包，第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，以及为什么选择&lt;code&gt;user/password&lt;/code&gt;这个入口&lt;/p&gt;
+
+&lt;p&gt;先分析第一个post，照例还是先看一下Drupal 7的表单处理流程，跟8版本不太一样，但是入口还是相似的。
+根据文档描述，当我们提交一个表单(例如找回密码)时，系统会通过&lt;code&gt;form_builder()&lt;/code&gt;方法创建一个form
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/lffx4.jpg&#34; alt=&#34;user/passwd&#34; /&gt;
+一系列预处理后，会由&lt;code&gt;drupal_build_form
+()&lt;/code&gt;方法创建一个表单，在第386行调用&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，
+跟进&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，这时候默认的&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/dd7fx.png&#34; alt=&#34;submitted&#34; /&gt;
+不满足if条件，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/kqijr.png&#34; alt=&#34;true&#34; /&gt;
+于是进入这个分支，最终被&lt;code&gt;drupal_redirect_form&lt;/code&gt;重定向&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/so5l4.jpg&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;我们的目的是要让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，以便后面拿出来用。要想form被缓存，就得想办法让&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;不成立，也就是说要使&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false
+从而进入下面的&lt;code&gt;drupal_rebuild_form&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;那么如何让&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false呢？&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;includes/form.inc&lt;/code&gt;第886行
+&lt;code&gt;$form = form_builder($form_id, $form, $form_state);&lt;/code&gt;
+跟进&lt;code&gt;form_builder&lt;/code&gt;方法，第1987行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;])) {
+  $form_state[&#39;submitted&#39;] = TRUE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;当&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;存在值的时候就为true，那么我们就想办法让这个值为空
+往上看第1972行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$form_state[&#39;programmed&#39;] &amp;amp;&amp;amp; !isset($form_state[&#39;triggering_element&#39;]) &amp;amp;&amp;amp; !empty($form_state[&#39;buttons&#39;])) {
+  $form_state[&#39;triggering_element&#39;] = $form_state[&#39;buttons&#39;][0];
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;如果没有设置&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;，那么&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;就设置为第一个button的值，所以正常传递表单的时候&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;就总会有值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1do73.jpg&#34; alt=&#34;button&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;现在问题来了，如何构造一个form能够确保&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;为空或者说不存在这个数组呢？&lt;/p&gt;
+
+&lt;p&gt;我们注意到第1864行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($element[&#39;#input&#39;])) {
+  _form_builder_handle_input_element($form_id, $element, $form_state);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;_form_builder_handle_input_element()&lt;/code&gt;方法对表单先进行了处理，跟进去看一下&lt;/p&gt;
+
+&lt;p&gt;第2144行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;// Determine which element (if any) triggered the submission of the form and
+// keep track of all the clickable buttons in the form for
+// form_state_values_clean(). Enforce the same input processing restrictions
+// as above.
+if ($process_input) {
+  // Detect if the element triggered the submission via Ajax.
+  if (_form_element_triggered_scripted_submission($element, $form_state)) {
+    $form_state[&#39;triggering_element&#39;] = $element;
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这里&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;被设置为&lt;code&gt;$element&lt;/code&gt;，前提是满足&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;方法，继续跟入
+第2180行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function _form_element_triggered_scripted_submission($element, &amp;amp;$form_state) {
+  if (!empty($form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) &amp;amp;&amp;amp; $element[&#39;#name&#39;] == $form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) {
+    if (empty($form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;]) || $form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;] == $element[&#39;#value&#39;]) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个方法的意思是说如果&lt;code&gt;_triggering_element_value&lt;/code&gt;和&lt;code&gt;$element&lt;/code&gt;的键值都相等的话，返回true
+&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;赋值为&lt;code&gt;$element&lt;/code&gt;，其中不含&lt;code&gt;[&#39;#executes_submit_callback&#39;]&lt;/code&gt;，一开始的条件就成立了&lt;/p&gt;
+
+&lt;p&gt;根据PoC，我们传入&lt;code&gt;_triggering_element_name=name&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/3c6kh.jpg&#34; alt=&#34;element&#34; /&gt;
+看到进入这个分支，进入&lt;code&gt;form_set_cache()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/cn1jh.jpg&#34; alt=&#34;&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/lskgu.png&#34; alt=&#34;&#34; /&gt;
+数据库中插入缓存&lt;code&gt;form_build_id&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/odfo8.png&#34; alt=&#34;&#34; /&gt;
+成功写入缓存&lt;/p&gt;
+
+&lt;p&gt;接下去来看一下这个缓存有什么用&lt;/p&gt;
+
+&lt;p&gt;分析PoC的第二个包，请求参数是这样&lt;code&gt;q=file/ajax/name/%23value/form_build_id&lt;/code&gt;
+&lt;code&gt;form_build_id&lt;/code&gt;即我们上一个写入数据库的缓存表单&lt;/p&gt;
+
+&lt;p&gt;首先请求会进入&lt;code&gt;includes/menu.inc&lt;/code&gt;的&lt;code&gt;menu_get_item()&lt;/code&gt;方法，&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function menu_get_item($path = NULL, $router_item = NULL) {
+  $router_items = &amp;amp;drupal_static(__FUNCTION__);
+  if (!isset($path)) {
+    $path = $_GET[&#39;q&#39;];
+  }
+  if (isset($router_item)) {
+    $router_items[$path] = $router_item;
+  }
+  if (!isset($router_items[$path])) {
+    // Rebuild if we know it&#39;s needed, or if the menu masks are missing which
+    // occurs rarely, likely due to a race condition of multiple rebuilds.
+    if (variable_get(&#39;menu_rebuild_needed&#39;, FALSE) || !variable_get(&#39;menu_masks&#39;, array())) {
+      if (_menu_check_rebuild()) {
+        menu_rebuild();
+      }
+    }
+    $original_map = arg(NULL, $path);
+
+    $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
+    $ancestors = menu_get_ancestors($parts);
+    $router_item = db_query_range(&#39;SELECT * FROM {menu_router} WHERE path IN (:ancestors) ORDER BY fit DESC&#39;, 0, 1, array(&#39;:ancestors&#39; =&amp;gt; $ancestors))-&amp;gt;fetchAssoc();
+
+    if ($router_item) {
+      // Allow modules to alter the router item before it is translated and
+      // checked for access.
+      drupal_alter(&#39;menu_get_item&#39;, $router_item, $path, $original_map);
+
+      $map = _menu_translate($router_item, $original_map);
+      $router_item[&#39;original_map&#39;] = $original_map;
+      if ($map === FALSE) {
+        $router_items[$path] = FALSE;
+        return FALSE;
+      }
+      if ($router_item[&#39;access&#39;]) {
+        $router_item[&#39;map&#39;] = $map;
+        $router_item[&#39;page_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;page_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
+        $router_item[&#39;theme_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;theme_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
+      }
+    }
+    $router_items[$path] = $router_item;
+  }
+  return $router_items[$path];
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;$path&lt;/code&gt;即我们传进去的q参数，经过一系列处理传给&lt;code&gt;menu_get_ancestors()&lt;/code&gt;方法，该方法把path重新组合成一堆router，也就是Drupal处理路由到具体url的传参方式，最终被&lt;code&gt;db_query_range()&lt;/code&gt;带入数据库查询
+我们关注查询结果&lt;code&gt;$router_item&lt;/code&gt;的&lt;code&gt;page_callback&lt;/code&gt;值，因为这个值最终会作为参数被带入&lt;code&gt;call_user_func_array()&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($page_callback_result == MENU_SITE_ONLINE) {
+  if ($router_item = menu_get_item($path)) {
+    if ($router_item[&#39;access&#39;]) {
+      if ($router_item[&#39;include_file&#39;]) {
+        require_once DRUPAL_ROOT . &#39;/&#39; . $router_item[&#39;include_file&#39;];
+      }
+      $page_callback_result = call_user_func_array($router_item[&#39;page_callback&#39;], $router_item[&#39;page_arguments&#39;]);
+    }
+    else {
+      $page_callback_result = MENU_ACCESS_DENIED;
+    }
+  }
+  else {
+    $page_callback_result = MENU_NOT_FOUND;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/qvqwz.png&#34; alt=&#34;call_user_func_array&#34; /&gt;
+到这里就跟8版本的情况有点类似了&lt;/p&gt;
+
+&lt;p&gt;跟入回调函数&lt;code&gt;file_ajax_upload()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/tij37.jpg&#34; alt=&#34;file_ajax_upload&#34; /&gt;
+还是一样，把&lt;code&gt;$form_parents&lt;/code&gt;完整取出赋值给&lt;code&gt;$form&lt;/code&gt;，加上一些前缀后缀后最终进入&lt;code&gt;drupal_render()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;最终得到执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/rpwrs.jpg&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;到目前为止我们分析清楚了为什么PoC要发两次包，以及第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，现在来想一想为什么要请求&lt;code&gt;user/password&lt;/code&gt;这个路径呢？
+在user这个module下的&lt;code&gt;user_pass()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function user_pass() {
+  global $user;
+
+  $form[&#39;name&#39;] = array(
+    &#39;#type&#39; =&amp;gt; &#39;textfield&#39;,
+    &#39;#title&#39; =&amp;gt; t(&#39;Username or e-mail address&#39;),
+    &#39;#size&#39; =&amp;gt; 60,
+    &#39;#maxlength&#39; =&amp;gt; max(USERNAME_MAX_LENGTH, EMAIL_MAX_LENGTH),
+    &#39;#required&#39; =&amp;gt; TRUE,
+    &#39;#default_value&#39; =&amp;gt; isset($_GET[&#39;name&#39;]) ? $_GET[&#39;name&#39;] : &#39;&#39;,
+  );
+  ...
+  return $form;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;看到这里是不是感觉跟8版本很相似，&lt;code&gt;#default_value&lt;/code&gt;从get的&lt;code&gt;name&lt;/code&gt;参数里取值，而name可以作为数组传入，它的属性在下面正好可以被利用，一个巧妙的利用链就串起来了。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-总结&#34;&gt;0x03 总结&lt;/h4&gt;
+
+&lt;p&gt;Drupal 7.x的利用比8.x要复杂一些，但触发点和一开始的风险因素还是类似的，一是接收参数过滤不当，而是可控参数进入危险方法。官方补丁把入口处的&lt;code&gt;#&lt;/code&gt;全给过滤了，简单粗暴又有效，估计再利用框架本身的特性想传递进一些数组或元素就很难了。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-参考&#34;&gt;0x04 参考&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;https://github.com/dreadlocked/Drupalgeddon2&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
     
     <item>
       <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
@@ -2229,127 +2464,6 @@ data: {
 &lt;h3 id=&#34;结束语&#34;&gt;结束语&lt;/h3&gt;
 
 &lt;p&gt;看似普通的get访问，用request方便又轻松，实际上背后有很多坑&amp;hellip;比如说有些上个年代遗留的火星文&amp;hellip;又比如说各种有意无意在签名中啊说说中啊等带各种&amp;rdquo;特殊字符&amp;rdquo;的，不做过滤直接让程序逼停&amp;hellip;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>QQ 空间爬虫之模拟登录</title>
-      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</link>
-      <pubDate>Fri, 24 Mar 2017 14:48:15 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/</guid>
-      <description>
-
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;想要抓取 QQ 空间数据的第一步就是登录空间，通过好友关系获取说说，日志，留言等。&lt;/p&gt;
-
-&lt;p&gt;话说 QQ 空间登录算法好变态&amp;hellip;4000+ 行 &lt;a href=&#34;https://qzonestyle.gtimg.cn/c/=/qzone/v8/engine/migrate-plugin.js,/qzone/v8/engine/console-plus/console-plus.js,/qzone/v8/engine/request/request_61221.js,/qzone/v8/core/interface_mini.js&#34;&gt;js&lt;/a&gt; 加密，想要读懂该算法也是需要耗费大段时间，好在 github 上有大神实现了该算法，感谢 &lt;a href=&#34;https://github.com/gera2ld&#34;&gt;gera2ld&lt;/a&gt; 大神提供的登录库，为我们省去了大量时间，详情戳 &lt;a href=&#34;https://github.com/gera2ld/qqlib&#34;&gt;qqlib&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;关于 QQ 空间具体是如何登录的，分析起来比较复杂，关联的 url 也比较多，需要处理的参数更多，如果需要的话会单独拿出来分析，这里跟我们的项目关系不是很大，我们只要能够登录上并且保持登录状态就可以了，所以偷个懒&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;可以直接用&lt;code&gt;pip&lt;/code&gt;安装&lt;code&gt;qqlib&lt;/code&gt;, 然后&lt;code&gt;import qqlib&lt;/code&gt;使用该库，但由于&lt;code&gt;qqlib&lt;/code&gt;更新频繁，怕到后来有些不兼容，这里选用 2017-03-04 更新的版本，自己加了几个方法的实现。&lt;/p&gt;
-
-&lt;p&gt;本爬虫一个特点就是可以利用上次登录的 cookies 登录，不必每次都通过账号密码登录，当然第一次登录还是要通过账号密码认证，之后从保存的 cookies文件获取内容。cookies 有一定有效期，读取之前会判断该 cookies 是否失效。&lt;/p&gt;
-
-&lt;!-- more --&gt;
-
-&lt;h4 id=&#34;1-登录流程&#34;&gt;1. 登录流程&lt;/h4&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/vrtFN&#34; alt=&#34;login&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;2-常规登录&#34;&gt;2. 常规登录&lt;/h4&gt;
-
-&lt;p&gt;这段是&lt;code&gt;qqlib&lt;/code&gt;的示例，可以处理含验证码的登录&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;def login(self):
-	exc = None
-	while True:
-		try:
-			if exc is None:
-				self.qq.login()
-				break
-			else:
-				verifier = exc.verifier
-				open(&#39;verify.jpg&#39;, &#39;wb&#39;).write(verifier.fetch_image())
-				print(&#39;saved verify.jpg&#39;)
-				vcode = input(&#39;input verify:&#39;)
-				verifier.verify(vcode)
-				exc = None
-		except qqlib.NeedVerifyCode as e:
-			if e.message != None:
-				print e.message
-			exc = e
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h4 id=&#34;3-从-cookies-登录&#34;&gt;3. 从 cookies 登录&lt;/h4&gt;
-
-&lt;h5 id=&#34;3-1-保存-cookies&#34;&gt;3.1 保存 cookies&lt;/h5&gt;
-
-&lt;p&gt;登录成功后将 cookies 保存下来，以便下次直接从文件中获取 cookies 用以认证，省去每次从账号密码登录的繁琐，同时也能防止检测到频繁登录(虽然并没有什么用&amp;hellip;)
-利用 &lt;code&gt;requests&lt;/code&gt; 库的 &lt;a href=&#34;http://docs.python-requests.org/zh_CN/latest/api.html#requests.utils.dict_from_cookiejar&#34;&gt;dict_from_cookiejar()&lt;/a&gt; 方法可以将 &lt;code&gt;cookiejar&lt;/code&gt; 对象转换为字典，然后利用 &lt;code&gt;pickle&lt;/code&gt; 模块的 &lt;a href=&#34;https://docs.python.org/2/library/pickle.html#pickle.dump&#34;&gt;dump()&lt;/a&gt; 方法将对象存储在文件中&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;def save_cookie_to_file(cookie, cookie_file):
-	with open(cookie_file, &#39;w&#39;) as f:
-		pickle.dump(requests.utils.dict_from_cookiejar(cookie), f)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h5 id=&#34;3-2-读取-cookies&#34;&gt;3.2 读取 cookies&lt;/h5&gt;
-
-&lt;p&gt;读取 cookies 方法和保存时一样，只不过把上面的方法反过来执行，利用 &lt;a href=&#34;http://docs.python-requests.org/zh_CN/latest/api.html#requests.utils.cookiejar_from_dict&#34;&gt;cookiejar_from_dict()&lt;/a&gt; 和 &lt;a href=&#34;https://docs.python.org/2/library/pickle.html#pickle.load&#34;&gt;load()&lt;/a&gt; 方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;def load_cookie_from_file(cookie_file):
-	if os.path.isfile(cookie_file):
-		with open(cookie_file) as f:
-			cookie = requests.utils.cookiejar_from_dict(pickle.load(f))
-			return cookie
-	return None
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h5 id=&#34;3-3-cookiejar-对象转字符串&#34;&gt;3.3 &lt;code&gt;cookiejar&lt;/code&gt; 对象转字符串&lt;/h5&gt;
-
-&lt;p&gt;由于 cookies 直接附带在 Headers 中一起发给服务器，所以要将 &lt;code&gt;cookiejar&lt;/code&gt; 对象转成字符串，和其他字段一起组成 Headers&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;def cookiejar_to_string(cookies):
-	if cookies == None:
-		return None
-	else:
-		cookie = &#39;&#39;
-		for keys, values in cookies.iteritems():
-			cookie += keys+ &#39;=&#39; + values + &#39;;&#39;
-		cookie = cookie[:len(cookie)-1]
-		return cookie
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h4 id=&#34;4-g-tk-值&#34;&gt;4. &lt;code&gt;g_tk&lt;/code&gt; 值&lt;/h4&gt;
-
-&lt;p&gt;不管是直接登录还是从 cookies 登录，非常重要的一点是为了获取 &lt;code&gt;p_skey&lt;/code&gt; 或 &lt;code&gt;skey&lt;/code&gt; 值，这两个值用来计算 &lt;code&gt;g_tk&lt;/code&gt; 值，计算方法已经有代码能够实现了&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;def g_tk(self):
-	h = 5381
-	cookies = self.session.cookies
-	s = cookies.get(&#39;p_skey&#39;) or cookies.get(&#39;skey&#39;) or &#39;&#39;
-	for c in s:
-		h += (h &amp;lt;&amp;lt; 5) + ord(c)
-	return h &amp;amp; 0x7fffffff
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h4 id=&#34;5-检查登录&#34;&gt;5. 检查登录&lt;/h4&gt;
-
-&lt;p&gt;检查是否登录成功思想就是访问该 qq 的用户资料界面，如果能获取成功说明模拟登录成功
-该请求是这样子的&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/r.qzone.qq.com/cgi-bin/user/cgi_personal_card?uin=用户qq&amp;amp;g_tk=g_tk值
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;请求成功返回一段 json，如果 &lt;code&gt;g_tk&lt;/code&gt; 值错误或者请求不合法的话返回错误码 403
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/jQpGH&#34; alt=&#34;user info&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;6-后续&#34;&gt;6. 后续&lt;/h4&gt;
-
-&lt;p&gt;这样我们有了可用的 cookies ，从 cookies 计算&lt;code&gt;g_tk&lt;/code&gt;值，有了&lt;code&gt;g_tk&lt;/code&gt;和好友 qq 号就可以拼接 url 批量获取好友数据了~&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
