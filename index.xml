@@ -7,8 +7,158 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <lastBuildDate>Fri, 20 Apr 2018 23:05:34 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 26 Apr 2018 17:21:11 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2018-7602 Drupal 内核远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Thu, 26 Apr 2018 17:21:11 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-004&#34;&gt;https://www.drupal.org/sa-core-2018-004&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞是&lt;code&gt;CVE-2018-7600&lt;/code&gt;的另一个利用点，两个漏洞原理是一样的&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
+
+&lt;p&gt;修复版本
+Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
+
+&lt;p&gt;历史版本
+&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;分析还是以7.57版本为例。跟7600漏洞的7.x版本很相似，只不过入口不一样，可以参考&lt;a href=&#34;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&#34;&gt;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;上回漏洞的关键点是让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，这个form存着我们传入的恶意参数，第二个请求从中取出来然后执行。
+这次的原理还是一样，触发漏洞还是需要发两个post包，一个存入&lt;code&gt;form_build_id&lt;/code&gt;一个取出后执行。&lt;/p&gt;
+
+&lt;p&gt;这次的问题出在删除文章的时候，我们先走一遍正常删除文章的逻辑&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/VGL3Y&#34; alt=&#34;delete&#34; /&gt;
+请求中每个node即代表一篇文章。
+可以看到是会重定向到文章页面的，根据上个漏洞的分析我们猜测，一定还是走到了&lt;code&gt;drupal_redirect_form()&lt;/code&gt;，我们已经知道如果走到&lt;code&gt;drupal_redirect_form()&lt;/code&gt;分支，是不会往数据库缓存&lt;code&gt;form_build_id&lt;/code&gt;的，我们的目的还是让程序不满足一定条件从而不进行表单提交后重定向，所以还是跟着&lt;code&gt;CVE-2018-7600&lt;/code&gt;的套路来走&lt;/p&gt;
+
+&lt;p&gt;从代码层面看一下&lt;/p&gt;
+
+&lt;p&gt;之前的流程还是一样，直接跳到&lt;code&gt;drupal_build_form()&lt;/code&gt;方法第386行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;drupal_process_form($form_id, $form, $form_state);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;跟入&lt;code&gt;drupal_process_form()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/w0cQZ&#34; alt=&#34;drupal_process_form&#34; /&gt;
+还是一样，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
+
+&lt;p&gt;回到902行&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;
+条件被满足，进入这个分支便会执行&lt;code&gt;drupal_redirect_form()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aoYne&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而在这一步之前需要经过的判断是&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;
+所以回到一开始的问题，构造一个&lt;code&gt;_triggering_element_value&lt;/code&gt;使得键值对相等，从而不进行rebuild&lt;/p&gt;
+
+&lt;p&gt;我们传入&lt;code&gt;_triggering_element_name=form_id&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/UBCWM&#34; alt=&#34;post&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Rbrm4&#34; alt=&#34;form_id&#34; /&gt;
+可以看到条件被满足，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;没有被设置为true，还是保持默认值false&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/UYLtu&#34; alt=&#34;submitted&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/o98bE&#34; alt=&#34;submitted&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;进入&lt;code&gt;drupal_rebuild_form()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/WdeFV&#34; alt=&#34;drupal_rebuild_form&#34; /&gt;
+表单被缓存&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/MCCPJ&#34; alt=&#34;form_set_cache&#34; /&gt;
+&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/U5Tej&#34; alt=&#34;cache_form&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们发送第二个post包来取出我们构造好的form，向&lt;strong&gt;&lt;code&gt;file/ajax/actions/cancel/%23options/path&lt;/code&gt;&lt;/strong&gt;发起请求&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/voiue&#34; alt=&#34;post2&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参数传递进去&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/luJMk&#34; alt=&#34;file_ajax_upload&#34; /&gt;
+最终还是跟入到
+&lt;code&gt;$output = drupal_render($form);&lt;/code&gt;
+根据前几次的经验，我们还是选择&lt;code&gt;&#39;#post_render&#39;&lt;/code&gt;参数，&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/GV3Rc&#34; alt=&#34;post_render&#34; /&gt;
+假如我们能控制这个参数，在&lt;code&gt;drupal_render()&lt;/code&gt;方法里就会把这个参数作为&lt;code&gt;$function&lt;/code&gt;函数名，而传给它的参数则是&lt;code&gt;[%23markup]&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;所以问题回到了一开始，我们需要传递什么样的恶意参数，可以让系统直接接收而不经过过滤，还是之前的套路，搜索module下删除文章的相关操作&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/niMWz&#34; alt=&#34;node_form_delete_submit&#34; /&gt;
+可以看到&lt;code&gt;node_form_delete_submit()&lt;/code&gt;方法从get方法直接接收参数&lt;code&gt;destination&lt;/code&gt;，与最初分析正常删除文章的参数正是同一个，那么我们就可以利用&lt;code&gt;destination&lt;/code&gt;传进恶意参数&lt;/p&gt;
+
+&lt;p&gt;构造如下
+&lt;strong&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%23type]=markup%26q[%23markup]=dir&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;a&lt;/code&gt;参数是次要的，主要是&lt;code&gt;q&lt;/code&gt;参数，因为在&lt;code&gt;includes/common.inc&lt;/code&gt;的&lt;code&gt;drupal_parse_url()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($options[&#39;query&#39;][&#39;q&#39;])) {
+    $options[&#39;path&#39;] = $options[&#39;query&#39;][&#39;q&#39;];
+    unset($options[&#39;query&#39;][&#39;q&#39;]);
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
+
+&lt;p&gt;注意q的元素需要转义百分号，不然会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s4o7s&#34; alt=&#34;options&#34; /&gt;
+参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;foreach ($form_parents as $parent) {
+    $form = $form[$parent];
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;遍历叶子节点取出参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Wgz3w&#34; alt=&#34;parent&#34; /&gt;
+进入&lt;code&gt;drupal_render()&lt;/code&gt;执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/SsmNM&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/j1Yn4&#34; alt=&#34;PoC&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/P0AEw&#34; alt=&#34;PoC&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
+
+&lt;p&gt;7.x的补丁&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&#34;&gt;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/2Zhjq&#34; alt=&#34;patch&#34; /&gt;
+其中一个重要操作就是对&lt;code&gt;destination&lt;/code&gt;参数进行了净化&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/CaZPF&#34; alt=&#34;cleanDestination&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
+
+&lt;p&gt;总的来说这个漏洞是CVE-2018-7600的另一个利用点，只是入口方式不一样，最终执行点还是相同的，所以还是那句话，一旦参数可控并且没有经过正确的过滤，就很有可能出问题。&lt;/p&gt;
+</description>
+    </item>
     
     <item>
       <title>CVE-2018-7600 Drupal 7.x 版本代码执行漏洞分析</title>
@@ -2266,204 +2416,6 @@ LIMIT 20
 &lt;p&gt;还有，留言的回复中又有对话，而且有很多条，这个情况又怎么处理呢？&lt;/p&gt;
 
 &lt;p&gt;╮(╯_╰)╭&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>QQ 空间爬虫之获取好友</title>
-      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</link>
-      <pubDate>Wed, 29 Mar 2017 20:53:43 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E8%8E%B7%E5%8F%96%E5%A5%BD%E5%8F%8B/</guid>
-      <description>
-
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;网上有些QQ空间爬虫都是首先设置访问权限为qq好友访问，然后获取所有好友信息。&lt;/p&gt;
-
-&lt;p&gt;其实QQ空间是有接口能够直接获取到所有好友的&lt;/p&gt;
-
-&lt;h3 id=&#34;获取好友&#34;&gt;获取好友&lt;/h3&gt;
-
-&lt;h4 id=&#34;普通信息&#34;&gt;普通信息&lt;/h4&gt;
-
-&lt;h5 id=&#34;接口地址&#34;&gt;接口地址&lt;/h5&gt;
-
-&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/r.qzone.qq.com/cgi-bin/tfriend/friend_show_qqfriends.cgi?uin=qq&amp;amp;fupdate=1&amp;amp;outCharset=utf-8&amp;amp;g_tk=g_tk
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;g_tk&lt;/code&gt;如何获取&lt;a href=&#34;https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E6%A8%A1%E6%8B%9F%E7%99%BB%E5%BD%95/&#34;&gt;上篇文章&lt;/a&gt;已经提过了&lt;/p&gt;
-
-&lt;!-- more --&gt;
-
-&lt;h5 id=&#34;数据形式&#34;&gt;数据形式&lt;/h5&gt;
-
-&lt;p&gt;请求后返回的是json&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;_Callback(
-{
-code: 0,
-subcode: 0,
-message: &amp;quot;&amp;quot;,
-default: 0,
-data: {
-    items: [
-        {
-            uin: 12345,
-            groupid: 2,
-            name: &amp;quot;nick0&amp;quot;,
-            remark: &amp;quot;remark0&amp;quot;,
-            img: &amp;quot;http://qlogo4.store.qq.com/qzone/12345/12345/30&amp;quot;,
-            yellow: -1,
-            online: 0,
-            v6: 1
-        },
-        {
-            uin: 23456,
-            groupid: 8,
-            name: &amp;quot;nick1&amp;quot;,
-            remark: &amp;quot;remark1&amp;quot;,
-            img: &amp;quot;http://qlogo3.store.qq.com/qzone/23456/23456/30&amp;quot;,
-            yellow: -1,
-            online: 0,
-            v6: 1
-        },
-        {
-            uin: 34567,
-            groupid: 1,
-            name: &amp;quot;nick2&amp;quot;,
-            remark: &amp;quot;remark2&amp;quot;,
-            img: &amp;quot;http://qlogo4.store.qq.com/qzone/34567/34567/30&amp;quot;,
-            yellow: -1,
-            online: 0,
-            v6: 1
-        }
-    ],
-  	gpnames: [
-        {
-            gpid: 0,
-            gpname: &amp;quot;group0&amp;quot;
-        },
-        {
-            gpid: 1,
-            gpname: &amp;quot;group1&amp;quot;
-        },
-        {
-            gpid: 2,
-            gpname: &amp;quot;group2&amp;quot;
-        }
-    ]
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;关键的是data中的数据，除了所有好友的昵称备注头像外，还有所属的分组id等，本来可以根据这个&lt;code&gt;gpid&lt;/code&gt;进行分组，可是找了一圈没找到如何显示所有分组信息的接口，于是这串数据就没派上用场了&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;用一个session带上cookie请求这个接口就能获取所有好友了，可以先存下来，方便后面用。&lt;/p&gt;
-
-&lt;h4 id=&#34;详细信息&#34;&gt;详细信息&lt;/h4&gt;
-
-&lt;p&gt;可能有人认为这些信息还是太少了，既然抓取了就索性彻底一些，最好能获取到更详细的信息，于是又经过一番摸索，终于又get到一个接口：&lt;/p&gt;
-
-&lt;h5 id=&#34;接口地址-1&#34;&gt;接口地址&lt;/h5&gt;
-
-&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/base.qzone.qq.com/cgi-bin/user/cgi_userinfo_get_all?uin=qq&amp;amp;fupdate=1&amp;amp;outCharset=utf-8&amp;amp;g_tk=g_tk
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h5 id=&#34;数据形式-1&#34;&gt;数据形式&lt;/h5&gt;
-
-&lt;p&gt;这是一个&amp;rdquo;详细版&amp;rdquo;的好友信息，包括空间名称，空间描述，出生年月，历史地理位置，现在地理位置等信息，以及更具体的邮箱，手机号等(如果有设置的话)&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;_Callback(
-{
-    code: 0,
-    subcode: 0,
-    message: &amp;quot;获取成功&amp;quot;,
-    default: 0,
-    data: {
-        uin: 12345
-        is_famous: false,
-        famous_custom_homepage: false,
-        nickname: &amp;quot;nickname&amp;quot;,
-        emoji: [ ],
-        spacename: &amp;quot;someone&#39;s qzone&amp;quot;,
-        desc: &amp;quot;&amp;quot;,
-        signature: &amp;quot;this is a signature&amp;quot;,
-        avatar: &amp;quot;http://b125.photo.store.qq.com/psb?/blabla&amp;quot;,
-        sex_type: 0,
-        sex: 1,
-        animalsign_type: 0,
-        constellation_type: 0,
-        constellation: 9,
-        age_type: 0,
-        age: 18,
-        islunar: 0,
-        birthday_type: 0,
-        birthyear: 1999,
-        birthday: &amp;quot;01-01&amp;quot;,
-        bloodtype: 0,
-        address_type: 0,
-        country: &amp;quot;中国&amp;quot;,
-        province: &amp;quot;&amp;quot;,
-        city: &amp;quot;北京&amp;quot;,
-        home_type: 0,
-        hco: &amp;quot;中国&amp;quot;,
-        hp: &amp;quot;北京&amp;quot;,
-        hc: &amp;quot;东城&amp;quot;,
-        marriage: 0,
-        career: &amp;quot;&amp;quot;,
-        company: &amp;quot;&amp;quot;,
-        cco: &amp;quot;&amp;quot;,
-        cp: &amp;quot;&amp;quot;,
-        cc: &amp;quot;&amp;quot;,
-        cb: &amp;quot;&amp;quot;,
-        mailname: &amp;quot;&amp;quot;,
-        mailcellphone: &amp;quot;&amp;quot;,
-        mailaddr: &amp;quot;&amp;quot;,
-        qzworkexp: [ ],
-        qzeduexp: [ ],
-        ptimestamp: 1450773545
-    }
-}
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;嗯&amp;hellip;只要获取到每个好友的qq后接着请求这个接口，更详细的信息就得到了～乖乖存下来&lt;/p&gt;
-
-&lt;h3 id=&#34;数据库设计&#34;&gt;数据库设计&lt;/h3&gt;
-
-&lt;p&gt;对了，本爬虫是基于Python和MySQL的，所以数据都会存在MySQL数据库中，设计为每个好友一个库，含有说说表，说说评论表，说说点赞表，留言表，留言回复表等。
-首先好友信息只要获取一遍，存在登录qq的好友表中，字段都是上面获取的数据&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
-    (id int primary key, \
-    uin varchar(15), \
-    sex int(2), \
-    groupid int(2), \
-    nickname varchar(40), \
-    remark varchar(20), \
-    spacename varchar(50), \
-    age int(2), \
-    birthday varchar(20), \
-    city varchar(20), \
-    img varchar(60), \
-    yellow int(2), \
-    online int(2), \
-    v6 int(2)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4&#39; % tablename		#change mysql encoding to support emoji
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这里建表最后的&lt;code&gt;ENGINE=InnoDB DEFAULT CHARSET=utf8mb4&lt;/code&gt;需要解释一下，因为有好多好友的昵称，签名等都是含有emoji表情的，emoji虽然也有编码，但它是用4字节来存储的，而 MySQL 中 utf8 的字段只能存储 1 至 3 字节的字符，所有直接存储会出错，这里就在建表的时候设置表的编码格式为&lt;code&gt;utf8mb4&lt;/code&gt;，该编码是&lt;code&gt;utf8&lt;/code&gt;的超集，向下兼容&lt;code&gt;utf8&lt;/code&gt;，可以参考前阵子写的文章 &lt;a href=&#34;https://kylingit.com/blog/python-%E4%BD%BF%E7%94%A8-mysql-%E5%AD%98%E5%82%A8-emoji-%E8%A1%A8%E6%83%85/&#34;&gt;PYTHON 使用 MYSQL 存储 EMOJI 表情&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;字段含义就不用解释了，注意一下的是&lt;code&gt;birthday&lt;/code&gt;字段是拼接出生年份和具体月日的，就不细分了，&lt;code&gt;city&lt;/code&gt;字段拼接国家省份和城市。&lt;code&gt;sex&lt;/code&gt;字段为&lt;code&gt;0&lt;/code&gt;的表示无法获取该好友的信息&lt;/p&gt;
-
-&lt;p&gt;预览&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/DNYkv&#34; alt=&#34;qq friends&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;结束语&#34;&gt;结束语&lt;/h3&gt;
-
-&lt;p&gt;看似普通的get访问，用request方便又轻松，实际上背后有很多坑&amp;hellip;比如说有些上个年代遗留的火星文&amp;hellip;又比如说各种有意无意在签名中啊说说中啊等带各种&amp;rdquo;特殊字符&amp;rdquo;的，不做过滤直接让程序逼停&amp;hellip;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
