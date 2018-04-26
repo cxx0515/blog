@@ -42,7 +42,7 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 &lt;p&gt;上回漏洞的关键点是让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，这个form存着我们传入的恶意参数，第二个请求从中取出来然后执行。
 这次的原理还是一样，触发漏洞还是需要发两个post包，一个存入&lt;code&gt;form_build_id&lt;/code&gt;一个取出后执行。&lt;/p&gt;
 
-&lt;p&gt;这次的问题出在删除文章的时候，我们先走一遍正常删除文章的逻辑&lt;/p&gt;
+&lt;p&gt;这次的问题出在删除文章的时候，因此需要文章删除权限，我们先走一遍正常删除文章的逻辑&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/VGL3Y&#34; alt=&#34;delete&#34; /&gt;
 请求中每个node即代表一篇文章。
@@ -85,7 +85,7 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 表单被缓存&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/MCCPJ&#34; alt=&#34;form_set_cache&#34; /&gt;
-&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/U5Tej&#34; alt=&#34;cache_form&#34; /&gt;&lt;/p&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/U5Tej&#34; alt=&#34;cache_form&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;然后我们发送第二个post包来取出我们构造好的form，向&lt;strong&gt;&lt;code&gt;file/ajax/actions/cancel/%23options/path&lt;/code&gt;&lt;/strong&gt;发起请求&lt;/p&gt;
 
@@ -138,9 +138,7 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 
 &lt;h4 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h4&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/j1Yn4&#34; alt=&#34;PoC&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/P0AEw&#34; alt=&#34;PoC&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;略&lt;/p&gt;
 
 &lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
 
