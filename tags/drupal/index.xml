@@ -10,6 +10,391 @@
     <atom:link href="https://kylingit.com/tags/drupal/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>CVE-2018-7602 Drupal 内核远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Thu, 26 Apr 2018 17:21:11 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-004&#34;&gt;https://www.drupal.org/sa-core-2018-004&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞是&lt;code&gt;CVE-2018-7600&lt;/code&gt;的另一个利用点，两个漏洞原理是一样的&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
+
+&lt;p&gt;修复版本
+Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
+
+&lt;p&gt;历史版本
+&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;分析还是以7.57版本为例。跟7600漏洞的7.x版本很相似，只不过入口不一样，可以参考&lt;a href=&#34;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&#34;&gt;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;上回漏洞的关键点是让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，这个form存着我们传入的恶意参数，第二个请求从中取出来然后执行。
+这次的原理还是一样，触发漏洞还是需要发两个post包，一个存入&lt;code&gt;form_build_id&lt;/code&gt;一个取出后执行。&lt;/p&gt;
+
+&lt;p&gt;这次的问题出在删除文章的时候，我们先走一遍正常删除文章的逻辑&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/VGL3Y&#34; alt=&#34;delete&#34; /&gt;
+请求中每个node即代表一篇文章。
+可以看到是会重定向到文章页面的，根据上个漏洞的分析我们猜测，一定还是走到了&lt;code&gt;drupal_redirect_form()&lt;/code&gt;，我们已经知道如果走到&lt;code&gt;drupal_redirect_form()&lt;/code&gt;分支，是不会往数据库缓存&lt;code&gt;form_build_id&lt;/code&gt;的，我们的目的还是让程序不满足一定条件从而不进行表单提交后重定向，所以还是跟着&lt;code&gt;CVE-2018-7600&lt;/code&gt;的套路来走&lt;/p&gt;
+
+&lt;p&gt;从代码层面看一下&lt;/p&gt;
+
+&lt;p&gt;之前的流程还是一样，直接跳到&lt;code&gt;drupal_build_form()&lt;/code&gt;方法第386行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;drupal_process_form($form_id, $form, $form_state);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;跟入&lt;code&gt;drupal_process_form()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/w0cQZ&#34; alt=&#34;drupal_process_form&#34; /&gt;
+还是一样，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
+
+&lt;p&gt;回到902行&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;
+条件被满足，进入这个分支便会执行&lt;code&gt;drupal_redirect_form()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aoYne&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而在这一步之前需要经过的判断是&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;
+所以回到一开始的问题，构造一个&lt;code&gt;_triggering_element_value&lt;/code&gt;使得键值对相等，从而不进行rebuild&lt;/p&gt;
+
+&lt;p&gt;我们传入&lt;code&gt;_triggering_element_name=form_id&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/UBCWM&#34; alt=&#34;post&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Rbrm4&#34; alt=&#34;form_id&#34; /&gt;
+可以看到条件被满足，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;没有被设置为true，还是保持默认值false&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/UYLtu&#34; alt=&#34;submitted&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/o98bE&#34; alt=&#34;submitted&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;进入&lt;code&gt;drupal_rebuild_form()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/WdeFV&#34; alt=&#34;drupal_rebuild_form&#34; /&gt;
+表单被缓存&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/MCCPJ&#34; alt=&#34;form_set_cache&#34; /&gt;
+&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/U5Tej&#34; alt=&#34;cache_form&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们发送第二个post包来取出我们构造好的form，向&lt;strong&gt;&lt;code&gt;file/ajax/actions/cancel/%23options/path&lt;/code&gt;&lt;/strong&gt;发起请求&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/voiue&#34; alt=&#34;post2&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参数传递进去&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/luJMk&#34; alt=&#34;file_ajax_upload&#34; /&gt;
+最终还是跟入到
+&lt;code&gt;$output = drupal_render($form);&lt;/code&gt;
+根据前几次的经验，我们还是选择&lt;code&gt;&#39;#post_render&#39;&lt;/code&gt;参数，&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/GV3Rc&#34; alt=&#34;post_render&#34; /&gt;
+假如我们能控制这个参数，在&lt;code&gt;drupal_render()&lt;/code&gt;方法里就会把这个参数作为&lt;code&gt;$function&lt;/code&gt;函数名，而传给它的参数则是&lt;code&gt;[%23markup]&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;所以问题回到了一开始，我们需要传递什么样的恶意参数，可以让系统直接接收而不经过过滤，还是之前的套路，搜索module下删除文章的相关操作&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/niMWz&#34; alt=&#34;node_form_delete_submit&#34; /&gt;
+可以看到&lt;code&gt;node_form_delete_submit()&lt;/code&gt;方法从get方法直接接收参数&lt;code&gt;destination&lt;/code&gt;，与最初分析正常删除文章的参数正是同一个，那么我们就可以利用&lt;code&gt;destination&lt;/code&gt;传进恶意参数&lt;/p&gt;
+
+&lt;p&gt;构造如下
+&lt;strong&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%23type]=markup%26q[%23markup]=dir&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;a&lt;/code&gt;参数是次要的，主要是&lt;code&gt;q&lt;/code&gt;参数，因为在&lt;code&gt;includes/common.inc&lt;/code&gt;的&lt;code&gt;drupal_parse_url()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($options[&#39;query&#39;][&#39;q&#39;])) {
+    $options[&#39;path&#39;] = $options[&#39;query&#39;][&#39;q&#39;];
+    unset($options[&#39;query&#39;][&#39;q&#39;]);
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
+
+&lt;p&gt;注意q的元素需要转义百分号，不然会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s4o7s&#34; alt=&#34;options&#34; /&gt;
+参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;foreach ($form_parents as $parent) {
+    $form = $form[$parent];
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;遍历叶子节点取出参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Wgz3w&#34; alt=&#34;parent&#34; /&gt;
+进入&lt;code&gt;drupal_render()&lt;/code&gt;执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/SsmNM&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/j1Yn4&#34; alt=&#34;PoC&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/P0AEw&#34; alt=&#34;PoC&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
+
+&lt;p&gt;7.x的补丁&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&#34;&gt;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/2Zhjq&#34; alt=&#34;patch&#34; /&gt;
+其中一个重要操作就是对&lt;code&gt;destination&lt;/code&gt;参数进行了净化&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/CaZPF&#34; alt=&#34;cleanDestination&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
+
+&lt;p&gt;总的来说这个漏洞是CVE-2018-7600的另一个利用点，只是入口方式不一样，最终执行点还是相同的，所以还是那句话，一旦参数可控并且没有经过正确的过滤，就很有可能出问题。&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>CVE-2018-7600 Drupal 7.x 版本代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 20 Apr 2018 23:05:34 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;p&gt;CVE-2018-7600影响范围包括了Drupal 6.x，7.x，8.x版本，前几天8.x版本的PoC出来之后大家都赶紧分析了一波，然后热度似乎慢慢退去了。两天前&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;Drupalgeddon2&lt;/a&gt;项目更新了7.x版本的exp，实际环境也出现了利用，下面就简单来看一下&lt;/p&gt;
+
+&lt;p&gt;看到项目上这样写&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Drupal &amp;lt; 7.58 ~ user/password URL, attacking triggering_element_name form &amp;amp; #post_render parameter, using PHP&amp;rsquo;s passthru function&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;提示了问题出在&lt;code&gt;user/password&lt;/code&gt;路径下，通过&lt;code&gt;#post_render&lt;/code&gt;传递恶意参数，问题出现在&lt;code&gt;triggering_element_name&lt;/code&gt;表单处理下&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;我们从三个问题入手，为什么PoC发了两个包，第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，以及为什么选择&lt;code&gt;user/password&lt;/code&gt;这个入口&lt;/p&gt;
+
+&lt;p&gt;先分析第一个post，照例还是先看一下Drupal 7的表单处理流程，跟8版本不太一样，但是入口还是相似的。
+根据文档描述，当我们提交一个表单(例如找回密码)时，系统会通过&lt;code&gt;form_builder()&lt;/code&gt;方法创建一个form
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/lffx4.jpg&#34; alt=&#34;user/passwd&#34; /&gt;
+一系列预处理后，会由&lt;code&gt;drupal_build_form
+()&lt;/code&gt;方法创建一个表单，在第386行调用&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，
+跟进&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，这时候默认的&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/dd7fx.png&#34; alt=&#34;submitted&#34; /&gt;
+不满足if条件，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/kqijr.png&#34; alt=&#34;true&#34; /&gt;
+于是进入这个分支，最终被&lt;code&gt;drupal_redirect_form&lt;/code&gt;重定向&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/so5l4.jpg&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;我们的目的是要让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，以便后面拿出来用。要想form被缓存，就得想办法让&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;不成立，也就是说要使&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false
+从而进入下面的&lt;code&gt;drupal_rebuild_form&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;那么如何让&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false呢？&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;includes/form.inc&lt;/code&gt;第886行
+&lt;code&gt;$form = form_builder($form_id, $form, $form_state);&lt;/code&gt;
+跟进&lt;code&gt;form_builder&lt;/code&gt;方法，第1987行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;])) {
+  $form_state[&#39;submitted&#39;] = TRUE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;当&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;存在值的时候就为true，那么我们就想办法让这个值为空
+往上看第1972行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$form_state[&#39;programmed&#39;] &amp;amp;&amp;amp; !isset($form_state[&#39;triggering_element&#39;]) &amp;amp;&amp;amp; !empty($form_state[&#39;buttons&#39;])) {
+  $form_state[&#39;triggering_element&#39;] = $form_state[&#39;buttons&#39;][0];
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;如果没有设置&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;，那么&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;就设置为第一个button的值，所以正常传递表单的时候&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;就总会有值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1do73.jpg&#34; alt=&#34;button&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;现在问题来了，如何构造一个form能够确保&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;为空或者说不存在这个数组呢？&lt;/p&gt;
+
+&lt;p&gt;我们注意到第1864行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($element[&#39;#input&#39;])) {
+  _form_builder_handle_input_element($form_id, $element, $form_state);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;_form_builder_handle_input_element()&lt;/code&gt;方法对表单先进行了处理，跟进去看一下&lt;/p&gt;
+
+&lt;p&gt;第2144行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;// Determine which element (if any) triggered the submission of the form and
+// keep track of all the clickable buttons in the form for
+// form_state_values_clean(). Enforce the same input processing restrictions
+// as above.
+if ($process_input) {
+  // Detect if the element triggered the submission via Ajax.
+  if (_form_element_triggered_scripted_submission($element, $form_state)) {
+    $form_state[&#39;triggering_element&#39;] = $element;
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这里&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;被设置为&lt;code&gt;$element&lt;/code&gt;，前提是满足&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;方法，继续跟入
+第2180行&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function _form_element_triggered_scripted_submission($element, &amp;amp;$form_state) {
+  if (!empty($form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) &amp;amp;&amp;amp; $element[&#39;#name&#39;] == $form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) {
+    if (empty($form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;]) || $form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;] == $element[&#39;#value&#39;]) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个方法的意思是说如果&lt;code&gt;_triggering_element_value&lt;/code&gt;和&lt;code&gt;$element&lt;/code&gt;的键值都相等的话，返回true
+&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;赋值为&lt;code&gt;$element&lt;/code&gt;，其中不含&lt;code&gt;[&#39;#executes_submit_callback&#39;]&lt;/code&gt;，一开始的条件就成立了&lt;/p&gt;
+
+&lt;p&gt;根据PoC，我们传入&lt;code&gt;_triggering_element_name=name&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/3c6kh.jpg&#34; alt=&#34;element&#34; /&gt;
+看到进入这个分支，进入&lt;code&gt;form_set_cache()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/cn1jh.jpg&#34; alt=&#34;&#34; /&gt;
+&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/lskgu.png&#34; alt=&#34;&#34; /&gt;
+数据库中插入缓存&lt;code&gt;form_build_id&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/odfo8.png&#34; alt=&#34;&#34; /&gt;
+成功写入缓存&lt;/p&gt;
+
+&lt;p&gt;接下去来看一下这个缓存有什么用&lt;/p&gt;
+
+&lt;p&gt;分析PoC的第二个包，请求参数是这样&lt;code&gt;q=file/ajax/name/%23value/form_build_id&lt;/code&gt;
+&lt;code&gt;form_build_id&lt;/code&gt;即我们上一个写入数据库的缓存表单&lt;/p&gt;
+
+&lt;p&gt;首先请求会进入&lt;code&gt;includes/menu.inc&lt;/code&gt;的&lt;code&gt;menu_get_item()&lt;/code&gt;方法，&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function menu_get_item($path = NULL, $router_item = NULL) {
+  $router_items = &amp;amp;drupal_static(__FUNCTION__);
+  if (!isset($path)) {
+    $path = $_GET[&#39;q&#39;];
+  }
+  if (isset($router_item)) {
+    $router_items[$path] = $router_item;
+  }
+  if (!isset($router_items[$path])) {
+    // Rebuild if we know it&#39;s needed, or if the menu masks are missing which
+    // occurs rarely, likely due to a race condition of multiple rebuilds.
+    if (variable_get(&#39;menu_rebuild_needed&#39;, FALSE) || !variable_get(&#39;menu_masks&#39;, array())) {
+      if (_menu_check_rebuild()) {
+        menu_rebuild();
+      }
+    }
+    $original_map = arg(NULL, $path);
+
+    $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
+    $ancestors = menu_get_ancestors($parts);
+    $router_item = db_query_range(&#39;SELECT * FROM {menu_router} WHERE path IN (:ancestors) ORDER BY fit DESC&#39;, 0, 1, array(&#39;:ancestors&#39; =&amp;gt; $ancestors))-&amp;gt;fetchAssoc();
+
+    if ($router_item) {
+      // Allow modules to alter the router item before it is translated and
+      // checked for access.
+      drupal_alter(&#39;menu_get_item&#39;, $router_item, $path, $original_map);
+
+      $map = _menu_translate($router_item, $original_map);
+      $router_item[&#39;original_map&#39;] = $original_map;
+      if ($map === FALSE) {
+        $router_items[$path] = FALSE;
+        return FALSE;
+      }
+      if ($router_item[&#39;access&#39;]) {
+        $router_item[&#39;map&#39;] = $map;
+        $router_item[&#39;page_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;page_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
+        $router_item[&#39;theme_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;theme_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
+      }
+    }
+    $router_items[$path] = $router_item;
+  }
+  return $router_items[$path];
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;$path&lt;/code&gt;即我们传进去的q参数，经过一系列处理传给&lt;code&gt;menu_get_ancestors()&lt;/code&gt;方法，该方法把path重新组合成一堆router，也就是Drupal处理路由到具体url的传参方式，最终被&lt;code&gt;db_query_range()&lt;/code&gt;带入数据库查询
+我们关注查询结果&lt;code&gt;$router_item&lt;/code&gt;的&lt;code&gt;page_callback&lt;/code&gt;值，因为这个值最终会作为参数被带入&lt;code&gt;call_user_func_array()&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($page_callback_result == MENU_SITE_ONLINE) {
+  if ($router_item = menu_get_item($path)) {
+    if ($router_item[&#39;access&#39;]) {
+      if ($router_item[&#39;include_file&#39;]) {
+        require_once DRUPAL_ROOT . &#39;/&#39; . $router_item[&#39;include_file&#39;];
+      }
+      $page_callback_result = call_user_func_array($router_item[&#39;page_callback&#39;], $router_item[&#39;page_arguments&#39;]);
+    }
+    else {
+      $page_callback_result = MENU_ACCESS_DENIED;
+    }
+  }
+  else {
+    $page_callback_result = MENU_NOT_FOUND;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/qvqwz.png&#34; alt=&#34;call_user_func_array&#34; /&gt;
+到这里就跟8版本的情况有点类似了&lt;/p&gt;
+
+&lt;p&gt;跟入回调函数&lt;code&gt;file_ajax_upload()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/tij37.jpg&#34; alt=&#34;file_ajax_upload&#34; /&gt;
+还是一样，把&lt;code&gt;$form_parents&lt;/code&gt;完整取出赋值给&lt;code&gt;$form&lt;/code&gt;，加上一些前缀后缀后最终进入&lt;code&gt;drupal_render()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;最终得到执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/rpwrs.jpg&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;到目前为止我们分析清楚了为什么PoC要发两次包，以及第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，现在来想一想为什么要请求&lt;code&gt;user/password&lt;/code&gt;这个路径呢？
+在user这个module下的&lt;code&gt;user_pass()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function user_pass() {
+  global $user;
+
+  $form[&#39;name&#39;] = array(
+    &#39;#type&#39; =&amp;gt; &#39;textfield&#39;,
+    &#39;#title&#39; =&amp;gt; t(&#39;Username or e-mail address&#39;),
+    &#39;#size&#39; =&amp;gt; 60,
+    &#39;#maxlength&#39; =&amp;gt; max(USERNAME_MAX_LENGTH, EMAIL_MAX_LENGTH),
+    &#39;#required&#39; =&amp;gt; TRUE,
+    &#39;#default_value&#39; =&amp;gt; isset($_GET[&#39;name&#39;]) ? $_GET[&#39;name&#39;] : &#39;&#39;,
+  );
+  ...
+  return $form;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;看到这里是不是感觉跟8版本很相似，&lt;code&gt;#default_value&lt;/code&gt;从get的&lt;code&gt;name&lt;/code&gt;参数里取值，而name可以作为数组传入，它的属性在下面正好可以被利用，一个巧妙的利用链就串起来了。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x03-总结&#34;&gt;0x03 总结&lt;/h4&gt;
+
+&lt;p&gt;Drupal 7.x的利用比8.x要复杂一些，但触发点和一开始的风险因素还是类似的，一是接收参数过滤不当，而是可控参数进入危险方法。官方补丁把入口处的&lt;code&gt;#&lt;/code&gt;全给过滤了，简单粗暴又有效，估计再利用框架本身的特性想传递进一些数组或元素就很难了。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-参考&#34;&gt;0x04 参考&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;https://github.com/dreadlocked/Drupalgeddon2&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
       <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
