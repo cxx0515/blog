@@ -20,9 +20,7 @@
 
 &lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
 
-&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-004&#34;&gt;https://www.drupal.org/sa-core-2018-004&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;这个漏洞是&lt;code&gt;CVE-2018-7600&lt;/code&gt;的另一个利用点，两个漏洞原理是一样的&lt;/p&gt;
+&lt;p&gt;4月25日，Drupal官方发布通告，Drupal Core 存在一个远程代码执行漏洞，影响 7.x 和 8.x 版本。据分析，这个漏洞是&lt;code&gt;CVE-2018-7600&lt;/code&gt;的绕过利用，两个漏洞原理是一样的，通告还称，已经发现了这个漏洞和&lt;code&gt;CVE-2018-7600&lt;/code&gt;的在野利用，详情请看 &lt;a href=&#34;https://www.drupal.org/sa-core-2018-004&#34;&gt;https://www.drupal.org/sa-core-2018-004&lt;/a&gt;&lt;/p&gt;
 
 &lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
 
@@ -120,7 +118,7 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 
 &lt;p&gt;从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
 
-&lt;p&gt;注意q的元素需要转义百分号，不然会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
+&lt;p&gt;注意q的元素需要转义百分号，对&lt;code&gt;#&lt;/code&gt;进行二次编码，以绕过&lt;code&gt;CVE-2018-7600&lt;/code&gt;的补丁，不然在取值时会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s4o7s&#34; alt=&#34;options&#34; /&gt;
 参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
