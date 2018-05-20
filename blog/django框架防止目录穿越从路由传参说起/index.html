@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Django框架防止目录穿越——从路由传参说起">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Django框架防止目录穿越——从路由传参说起 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/django%E6%A1%86%E6%9E%B6%E9%98%B2%E6%AD%A2%E7%9B%AE%E5%BD%95%E7%A9%BF%E8%B6%8A%E4%BB%8E%E8%B7%AF%E7%94%B1%E4%BC%A0%E5%8F%82%E8%AF%B4%E8%B5%B7/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Django框架防止目录穿越——从路由传参说起
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Wed May 16 2018 10:59:02 UTC">May 16, 2018</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<p>最近审计代码过程中出现了没有正确处理url形成目录穿越，导致可以读取或下载任意文件的案例，过程很简单，由此却引发了和小伙伴的讨论，对风险的控制需要依赖框架本身还是必须从根本上规避风险点。下面就通过目录遍历漏洞的案例分析一下django的路由传参方式，以及在日常开发中如何避免此类风险。</p>
+
+<h3 id="0x01-示例代码">0x01 示例代码</h3>
+
+<p>我们写一个简单的views，用来实现文件下载功能，代码如下</p>
+
+<pre><code class="language-python">import os
+
+from django.http import HttpResponseNotFound, HttpResponse
+
+# Create your views here.
+def file_download(request, filename):
+    path = '/tmp/test/2'
+    full_path = os.path.join(path, filename)
+    if not os.path.exists(full_path):
+        return HttpResponseNotFound('&lt;h1&gt;file not found&lt;/h1&gt;')
+    else:
+        response = HttpResponse(read_file(full_path))
+        response['Content-Type'] = 'application/octet-stream'
+        response['Content-Length'] = os.path.getsize(full_path)
+        response['Content-Disposition'] = 'attachment; filename=%s' % filename
+        response['Accept-Ranges'] = 'bytes'
+        return response
+
+def read_file(filename, bufsize=8192):
+    try:
+        with open(filename, 'rb') as f:
+            while True:
+                content = f.read(bufsize)
+                if content:
+                    yield content
+                else:
+                    break
+    except Exception as e:
+        print(e.message)
+        print('read error')
+</code></pre>
+
+<p>代码很简单，就不过多解释了，目的是提供<code>/tmp/test/2/</code>目录下的文件下载。<code>read_file()</code>使用了切片避免文件过大造成拒绝服务风险。</p>
+
+<p><code>/tmp/test/</code>结构如下，内容分别为1,2</p>
+
+<pre><code>test
+├── 1
+│   └── 1.txt
+└── 2
+    └── 2.txt
+</code></pre>
+
+<p>有经验的同学马上就能看出<code>file_download()</code>对传入的文件名并没有任何限制，只是做了文件是否存在的判断，也就是说我们可以传入<code>/../1/1.txt</code>的文件名，<code>full_path</code>经过拼接就会成为<code>/tmp/test/2/../../1/1.txt</code>，传入<code>read_file()</code>就能够读取到1.txt</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/JUIFX" alt="1.txt" />
+类似的，如果我们传入<code>../../../etc/passwd</code>就能下载到敏感文件</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/h0bP3" alt="passwd" /></p>
+
+<p>可是事实上每次都是如此吗？</p>
+
+<p>其实这跟我们如何处理传入的url有关，也就是Django对于url路由的处理。</p>
+
+<h3 id="0x02-测试">0x02 测试</h3>
+
+<p>在刚才的示例中，我们在<code>urls.py</code>中是这样定义路由的</p>
+
+<p><code>url(r'^download/(.+)$', &quot;mysite.views.file_download&quot;),</code></p>
+
+<p>相信这也是很多同学会采用的写法，匹配任意文件名使得可以下载<code>/tmp/test/2</code>中的任意文件，认为在views里面限定了目录，只能读取到该文件夹下的内容，忽略了用户可以输入<code>../</code>进行目录穿越，而在接收文件名的时候却没有对参数进行任何过滤，这样就会导致一个任意文件读取的漏洞。</p>
+
+<p>在django2.0中，url路由部分由<code>path</code>代替<code>url</code>，即原来的</p>
+
+<p><code>url(r'^articles/(?P&lt;year&gt;[0-9]{4})/$', views.year_archive),</code></p>
+
+<p>新语法</p>
+
+<p><code>path('articles/&lt;int:year&gt;/', views.year_archive),</code></p>
+
+<p>新语法支持url参数的类型转化。这里的year_archive函数接收到的year参数作为参数，并且会自动转换year为整型而不是字符串。</p>
+
+<p>这里的int称为路径转换器，<a href="https://docs.djangoproject.com/en/2.0/topics/http/urls/#path-converters">Path converters</a></p>
+
+<p>默认情况下，Django内置下面的路径转换器:</p>
+
+<ul>
+<li>str - <strong>Matches any non-empty string, excluding the path separator, &lsquo;/&rsquo;.</strong> This is the <strong>default</strong> if a converter isn’t included in the expression.</li>
+<li>int - Matches zero or any positive integer. Returns an int.</li>
+<li>slug - Matches any slug string consisting of ASCII letters or numbers, plus the hyphen and underscore characters. For example, building-your-1st-django-site.</li>
+<li>uuid - Matches a formatted UUID. To prevent multiple URLs from mapping to the same page, dashes must be included and letters must be lowercase. For example, 075194d3-6885-417e-a8a8-6c931e272f00. Returns a UUID instance.</li>
+<li>path - <strong>Matches any non-empty string, including the path separator, &lsquo;/&rsquo;.</strong> This allows you to match against a complete URL path rather than just a segment of a URL path as with str.</li>
+</ul>
+
+<p>我们重点关注一下<code>str</code>和<code>path</code>的区别，也就是</p>
+
+<p><code>path('download/&lt;str:filename&gt;', views.file_download),</code></p>
+
+<p>和</p>
+
+<p><code>path('download/&lt;path:filename&gt;', views.file_download),</code></p>
+
+<p>有什么不一样。</p>
+
+<p>根据<a href="https://docs.djangoproject.com/en/2.0/topics/http/urls/#path-converters">Django文档</a>描述，str不匹配<code>/</code>而path匹配<code>/</code>，意味着当使用<code>&lt;path:filename&gt;</code>的时候我们还是可以传进去<code>../</code></p>
+
+<p>测试一下</p>
+
+<ul>
+<li>使用<code>path('download/&lt;path:filename&gt;', views.file_download),</code>的情况</li>
+</ul>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/KkoFJ" alt="path" /></p>
+
+<ul>
+<li>使用<code>path('download/&lt;str:filename&gt;', views.file_download),</code>的情况</li>
+</ul>
+
+<p><img src="http://ob5vt1k7f.qnssl.com/EQBtS" alt="str" /></p>
+
+<p>可以看到当我们定义url的时候如果使用了<code>&lt;path:filename&gt;</code>的形式，传入的包含<code>/</code>的参数会被原样接收，当作完整参数交给路由部分处理，而定义为<code>&lt;str:filename&gt;</code>(默认即为str)的时候，<code>/</code>不被后端接收，这时候<code>xx.com/download/../1/1.txt</code>这种路径下浏览器就根据url往上跳一级，也就是<code>xx.com/1/1.txt</code>，django收到了的请求也是如此，于是django抛出一个找不到对应页面的异常</p>
+
+<p><img src="http://ob5vt1k7f.qnssl.com/bZQdj" alt="404" /></p>
+
+<p>Django2.0的url虽然更改了写法，但依然向老版本兼容，兼容的办法就是用<code>re_path()</code>方法代替<code>path()</code>方法</p>
+
+<p><code>re_path('download/(?P&lt;filename&gt;.+)', views.file_download),</code></p>
+
+<p>这个匹配方式和1.8版本中<code>url(r'^download/(.+)$', &quot;mysite.views.file_download&quot;),</code>的意思是一样的，只是写法不同</p>
+
+<p>我们知道任何一种路由写法在经过django的urls模块相关方法处理之后都会转换为正则表达式进行匹配，之所以几种方式匹配结果不一样是因为处理完成后生成的正则不一样，把url路由转换为正则表达式的过程只会在django启动的时候编译一次，接收到的任何url形式都会根据生成的正则来路由到views定义的相关方法，urls模块就不用每次都去处理用户传递的url。</p>
+
+<h3 id="0x03-断点分析">0x03 断点分析</h3>
+
+<p>我们从代码层面来看一下这几者的区别</p>
+
+<h5 id="1-re-path-download-p-filename-方式">1. <code>re_path('download/(?P&lt;filename&gt;.+)'</code>方式</h5>
+
+<p>在<code>/Lib/site-packages/django/urls/conf.py</code>中定义了相关方法</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/uPvF8" alt="re_path()" />
+<code>partial()</code>方法的作用就是把一个函数作为另一个函数的参数传入，这里就是把<code>RegexPattern()</code>类作为参数传进<code>_path()</code>方法，因为在下面第70行<code>RegexPattern()</code>就作为处理<code>re_path()</code>时的方法</p>
+
+<p><code>pattern = Pattern(route, name=name, is_endpoint=True)</code></p>
+
+<p>跟入<code>RegexPattern()</code>类 <code>/Lib/site-packages/django/urls/resolvers.py:136</code></p>
+
+<p>构造方法之后regex就确定为我们定义的表达式，也就是<code>'download/(?P&lt;filename&gt;.+)'</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/4dWIr" alt="regex" />
+这种情况下是可以匹配任何字符串的，起不到防护目录穿越的作用</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/cEbp5" alt="regex" /></p>
+
+<h5 id="2-path-download-path-filename-方式">2. <code>path('download/&lt;path:filename&gt;'</code>方式</h5>
+
+<p>同样的，第一步还是进入到<code>/Lib/site-packages/django/urls/conf.py</code>，处理<code>path()</code>相关的就交给<code>RoutePattern()</code>类</p>
+
+<p><code>path = partial(_path, Pattern=RoutePattern)</code></p>
+
+<p>跟入<code>RoutePattern()</code>类  <code>/Lib/site-packages/django/urls/resolvers.py:234</code></p>
+
+<p>初始化过程中进行了route转换成regex的操作</p>
+
+<pre><code class="language-python">def __init__(self, route, name=None, is_endpoint=False):
+    self._route = route
+    self._regex_dict = {}
+    self._is_endpoint = is_endpoint
+    self.name = name
+    self.converters = _route_to_regex(str(route), is_endpoint)[1]
+</code></pre>
+
+<p>跟入<code>_route_to_regex()</code>方法，<code>/Lib/site-packages/django/urls/resolvers.py:194</code>，看到该方法描述的功能就是将路径模式转换为正则表达式。</p>
+
+<p>首先对我们的&rdquo;路由&rdquo;通过<code>_PATH_PARAMETER_COMPONENT_RE()</code>方法使用正则进行分割，</p>
+
+<pre><code>_PATH_PARAMETER_COMPONENT_RE = re.compile(
+    r'&lt;(?:(?P&lt;converter&gt;[^&gt;:]+):)?(?P&lt;parameter&gt;\w+)&gt;'
+)
+</code></pre>
+
+<p>取出<code>converter</code>部分，也就是我们指定的<code>path</code>，然后判断如果<code>converter</code>为空的话就赋值为&rsquo;str&rsquo;，这也就是为什么我们不指定路径转换器时默认是str的原因。</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/2Yr3G" alt="converter" />
+<img src="https://ob5vt1k7f.qnssl.com/rMvhH" alt="path" /></p>
+
+<p>接下来对转换器部分的操作</p>
+
+<pre><code class="language-python">try:
+    converter = get_converter(raw_converter)
+except KeyError as e:
+    raise ImproperlyConfigured(
+        &quot;URL route '%s' uses invalid converter %s.&quot; % (original_route, e)
+    )
+</code></pre>
+
+<p>跟入<code>get_converter()</code>方法，<code>/Lib/site-packages/django/urls/converters.py:69</code></p>
+
+<p>最后调用的是<code>get_converters()</code>，看到该方法里面定义了一些默认属性，这些属性的值在这个文件上方定义，
+这里我们看到定义了文档中提到的5种路径转换器</p>
+
+<pre><code class="language-python">DEFAULT_CONVERTERS = {
+    'int': IntConverter(),
+    'path': PathConverter(),
+    'slug': SlugConverter(),
+    'str': StringConverter(),
+    'uuid': UUIDConverter(),
+}
+</code></pre>
+
+<p>相对应的regex值也就在这里被定义</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/cft5C" alt="default_regex" />
+于是在<code>decorating_function()</code>通过<code>cache_get()</code>方法取到了这些转换器对应的表达式，最后进行了拼接</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/vUIRy" alt="Untitled Image" /></p>
+
+<p>通过<code>parts.append</code>拼接
+<code>parts.append('(?P&lt;' + parameter + '&gt;' + converter.regex + ')')</code></p>
+
+<p>此时的&rsquo;parameter&rsquo;值即为&rsquo;filename&rsquo;，regex值为converter对象的属性，也就是<code>'.+'</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/I6I4E" alt="regex" /></p>
+
+<p>最后拼接成的正则表达式为<code>'^download\\/(?P&lt;filename&gt;.+)$'</code></p>
+
+<p>与我们使用<code>re_path()</code>时的表达式是一样的，所以也能匹配到<code>../</code>之类的字符串，依旧起不到防止目录穿越的作用</p>
+
+<h5 id="3-path-download-str-filename-方式">3. <code>path('download/&lt;str:filename&gt;'</code>方式</h5>
+
+<p>接下来看<code>path('download/&lt;str:filename&gt;'</code>方式，不指定converter时<code>path('download/&lt;filename&gt;'</code>默认的就是这种方式</p>
+
+<p>同样跟入到<code>RoutePattern()</code>类  <code>/Lib/site-packages/django/urls/resolvers.py:234</code></p>
+
+<p>流程跟上面指定<code>path</code>的方式一样，<code>converter</code>为空时设置为&rsquo;str&rsquo;</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/LKW7J" alt="str" /></p>
+
+<p>此时对应的regex值为<code>'[^/]+'</code>，也就是不匹配<code>'/'</code></p>
+
+<p><img src="http://ob5vt1k7f.qnssl.com/iVQBV" alt="cache" /></p>
+
+<p><img src="http://ob5vt1k7f.qnssl.com/prryr" alt="converter" />
+最终拼接成的正则为<code>'^download\\/(?P&lt;filename&gt;[^/]+)$'</code></p>
+
+<p>这种情况下由于不匹配<code>/</code>我们就无法传入<code>../</code>之类的字符串，也就不能穿越目录</p>
+
+<h4 id="流程图">流程图</h4>
+
+<p>画了一张简单的流程图方便理解上述三种情况</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/t5Tay" alt="process" /></p>
+
+<h3 id="0x04-如何避免-正确的代码">0x04 如何避免&amp;正确的代码</h3>
+
+<p>把django处理url的各种情况理清了之后可能有同学会问，是不是以后都用<code>path('download/&lt;str:filename&gt;'</code>的方式就能避免目录穿越呢？实际上是不建议这样的，我们不能把风险点由存在缺陷的代码处转移到依赖框架上面，主要原因有二</p>
+
+<ul>
+<li>我们无法确保每次写url传递规则的时候不出错，特别是项目庞大之后为了兼顾功能而忽略一些安全隐患点；</li>
+<li>存在缺陷的代码不能就这样放着，因为无法保证在别处不会调用这块代码，必须把风险点从根本上消除。</li>
+</ul>
+
+<p>回到代码脆弱性本身，如何从根源处消除目录遍历漏洞呢？
+一个想法是限定basedir，并递归过滤任何<code>../</code>之类的字符串，当然也要考虑经过url encode之后的路径，另一个简单的方法是使用<code>os.path.basename()</code>方法，这个方法会忽略前面的路径只取到文件名，可以杜绝此类漏洞。</p>
+
+<h3 id="0x05-总结">0x05 总结</h3>
+
+<p>本文从目录遍历漏洞入手，分析了django框架处理url传递的逻辑，以及如何正确控制风险点避免出现问题代码，遵循的原则就是不要相信用户的输入，严格控制每一个参数。</p>
+
+<p>感谢阅读，有任何不足之处欢迎指正。</p>
+
+<p>参考:</p>
+
+<ul>
+<li><a href="https://docs.djangoproject.com/en/2.0/topics/http/urls/">https://docs.djangoproject.com/en/2.0/topics/http/urls/</a></li>
+<li><a href="http://www.lijiejie.com/python-django-directory-traversal/">http://www.lijiejie.com/python-django-directory-traversal/</a></li>
+<li><a href="https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html">https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html</a></li>
+</ul>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/django%E6%A1%86%E6%9E%B6%E9%98%B2%E6%AD%A2%E7%9B%AE%E5%BD%95%E7%A9%BF%E8%B6%8A%E4%BB%8E%E8%B7%AF%E7%94%B1%E4%BC%A0%E5%8F%82%E8%AF%B4%E8%B5%B7\/';
+    var disqus_title = 'Django框架防止目录穿越——从路由传参说起';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/django%E6%A1%86%E6%9E%B6%E9%98%B2%E6%AD%A2%E7%9B%AE%E5%BD%95%E7%A9%BF%E8%B6%8A%E4%BB%8E%E8%B7%AF%E7%94%B1%E4%BC%A0%E5%8F%82%E8%AF%B4%E8%B5%B7\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+
