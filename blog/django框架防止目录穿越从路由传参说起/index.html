@@ -121,6 +121,8 @@
     
     
 
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
 <p>最近审计代码过程中出现了没有正确处理url形成目录穿越，导致可以读取或下载任意文件的案例，过程很简单，由此却引发了和小伙伴的讨论，对风险的控制需要依赖框架本身还是必须从根本上规避风险点。下面就通过目录遍历漏洞的案例分析一下django的路由传参方式，以及在日常开发中如何避免此类风险。</p>
 
 <h3 id="0x01-示例代码">0x01 示例代码</h3>
@@ -253,7 +255,7 @@ def read_file(filename, bufsize=8192):
 
 <p>我们从代码层面来看一下这几者的区别</p>
 
-<h5 id="1-re-path-download-p-filename-方式">1. <code>re_path('download/(?P&lt;filename&gt;.+)'</code>方式</h5>
+<h5 id="1-re-path-download-p-filename-方式">1.<code>re_path('download/(?P&lt;filename&gt;.+)'</code>方式</h5>
 
 <p>在<code>/Lib/site-packages/django/urls/conf.py</code>中定义了相关方法</p>
 
@@ -395,6 +397,8 @@ except KeyError as e:
 <li><a href="http://www.lijiejie.com/python-django-directory-traversal/">http://www.lijiejie.com/python-django-directory-traversal/</a></li>
 <li><a href="https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html">https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html</a></li>
 </ul>
+
+<script>pangu.spacingPage();</script>
 
 
                 <br>
