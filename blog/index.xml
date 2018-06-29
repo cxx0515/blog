@@ -384,7 +384,7 @@ my @channels = (&amp;quot;#Perl&amp;quot;); 	# IRC频道
 
 &lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1528277061564.png&#34; alt=&#34;1528277061564&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;在bot启动的时候，不会以自身的进程启动，而是在&lt;code&gt;sshd&lt;/code&gt;，&lt;code&gt;apache&lt;/code&gt;等进程中随机fork一个启动，fork失败则退出脚本，这样子非常隐蔽地隐藏了自身进程，随后在加入IRC服务器的过程中也会随机选择一个IRC版本号加入。&lt;/p&gt;
+&lt;p&gt;在bot启动的时候，不会以自身的进程启动，而是在&lt;code&gt;sshd&lt;/code&gt;，&lt;code&gt;apache&lt;/code&gt;等进程中随机fork一个启动，fork失败则退出脚本，这样子非常隐蔽地隐藏了自身进程，随后在加入IRC频道的过程中也会随机选择一个IRC版本号加入。&lt;/p&gt;
 
 &lt;p&gt;在运行Perl IrcBot后，脚本选择以&lt;code&gt;/usr/sbin/cron&lt;/code&gt;的进程启动，而且可以明显看到CPU占用达到100%，脚本潜伏在正常进程中很难被发现。&lt;/p&gt;
 
@@ -393,6 +393,8 @@ my @channels = (&amp;quot;#Perl&amp;quot;); 	# IRC频道
 &lt;h2 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h2&gt;
 
 &lt;p&gt;这两款IRC bot在互联网上已经存在很久了，最近被广泛利用的Drupal RCE漏洞和Weblogic XMLDecoder反序列化漏洞使此类基于IRC协议的恶意脚本重新流行起来，根据在线文件分享平台&lt;a href=&#34;https://pastebin.com/search?q=ircbot&#34;&gt;pastebin&lt;/a&gt;查询相关脚本也不在少数，而且存在多种语言版本的IRC bot，黑客直接通过各种远程漏洞植入样本，接受C&amp;amp;C控制，具有很大的危害性。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
     </item>
     
@@ -783,22 +785,30 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 可以看到&lt;code&gt;node_form_delete_submit()&lt;/code&gt;方法从get方法直接接收参数&lt;code&gt;destination&lt;/code&gt;，与最初分析正常删除文章的参数正是同一个，那么我们就可以利用&lt;code&gt;destination&lt;/code&gt;传进恶意参数&lt;/p&gt;
 
 &lt;p&gt;构造如下
-&lt;strong&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%23type]=markup%26q[%23markup]=dir&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
+&lt;strong&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%2523type]=markup%26q[%2523markup]=dir&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;code&gt;a&lt;/code&gt;参数是次要的，主要是&lt;code&gt;q&lt;/code&gt;参数，因为在&lt;code&gt;includes/common.inc&lt;/code&gt;的&lt;code&gt;drupal_parse_url()&lt;/code&gt;方法&lt;/p&gt;
+&lt;p&gt;注意此处需要转义百分号，对&lt;code&gt;#&lt;/code&gt;进行二次编码，以绕过&lt;code&gt;CVE-2018-7600&lt;/code&gt;的补丁，不然在取值时会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
 
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($options[&#39;query&#39;][&#39;q&#39;])) {
-    $options[&#39;path&#39;] = $options[&#39;query&#39;][&#39;q&#39;];
-    unset($options[&#39;query&#39;][&#39;q&#39;]);
-  }
+&lt;p&gt;原因：
+&lt;code&gt;includes/common.inc&lt;/code&gt;的&lt;code&gt;drupal_parse_url()&lt;/code&gt;方法对url进行了解析，而在url传入到Drupal内部的时候已经经过一层解码，也就是说&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%2523type]=markup%26q[%2523markup]=dir
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
+&lt;p&gt;在进入Drupal时已经被解码成&lt;/p&gt;
 
-&lt;p&gt;注意q的元素需要转义百分号，对&lt;code&gt;#&lt;/code&gt;进行二次编码，以绕过&lt;code&gt;CVE-2018-7600&lt;/code&gt;的补丁，不然在取值时会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;destination=a?q[%23post_render][]=passthru%26q[%23type]=markup%26q[%23markup]=dir
+&lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s4o7s&#34; alt=&#34;options&#34; /&gt;
-参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
+&lt;p&gt;然后经过&lt;code&gt;parse_url()&lt;/code&gt;方法对url结构进行解析&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1530254681531.png&#34; alt=&#34;parse_url&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;a&lt;/code&gt;参数是次要的，主要是&lt;code&gt;q&lt;/code&gt;参数，因为在&lt;code&gt;drupal_parse_url()&lt;/code&gt;下半部分从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/s4o7s&#34; alt=&#34;options&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
 
 &lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;foreach ($form_parents as $parent) {
     $form = $form[$parent];
