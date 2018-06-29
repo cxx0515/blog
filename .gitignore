@@ -1,0 +1,5 @@
+# Default
+blog/assets/*
+local.properties
+# MacOS
+*/.DS_Store
