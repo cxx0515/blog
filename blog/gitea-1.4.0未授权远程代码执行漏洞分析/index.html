@@ -113,7 +113,7 @@
                 </div>
                 <div class="meta">
                     <div class="date" title="Tue Jul 17 2018 17:52:10 UTC">Jul 17, 2018</div>
-                    <div class="reading-time"><div class="middot"></div>5 minutes read</div>
+                    <div class="reading-time"><div class="middot"></div>6 minutes read</div>
                 </div>
             </div>
             <div class="markdown">
@@ -122,6 +122,24 @@
     
 
 <script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+
+<p>近日，Gitea 1.4.0版本的<code>LFS</code>模块出现了一个绕过登录验证未授权创建LFS对象的漏洞，由此漏洞引申出了一条非常漂亮的攻击链，值得好好学习。</p>
+
+<h3 id="0x00-基本介绍">0x00 基本介绍</h3>
+
+<p>官网地址 <a href="https://gitea.io/en-us/">https://gitea.io/en-us/</a></p>
+
+<blockquote>
+<p>Gitea is a community managed <a href="https://blog.gitea.io/2016/12/welcome-to-gitea/">fork</a> of <a href="https://gogs.io/">Gogs</a>, lightweight code hosting solution written in <a href="https://golang.org/">Go</a> and published under the <a href="https://github.com/go-gitea/gitea/blob/master/LICENSE">MIT</a> license.</p>
+</blockquote>
+
+<p>Git LFS 介绍</p>
+
+<blockquote>
+<p>Git 大文件存储（Large File Storage，简称LFS）目的是更好地把大型二进制文件，比如音频文件、数据集、图像和视频等集成到 Git 的工作流中。我们知道，Git 存储二进制效率不高，因为它会压缩并存储二进制文件的所有完整版本，随着版本的不断增长以及二进制文件越来越多，这种存储方案并不是最优方案。而 LFS 处理大型二进制文件的方式是用文本指针替换它们，这些文本指针实际上是包含二进制文件信息的文本文件。文本指针存储在 Git 中，而大文件本身通过HTTPS托管在Git LFS服务器上。</p>
+</blockquote>
+
+<p>本次漏洞是出现在<code>Gitea</code>的<code>LFS</code>处理逻辑中，在进行权限验证的时候少了一行<code>return</code>语句，以至于即使在<code>401 Unauthorized</code>的时候依旧能够进行后续的操作，这是整个漏洞的导火索。</p>
 
 <h3 id="0x01-环境搭建">0x01 环境搭建</h3>
 
@@ -190,7 +208,7 @@ func requireAuth(ctx *context.Context) {
 }
 </code></pre>
 
-<p>问题出在<code>PostHandler()</code>方法，该方法的作用是创建一个新的<code>LFS</code>对象。在<code>requireAuth</code>处，如果权限验证失败，则执行<code>requireAuth ()</code>，返回<code>401认证失败</code>，关键是<code>requireAuth(ctx)</code>结束之后没有<code>return</code>，也就是说虽然返回<code>401</code>但是不影响后面的逻辑接着执行，因此可以创建任意LFS对象，此处存在一个权限绕过漏洞。</p>
+<p>问题出在<code>PostHandler()</code>方法，该方法的作用是创建一个新的<code>LFS</code>对象。在<code>requireAuth</code>处，如果权限验证失败，则执行<code>requireAuth ()</code>，返回<code>401认证失败</code>，关键是<code>requireAuth(ctx)</code>结束之后没有<code>return</code>，也就是说虽然返回<code>401</code>但是不影响后面的逻辑接着执行，因此可以创建任意<code>LFS</code>对象，此处存在一个权限绕过漏洞。</p>
 
 <h3 id="0x03-目录穿越-任意文件读取">0x03  目录穿越&amp;任意文件读取</h3>
 
@@ -407,7 +425,15 @@ func (s *ContentStore) Put(meta *models.LFSMetaObject, r io.Reader) error {
 
 <p>接着考虑第二个问题，如何利用<code>.tmp</code>文件？</p>
 
-<p>在<code>Gitea</code>可以配置存储session的方式，默认是保存为文件，存储路径在<code>/data/gitea/sessions</code>。于是我们可以想到把上面生成的session内容写入到一个<code>.tmp</code>文件，并保存在session目录下，这个tmp文件名即为<code>sessionid</code>，然后利用条件竞争，在文件未被删除之前带上这个<code>sessionid</code>，就可以登录成功。</p>
+<p>在<code>Gitea</code>可以配置存储session的方式，默认是保存为文件，存储路径在<code>/data/gitea/sessions</code>。</p>
+
+<pre><code>//app.ini
+[session]
+PROVIDER_CONFIG = /data/gitea/sessions
+PROVIDER        = file
+</code></pre>
+
+<p>于是我们可以想到把上面生成的session内容写入到一个<code>.tmp</code>文件，并保存在session目录下，这个tmp文件名即为<code>sessionid</code>，然后利用条件竞争，在文件未被删除之前带上这个<code>sessionid</code>，就可以登录成功。</p>
 
 <p><code>Gitea</code>使用的session模块是<a href="https://github.com/go-macaron/session">go-macaron/session</a>，在<code>file.go</code>可以看到几个关键的方法</p>
 
@@ -448,7 +474,7 @@ func (s *FileStore) Release() error {
 
 <p>我们来分析一个认证成功的session<code>/data/gitea/sessions/0/9/09cfb25c946d6187</code>，前两位为路径名，后面为sid，共同组成一个session文件</p>
 
-<p>我们使用相应的<code>DecodeGob()</code>方法来解开看一下session里包含的内容，其中<code>session_data</code>即是文件的hex内容。代码如下</p>
+<p>我们使用相应的<code>DecodeGob()</code>方法(vendor/github.com/go-macaron/session/utils.go:47)来解开看一下session里包含的内容，其中<code>session_data</code>即是<code>session</code>文件的hex内容。代码如下</p>
 
 <pre><code class="language-go">package main
 
@@ -485,6 +511,8 @@ func main() {
 <p><img src="https://ob5vt1k7f.qnssl.com/1531898336305.png" alt="1531898336305" /></p>
 
 <p>可以看到主要是以<code>_old_iod</code> <code>uid</code> <code>uname</code>三个值组成的session内容，那么我们就可以构造一组这样的值来伪造一个session</p>
+
+<p><code>[uid:1 uname:admin123 _old_uid:1]</code></p>
 
 <p>生成session使用<code>EncodeGob()</code>方法：</p>
 
