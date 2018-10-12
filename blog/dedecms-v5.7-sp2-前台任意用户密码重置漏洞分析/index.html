@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <h4 id="0x01-概述">0x01 概述</h4>
 
@@ -164,19 +164,19 @@
 
 <p>下面来看php中弱类型转换问题</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/edFq9" alt="php" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/edFq9" alt="php" /></p>
 
 <p>可以看到当我们传进<code>0.0</code>时，<code>empty($safequestion)</code>就不成立了，而<code>$row['safequestion'] == $safequestion</code>即<code>'0' == '0.0'</code>成立，所以可以进入<code>sn</code>方法。除了<code>'0.0'</code>，<code>'0.'</code> <code>'0e123'</code>等都可以绕过这个判断，因为<code>0en</code>被认为是0的n次方</p>
 
 <p>跟进<code>sn</code>方法</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/xZxqc" alt="sn" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/xZxqc" alt="sn" /></p>
 
 <p>从数据库取出一个临时密码<code>SELECT * FROM #@__pwd_tmp WHERE mid = '$mid'</code>，这里的<code>mid</code>我们可以控制，如果用户存在，发送含有临时密码的邮件，并且有个10分钟的限制(这里为了调试方便我把时间缩短了)</p>
 
 <p>跟进<code>newmail</code>函数</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/0nL4H" alt="newmail" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/0nL4H" alt="newmail" /></p>
 
 <p>可以看到<code>$randval</code>是一个8位随机字符串，而且先进行了md5再插入到数据库，理论上我们不好破解，但是注意85行和98行的<code>return ShowMsg('稍后跳转到修改页', $cfg_basehost . $cfg_memberurl . &quot;/resetpassword.php?dopost=getpasswd&amp;amp;id=&quot; . $mid . &quot;&amp;amp;key=&quot; . $randval);</code>，把含有<code>$randval</code>的链接直接返回显示在页面上，所以这里就没有必要去猜这个临时密码。有了这个临时密码就可以重置任意用户的密码。</p>
 
@@ -184,19 +184,19 @@
 
 <p>我们先注册一个用户，然后构造一个请求，<code>GET /dedecms/uploads/member/resetpassword.php?i=0.0&amp;dopost=safequestion&amp;safequestion=0e123&amp;safeanswer=&amp;id=1</code>，发送后可以看到页面跳转，然后返回含有key的链接，</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/eSNsc" alt="key" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/eSNsc" alt="key" />
 利用这个key可以进入重置密码流程，简单看一下</p>
 
 <p>重置密码<code>/member/resetpassword.php?dopost=getpasswd&amp;id=5</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/oV7zo" alt="resetpwd1" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oV7zo" alt="resetpwd1" />
 先从<code>dede_pwd_tmp</code>表取出<code>mid</code>为5的临时密码</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/aIWLU" alt="resetpwd2" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aIWLU" alt="resetpwd2" />
 与传入的临时密码MD5比较，通过验证就更新用户表<code>dede_member</code>为新的密码，同时删除临时密码</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/J1mks" alt="resetpwd3" />
-<img src="https://ob5vt1k7f.qnssl.com/EMzcr" alt="newpwd" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/J1mks" alt="resetpwd3" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/EMzcr" alt="newpwd" /></p>
 
 <p>这样我们就可以重置任意用户的密码了——除了管理员，因为管理员信息存在另一个表<code>dede_admin</code>中，而且管理员默认不允许从前台登录，所以就算更改了<code>dede_member</code>里<code>admin</code>的密码也没法登录。</p>
 

@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <p>今天来讲获取说说~</p>
 
@@ -161,7 +161,7 @@
 <pre><code>http://user.qzone.qq.com/目标qq/mood/说说id
 </code></pre>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/Nt7FN" alt="moods like" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Nt7FN" alt="moods like" />
 需要特别注意的是，这个接口和上面两个不太一样，频繁访问会导致<code>403</code>，所以若非必要，点赞部分不爬取也是可以的&hellip;或者想一个避免403的方法，比如sleep，可这肯定会使整个程序慢下来，毕竟不敢贸然上多线程&hellip;</p>
 
 <p>一个小Tips: 点赞数据的获取是不一定要有好友关系的，也就是说可以用小号对赞同数另外爬取，避免被封号&hellip;不是真正的封号，只是无法再访问这个地址了，一般是一天，泪的教训&hellip;</p>
@@ -174,12 +174,12 @@
 
 <p>分析一下返回的数据，这是说说内容和评论内容，图片太长分两次截吧</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/T1o7g" alt="moods" />
-<img src="https://ob5vt1k7f.qnssl.com/vXyMM" alt="moods" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/T1o7g" alt="moods" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/vXyMM" alt="moods" /></p>
 
 <p>点赞的情况如下，乱码是因为网站本身的问题</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/s84i0" alt="moods like" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/s84i0" alt="moods like" /></p>
 
 <h3 id="数据库设计">数据库设计</h3>
 
@@ -206,7 +206,7 @@
 </code></pre>
 
 <p>效果如下
-<img src="https://ob5vt1k7f.qnssl.com/WEMTS" alt="moods table" /></p>
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/WEMTS" alt="moods table" /></p>
 
 <h4 id="评论表-qq-moods-reply">评论表<code>qq_moods_reply</code></h4>
 
@@ -226,7 +226,7 @@
 
 <p>可能有人会问，这怎么表示评论和回复之间的层次关系呢？不急，我们先来看一下效果</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/kmOxu" alt="moods reply" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kmOxu" alt="moods reply" />
 通过对同一层次的评论和回复插入空值，可以表示出层次关系，这和留言部分是一样的</p>
 
 <h4 id="点赞表-qq-moods-like">点赞表<code>qq_moods_like</code></h4>
@@ -247,7 +247,7 @@
 
 <p>效果如下</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/DkbbK" alt="moods like" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/DkbbK" alt="moods like" /></p>
 
 <p>同样的，同一说说的点赞适当插入空值可以表现出层次关系</p>
 
@@ -302,7 +302,7 @@ return json_obj
 
 <p>画了一个简单的流程图</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/pGVFE" alt="get moods" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pGVFE" alt="get moods" /></p>
 
 <h3 id="结束语">结束语</h3>
 

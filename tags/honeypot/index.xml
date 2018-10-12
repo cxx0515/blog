@@ -17,7 +17,7 @@
       <guid>https://kylingit.com/blog/%E5%85%B3%E4%BA%8E-mhn-%E7%9A%84%E4%B8%80%E4%BA%9B%E9%83%A8%E7%BD%B2%E4%BB%8B%E7%BB%8D/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;h3 id=&#34;简介&#34;&gt;简介&lt;/h3&gt;
 
@@ -46,7 +46,7 @@
 &lt;li&gt;&lt;p&gt;p0f： &lt;a href=&#34;https://github.com/p0f/p0f&#34;&gt;https://github.com/p0f/p0f&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
 &lt;/ul&gt;
 
-&lt;p&gt;具体的介绍可以看 WooYun Drops 的一篇文章 &lt;a href=&#34;https://ob5vt1k7f.qnssl.com/%E8%9C%9C%E7%BD%90%E7%BD%91%E7%BB%9C.html&#34;&gt;蜜罐网络&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;具体的介绍可以看 WooYun Drops 的一篇文章 &lt;a href=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/others/%E8%9C%9C%E7%BD%90%E7%BD%91%E7%BB%9C.html&#34;&gt;蜜罐网络&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;安装过程不再赘述，讲讲实际部署中遇到的一些问题&lt;/p&gt;
 
@@ -60,13 +60,13 @@
 
 &lt;p&gt;先上一个正常运行的页面&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/HoneyMap.jpg&#34; alt=&#34;HoneyMap&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/HoneyMap.jpg&#34; alt=&#34;HoneyMap&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;因为部署了差不多100台蜜罐分布在全球不同的地区，这里看上去还是蛮壮观的。红色的代表正在发起攻击的 ip 地理位置，黄色的代表受攻击方，也就是蜜罐的 ip ，显示结果是实时的。&lt;/p&gt;
 
 &lt;p&gt;这是统计信息，包括 TOP 5 IPs, TOP 5 ports, TOP 5 Honey Pots, TOP 5 Sensors, TOP 5 Attacks Signatures，所有记录都会保存在 Mongodb 数据库中，这里只是显示过去 24 小时的&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Dashboard.jpg&#34; alt=&#34;Dashboard&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Dashboard.jpg&#34; alt=&#34;Dashboard&#34; /&gt;&lt;/p&gt;
 
 &lt;h4 id=&#34;二&#34;&gt;二&lt;/h4&gt;
 
@@ -85,15 +85,15 @@
 
 &lt;p&gt;ip 即为该服务器 ip&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/map.jpg&#34; alt=&#34;Map&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/map.jpg&#34; alt=&#34;Map&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;Deploy 页面即保存部署蜜罐的脚本，可以下拉选择不同的蜜罐，也可以自定义脚本。它提供的脚本不一定完全适用，有些情况需要自己更改一下。复制上面的 Deploy Command 到另外的机器上执行，完成后一般就会在 Sensors 显示新安装的蜜罐节点。&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Deploy.jpg&#34; alt=&#34;Deploy&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Deploy.jpg&#34; alt=&#34;Deploy&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;Attacks 页面显示的是具体的攻击情况，包括时间，节点，国家，源ip和源端口，使用的协议以及发生在哪个蜜罐上&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Attacks.jpg&#34; alt=&#34;Attacks&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Attacks.jpg&#34; alt=&#34;Attacks&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;Plyloads 页面显示一些攻击行为的 payload，包括 sql 注入，恶意扫描等，它会记录所有 url 访问&lt;/p&gt;
 
@@ -103,7 +103,7 @@
 
 &lt;p&gt;Charts 页面会显示 ssh 蜜罐收集到的用户名密码等，这里显示的是 cowrie 捕捉到的一些 ssh 尝试登录，以及 top 用户名和密码&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/passwd.jpg&#34; alt=&#34;Charts&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/passwd.jpg&#34; alt=&#34;Charts&#34; /&gt;&lt;/p&gt;
 
 &lt;h3 id=&#34;关于具体的蜜罐&#34;&gt;关于具体的蜜罐&lt;/h3&gt;
 
@@ -142,7 +142,7 @@ sudo supervisorctl -c /etc/supervisor/supervisord.conf
 
 &lt;p&gt;glastopf 是一款低交互式 Web 蜜罐，它能记录包括 sql 注入，XSS 攻击等常见的 Web 攻击类型&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Payloads.jpg&#34; alt=&#34;Payload&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Payloads.jpg&#34; alt=&#34;Payload&#34; /&gt;&lt;/p&gt;
 
 &lt;h4 id=&#34;suricata&#34;&gt;suricata&lt;/h4&gt;
 
@@ -163,7 +163,7 @@ sudo supervisorctl -c /etc/supervisor/supervisord.conf
       <guid>https://kylingit.com/blog/ubuntu-16.04-%E5%AE%89%E8%A3%85-glastopf/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;&lt;code&gt;glastopf&lt;/code&gt;是一个开源的低交互式Web应用蜜罐，用python编写，可以在各种操作系统上部署，可以方便监控和捕获恶意文件样本，攻击方式等，后期也有开源脚本利于统计分析，同时方便安装配置。&lt;/p&gt;
 

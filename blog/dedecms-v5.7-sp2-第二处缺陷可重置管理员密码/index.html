@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <h3 id="0x01-概述">0x01 概述</h3>
 
@@ -166,7 +166,7 @@ function GetNum($fnum){
 <p>看一下<code>GetCookie()</code>
 <code>include/helpers/cookie.helper.php:54</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/IO7Rf" alt="GetCookie" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/IO7Rf" alt="GetCookie" /></p>
 
 <p>关键点在这个判断条件</p>
 
@@ -186,7 +186,7 @@ function GetNum($fnum){
 
 <p>我们使进入<code>GetNum</code>方法的参数为<code>数字1+字母</code>的形式，经过正则替换就会变成<code>1</code>，也就是<code>$this-&gt;M_ID</code>的值，然后带入数据库查询</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/4zlB8" alt="GetNum" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/4zlB8" alt="GetNum" />
 <code>$fnum</code>为<code>1qqqq</code>的情况，经过正则替换后值成为了1</p>
 
 <h4 id="利用点二">利用点二</h4>
@@ -198,7 +198,7 @@ function GetNum($fnum){
 
 <p>对<code>$this-&gt;M_ID</code>进行了整数类型转换，假设注册一个用户名，经过<code>intval</code>转换后为<code>1</code>就能使查询条件变成<code>Select * From #@__member where mid='1'</code>，也就取出了管理员在<code>dede_member</code>表里的密码，此时配合上一个漏洞，我们已经修改了<code>dede_member</code>中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/Av52c" alt="intval" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Av52c" alt="intval" />
 这是调试的时候注册用户名为<code>0000001</code>的情况，经过<code>intval</code>转换后<code>M_ID</code>的值变成了1</p>
 
 <p>下面看一下如何从前台登录admin账户</p>
@@ -280,15 +280,15 @@ function GetNum($fnum){
 <ol>
 <li>前台注册普通用户，这里注册一个<code>1qqqq</code></li>
 <li>访问<code>/member/index.php?uid=1qqqq</code>，获取<code>last_vid__ckMd5</code>的值
-<img src="https://ob5vt1k7f.qnssl.com/2izw4" alt="uid" /></li>
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2izw4" alt="uid" /></li>
 <li>访问<code>/member/index.php</code>，替换<code>DedeUserID</code>和<code>DedeUserID__ckMd5</code>的值
-<img src="https://ob5vt1k7f.qnssl.com/3uAj1" alt="admin" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3uAj1" alt="admin" />
 可以发现以admin身份成功登录到了前台
-<img src="https://ob5vt1k7f.qnssl.com/aGGc5" alt="admin" /></li>
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aGGc5" alt="admin" /></li>
 <li>同样的，修改密码访问<code>member/edit_baseinfo.php</code>，还是要修改cookie值
-<img src="https://ob5vt1k7f.qnssl.com/OacVb" alt="reset passwd" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OacVb" alt="reset passwd" />
 原登录密码就是我们利用上一个漏洞修改的密码，也就是<code>dede_member</code>表中的admin密码，这样就达到了真正修改admin的密码
-<img src="https://ob5vt1k7f.qnssl.com/OUrvR" alt="reset admin passwd" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OUrvR" alt="reset admin passwd" />
 更新数据库的时候判断如果是管理员，就更新admin表中的数据</li>
 </ol>
 

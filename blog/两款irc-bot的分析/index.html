@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <p>近期在蜜罐上捕获到两个利用RCE漏洞传播的远控木马，经过分析判断是基于IRC协议的bot样本，分别是使用php编写的<code>Pbot</code>和使用Perl版的<code>Perl IrcBot</code>，下面简单分析一下这两个脚本。</p>
 
@@ -185,7 +185,7 @@
 
 <p>黑客利用IRC协议与被控主机通信，C&amp;C发送的指令就是这种格式，bot根据PRIVMSG后的Message进行相应操作，大致过程如下图所示</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/Snipaste_20180605_111020.png" alt="" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Snipaste_20180605_111020.png" alt="" /></p>
 
 <h3 id="环境准备">环境准备</h3>
 
@@ -209,7 +209,7 @@
 
 <p>连接上本地IRC服务器后我们创建一个channel，叫做<code>#php</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528252223926.png" alt="1528252223926" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528252223926.png" alt="1528252223926" /></p>
 
 <p>这样就加入了<code>#php</code>channel</p>
 
@@ -258,11 +258,11 @@
 
 <p>随后bot会设置一个随机名称加入相应的channel</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528252610192.png" alt="1528252610192" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528252610192.png" alt="1528252610192" /></p>
 
 <p>在IRC聊天室也能看到bot上线</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528252650212.png" alt="1528252650212" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528252650212.png" alt="1528252650212" /></p>
 
 <h3 id="功能分析">功能分析</h3>
 
@@ -320,9 +320,9 @@
 
 <h4 id="uname">uname</h4>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528254954215.png" alt="1528254954215" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528254954215.png" alt="1528254954215" /></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528254899287.png" alt="1528254899287" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528254899287.png" alt="1528254899287" /></p>
 
 <p>在进入对应指令的分支之前先判断当前连接的irc服务器是否在<code>hostauth</code>列表，这决定了bot是否接受控制</p>
 
@@ -334,11 +334,11 @@
 
 <p>执行命令部分有两块可以实现，分别是exec和cmd</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528255190724.png" alt="1528255190724" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528255190724.png" alt="1528255190724" /></p>
 
 <p>其中exec直接调用php内置的exec命令，cmd则是通过自定义方法<code>Exe()</code>执行，在<code>Exe()</code>方法内部对系统支持的命令执行函数进行了判断，可以通过以下几种方法使命令得到最终执行</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528255437456.png" alt="1528255437456" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528255437456.png" alt="1528255437456" /></p>
 
 <h4 id="pscan">pscan</h4>
 
@@ -346,13 +346,13 @@
 
 <p><code>.pscan ip port</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528271275578.png" alt="1528271275578" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528271275578.png" alt="1528271275578" /></p>
 
 <h4 id="conback">conback</h4>
 
 <p><code>conback &lt;ip&gt; &lt;port&gt;</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528270109767.png" alt="1528270109767" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528270109767.png" alt="1528270109767" /></p>
 
 <p>该指令会在尝试在<code>/tmp/</code>和<code>/var/tmp</code>写入脚本，脚本使用perl语言编写并经过base64编码，执行后会向指定ip反弹一个shell，在连接断开后脚本自动删除。脚本内容如下：</p>
 
@@ -389,17 +389,17 @@ print &quot;[*] Datached\n\n&quot;;
 
 <p>测试了几个功能都是可以正常使用的，如下图</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528269072874.png" alt="1528269072874" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528269072874.png" alt="1528269072874" /></p>
 
 <p>在数据包中也能清楚地看到交互过程</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528270676034.png" alt="1528270676034" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528270676034.png" alt="1528270676034" /></p>
 
 <h2 id="0x03-ddos-perl-ircbot">0x03 DDoS Perl IrcBot</h2>
 
 <p>基于Perl编写的IrcBot功能大致与Pbot相同，不过实现方式有些不一样</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528274109719.png" alt="1528274109719" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528274109719.png" alt="1528274109719" /></p>
 
 <p>从bot的帮助信息来看是支持不少指令的，主要分为以下几个功能模块</p>
 
@@ -434,11 +434,11 @@ my @channels = (&quot;#Perl&quot;); 	# IRC频道
 
 <p>抓取数据包看一下IrcBot与IRC服务器之间的通信</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528274862059.png" alt="1528274862059" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528274862059.png" alt="1528274862059" /></p>
 
 <p>发送消息部分是和Pbot是一样的，Pbot是通过起始符(<code>.</code>)来提取具体指令，而在Perl IrcBot内部则是通过正则表达式来完成，即<code>parse</code>方法</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528275278915.png" alt="1528275278915" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528275278915.png" alt="1528275278915" /></p>
 
 <p>随后根据具体指令执行相应的功能</p>
 
@@ -477,21 +477,21 @@ my @channels = (&quot;#Perl&quot;); 	# IRC频道
 
 <p>其中<code>ircase</code>是相应的在IRC频道中的操作</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528276673338.png" alt="1528276673338" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528276673338.png" alt="1528276673338" /></p>
 
 <p>用图形来表示bot的主要功能如下图所示</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528281340573.png" alt="1528281340573" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528281340573.png" alt="1528281340573" /></p>
 
 <h4 id="行为特征">行为特征</h4>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528277061564.png" alt="1528277061564" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528277061564.png" alt="1528277061564" /></p>
 
 <p>在bot启动的时候，不会以自身的进程启动，而是在<code>sshd</code>，<code>apache</code>等进程中随机fork一个启动，fork失败则退出脚本，这样子非常隐蔽地隐藏了自身进程，随后在加入IRC频道的过程中也会随机选择一个IRC版本号加入。</p>
 
 <p>在运行Perl IrcBot后，脚本选择以<code>/usr/sbin/cron</code>的进程启动，而且可以明显看到CPU占用达到100%，脚本潜伏在正常进程中很难被发现。</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1528274476743.png" alt="1528274476743" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528274476743.png" alt="1528274476743" /></p>
 
 <h2 id="0x04-总结">0x04 总结</h2>
 

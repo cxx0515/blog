@@ -17,7 +17,7 @@
       <guid>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;前阵子披露出的Weblogic XMLDecoder反序列化漏洞影响广泛，不少厂商都中了招，最近又捕获到不少利用这个漏洞进行挖矿的案例，实际上一开始在野外出现的利用就是挖矿程序，那时候漏洞还没被披露= =所以说有些时候黑产都快成为行业的风向标了，安全领域需要与黑灰色产业斗智斗勇，任重道远&amp;hellip;&lt;/p&gt;
 
@@ -68,7 +68,7 @@
 
 &lt;p&gt;经过测试jdk1.8版本会有异常产生，需要额外设置&lt;code&gt;com.sun.jndi.rmi.object.trustURLCodebase = True&lt;/code&gt;，所以这里建议使用jdk1.8以下版本&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/b2MmC&#34; alt=&#34;error&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/b2MmC&#34; alt=&#34;error&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;编译完成之后在VPS开启一个http服务&lt;/p&gt;
 
@@ -147,11 +147,11 @@ public class TestJNDI {
 
 &lt;p&gt;首先测试本地JNDI服务，先运行&lt;code&gt;JNDIServer&lt;/code&gt;，可以看到在本地监听了1099端口&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OLArZ&#34; alt=&#34;1099&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OLArZ&#34; alt=&#34;1099&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;然后运行客户端&lt;code&gt;TestJNDI&lt;/code&gt;，可以看到VPS收到了一次请求，访问了&lt;code&gt;Exploit.class&lt;/code&gt;，接着执行了calc:&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/e5ntY&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/e5ntY&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;测试成功&lt;/p&gt;
 
@@ -187,7 +187,7 @@ public class TestJNDI {
 
 &lt;p&gt;可以看到执行成功&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fcbQR&#34; alt=&#34;calc2&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/fcbQR&#34; alt=&#34;calc2&#34; /&gt;&lt;/p&gt;
 
 &lt;h3 id=&#34;0x04-测试weblogic&#34;&gt;0x04 测试Weblogic&lt;/h3&gt;
 
@@ -230,7 +230,7 @@ PoC&lt;/p&gt;
 
 &lt;p&gt;同样的，先开启JNDI和http服务，还得再监听3388，然后发送PoC&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/fjakh&#34; alt=&#34;rev&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/fjakh&#34; alt=&#34;rev&#34; /&gt;
 成功接收到信息，利用成功。&lt;/p&gt;
 
 &lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;

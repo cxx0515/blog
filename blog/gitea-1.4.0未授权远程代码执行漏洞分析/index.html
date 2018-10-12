@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <p>近日，Gitea 1.4.0版本的<code>LFS</code>模块出现了一个绕过登录验证未授权创建LFS对象的漏洞，由此漏洞引申出了一条非常漂亮的攻击链，值得好好学习。</p>
 
@@ -255,7 +255,7 @@ func (s *ContentStore) Get(meta *models.LFSMetaObject, fromByte int64) (io.ReadC
 
 <p>访问LFS存储对象的接口是<code>https://git-server.com/foo/bar.git/info/lfs/objects/batch</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531882119588.png" alt="1531882119588" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531882119588.png" alt="1531882119588" /></p>
 
 <p>由此我们获取到了<code>LFS_JWT_SECRET</code></p>
 
@@ -335,7 +335,7 @@ func (s *ContentStore) Get(meta *models.LFSMetaObject, fromByte int64) (io.ReadC
 
 <p>我们在<a href="https://jwt.io/#debugger">JWT debugger页面</a>测试生成一段<code>Auth Token</code>，填入<code>payload</code>和上一步获取到的<code>LFS_JWT_SECRET</code>，于是得到了LFS认证的<code>Authorization</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531883703859.png" alt="1531883703859" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531883703859.png" alt="1531883703859" /></p>
 
 <h3 id="0x05-伪造session绕过登录">0x05 伪造session绕过登录</h3>
 
@@ -508,7 +508,7 @@ func main() {
 
 <p>运行结果：</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531898336305.png" alt="1531898336305" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531898336305.png" alt="1531898336305" /></p>
 
 <p>可以看到主要是以<code>_old_iod</code> <code>uid</code> <code>uname</code>三个值组成的session内容，那么我们就可以构造一组这样的值来伪造一个session</p>
 
@@ -550,7 +550,7 @@ func main() {
 
 <p>运行之后生成一个hex序列</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531898708274.png" alt="1531898708274" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531898708274.png" alt="1531898708274" /></p>
 
 <p>这段序列里就包含了session信息，包括 <code>_old_iod</code> <code>uid</code> <code>uname</code>，然后我们可以利用这个伪造的<code>session</code>成功登录</p>
 
@@ -558,7 +558,7 @@ func main() {
 
 <h5 id="1-读取-app-ini-获得-lfs-jwt-secret">1. 读取<code>app.ini</code>，获得<code>LFS_JWT_SECRET</code></h5>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531882119588.png" alt="1531882119588" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531882119588.png" alt="1531882119588" /></p>
 
 <h5 id="2-针对-session-文件名创建-lfs-对象">2. 针对<code>session</code>文件名创建<code>LFS</code>对象</h5>
 
@@ -586,11 +586,11 @@ func main() {
 
 <h5 id="3-生成-authorization">3. 生成<code>Authorization</code></h5>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531883703859.png" alt="1531883703859" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531883703859.png" alt="1531883703859" /></p>
 
 <h5 id="4-生成-session-数据">4. 生成<code>session</code>数据</h5>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531898708274.png" alt="1531898708274" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531898708274.png" alt="1531898708274" /></p>
 
 <h5 id="5-写入-session-数据">5. 写入<code>session</code>数据</h5>
 
@@ -621,11 +621,11 @@ SESSION_DATA = HEX_DATA.decode('hex')
 
 <h5 id="6-修改session">6. 修改Session</h5>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531905605099.png" alt="1531905605099" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531905605099.png" alt="1531905605099" /></p>
 
 <p>后续利用<code>Git Hooks</code>自动执行命令就不多说了</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531905731043.png" alt="1531905731043" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531905731043.png" alt="1531905731043" /></p>
 
 <h3 id="0x07-补丁分析">0x07 补丁分析</h3>
 
@@ -638,15 +638,15 @@ SESSION_DATA = HEX_DATA.decode('hex')
 <li>限定了<code>oid</code>参数值必须符合<code>sha256</code>格式，如果查询的<code>oid</code>不存在则返回404，这样我们就无法指定任意<code>oid</code>值</li>
 </ol>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531798747694.png" alt="1531798747694" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531798747694.png" alt="1531798747694" /></p>
 
 <ol>
 <li>然后使用<code>path.Clean()</code>方法过滤多余的<code>.</code>和<code>/</code>，限制<code>repo</code>里不能出现<code>.</code>和<code>/</code>字符</li>
 </ol>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531804973465.png" alt="1531804973465" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531804973465.png" alt="1531804973465" /></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/1531804989614.png" alt="1531804989614" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1531804989614.png" alt="1531804989614" /></p>
 
 <h3 id="0x08-总结">0x08 总结</h3>
 

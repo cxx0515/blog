@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <p>最近审计代码过程中出现了没有正确处理url形成目录穿越，导致可以读取或下载任意文件的案例，过程很简单，由此却引发了和小伙伴的讨论，对风险的控制需要依赖框架本身还是必须从根本上规避风险点。下面就通过目录遍历漏洞的案例分析一下django的路由传参方式，以及在日常开发中如何避免此类风险。</p>
 
@@ -174,10 +174,10 @@ def read_file(filename, bufsize=8192):
 
 <p>有经验的同学马上就能看出<code>file_download()</code>对传入的文件名并没有任何限制，只是做了文件是否存在的判断，也就是说我们可以传入<code>/../1/1.txt</code>的文件名，<code>full_path</code>经过拼接就会成为<code>/tmp/test/2/../../1/1.txt</code>，传入<code>read_file()</code>就能够读取到1.txt</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/JUIFX" alt="1.txt" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/JUIFX" alt="1.txt" />
 类似的，如果我们传入<code>../../../etc/passwd</code>就能下载到敏感文件</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/h0bP3" alt="passwd" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/h0bP3" alt="passwd" /></p>
 
 <p>可是事实上每次都是如此吗？</p>
 
@@ -231,7 +231,7 @@ def read_file(filename, bufsize=8192):
 <li>使用<code>path('download/&lt;path:filename&gt;', views.file_download),</code>的情况</li>
 </ul>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/KkoFJ" alt="path" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KkoFJ" alt="path" /></p>
 
 <ul>
 <li>使用<code>path('download/&lt;str:filename&gt;', views.file_download),</code>的情况</li>
@@ -259,7 +259,7 @@ def read_file(filename, bufsize=8192):
 
 <p>在<code>/Lib/site-packages/django/urls/conf.py</code>中定义了相关方法</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/uPvF8" alt="re_path()" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/uPvF8" alt="re_path()" />
 <code>partial()</code>方法的作用就是把一个函数作为另一个函数的参数传入，这里就是把<code>RegexPattern()</code>类作为参数传进<code>_path()</code>方法，因为在下面第70行<code>RegexPattern()</code>就作为处理<code>re_path()</code>时的方法</p>
 
 <p><code>pattern = Pattern(route, name=name, is_endpoint=True)</code></p>
@@ -268,10 +268,10 @@ def read_file(filename, bufsize=8192):
 
 <p>构造方法之后regex就确定为我们定义的表达式，也就是<code>'download/(?P&lt;filename&gt;.+)'</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/4dWIr" alt="regex" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/4dWIr" alt="regex" />
 这种情况下是可以匹配任何字符串的，起不到防护目录穿越的作用</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/cEbp5" alt="regex" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cEbp5" alt="regex" /></p>
 
 <h5 id="2-path-download-path-filename-方式">2. <code>path('download/&lt;path:filename&gt;'</code>方式</h5>
 
@@ -302,8 +302,8 @@ def read_file(filename, bufsize=8192):
 
 <p>取出<code>converter</code>部分，也就是我们指定的<code>path</code>，然后判断如果<code>converter</code>为空的话就赋值为&rsquo;str&rsquo;，这也就是为什么我们不指定路径转换器时默认是str的原因。</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/2Yr3G" alt="converter" />
-<img src="https://ob5vt1k7f.qnssl.com/rMvhH" alt="path" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2Yr3G" alt="converter" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/rMvhH" alt="path" /></p>
 
 <p>接下来对转换器部分的操作</p>
 
@@ -331,17 +331,17 @@ except KeyError as e:
 
 <p>相对应的regex值也就在这里被定义</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/cft5C" alt="default_regex" />
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cft5C" alt="default_regex" />
 于是在<code>decorating_function()</code>通过<code>cache_get()</code>方法取到了这些转换器对应的表达式，最后进行了拼接</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/vUIRy" alt="Untitled Image" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/vUIRy" alt="Untitled Image" /></p>
 
 <p>通过<code>parts.append</code>拼接
 <code>parts.append('(?P&lt;' + parameter + '&gt;' + converter.regex + ')')</code></p>
 
 <p>此时的&rsquo;parameter&rsquo;值即为&rsquo;filename&rsquo;，regex值为converter对象的属性，也就是<code>'.+'</code></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/I6I4E" alt="regex" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/I6I4E" alt="regex" /></p>
 
 <p>最后拼接成的正则表达式为<code>'^download\\/(?P&lt;filename&gt;.+)$'</code></p>
 
@@ -355,7 +355,7 @@ except KeyError as e:
 
 <p>流程跟上面指定<code>path</code>的方式一样，<code>converter</code>为空时设置为&rsquo;str&rsquo;</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/LKW7J" alt="str" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/LKW7J" alt="str" /></p>
 
 <p>此时对应的regex值为<code>'[^/]+'</code>，也就是不匹配<code>'/'</code></p>
 
@@ -370,7 +370,7 @@ except KeyError as e:
 
 <p>画了一张简单的流程图方便理解上述三种情况</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/t5Tay" alt="process" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/t5Tay" alt="process" /></p>
 
 <h3 id="0x04-如何避免-正确的代码">0x04 如何避免&amp;正确的代码</h3>
 

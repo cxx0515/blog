@@ -121,7 +121,7 @@
     
     
 
-<script src="https://ob5vt1k7f.qnssl.com/pangu.js"></script>
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
 
 <p>今天来讲爬取所有留言吧~</p>
 
@@ -132,7 +132,7 @@
 <p>我们分析一个请求首先要抓到与服务器交互的数据包，这就要用到抓包工具，像<code>Burpsuite</code>,<code>Fiddler</code>等，为了方便有时候也直接用<code>chrome</code>的审查元素</p>
 
 <p>登录空间，打开<code>f12</code>，切换到<code>network</code>选项卡，然后点击留言板，注意下面的请求，找到获取留言的链接
-<img src="https://ob5vt1k7f.qnssl.com/xNpNZ" alt="http request" /></p>
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/xNpNZ" alt="http request" /></p>
 
 <p>它长这样</p>
 
@@ -149,7 +149,7 @@
 
 <p>右键新标签页打开这个链接，分析返回的数据</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/PFpqZ" alt="http reply" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/PFpqZ" alt="http reply" /></p>
 
 <p>这也是一串json格式的数据，这样我们就能看到一条留言的存储结构，包括留言总数，留言者，留言内容，留言时间，回复内容等等，所有都get到了，然后设计数据库，存下来就ok了</p>
 
@@ -161,9 +161,9 @@
 
 <p>当一切准备就绪，摩拳擦掌准备大干一场的时候，忽然发现，对方设置了访问权限&hellip;</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/IqCvJ" alt="cannot access" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/IqCvJ" alt="cannot access" /></p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/ljsdK" alt="sad" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/ljsdK" alt="sad" /></p>
 
 <p>好吧，再正常不过的事了，谁还没有个小秘密呢(<del>人家根本就不想让你看好嘛</del>)</p>
 
@@ -180,14 +180,14 @@
 
 <p>当对方限制了我们的访问权限，同样返回一个<code>-4009</code>状态码，还有<code>您无权访问</code>的提示信息，这两个都可以用来判断对方是否对我们设置了访问权限</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/pfccO" alt="cannot access" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pfccO" alt="cannot access" /></p>
 
 <h4 id="坑二">坑二</h4>
 
 <p>好了，现在我们解决了没有访问权限的问题，抛弃了那些早已抛弃我们的小伙伴，再次兴致勃勃地准备大干一场(雾)的时候，忽然发现，私密留言&hellip;</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/y81Qe" alt="secret message" />
-<img src="https://ob5vt1k7f.qnssl.com/3I4Aj" alt="so sad" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/y81Qe" alt="secret message" />
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3I4Aj" alt="so sad" /></p>
 
 <p>好吧，再正常不过的事了，谁还没有好几个小秘密呢(<del>人家双方都不想让你看好嘛</del>)</p>
 
@@ -229,7 +229,7 @@
 
 <p>预览</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/cIIY1" alt="qq messages" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cIIY1" alt="qq messages" /></p>
 
 <ul>
 <li><code>qq_messages_reply</code>结构</li>
@@ -249,7 +249,7 @@
 
 <p>预览</p>
 
-<p><img src="https://ob5vt1k7f.qnssl.com/5pPWS" alt="qq message reply" /></p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/5pPWS" alt="qq message reply" /></p>
 
 <p>插入数据的时候根据回复数插入空值，使看上去有层次关系</p>
 

@@ -17,7 +17,7 @@
       <guid>https://kylingit.com/blog/github-%E6%B2%A1%E6%9C%89%E8%AE%B0%E5%BD%95-contributions-%E7%9A%84%E8%A7%A3%E5%86%B3/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;最近更新文章的时候发现github没有记录Contributions，也就是小绿墙没有增加小方块，看了下&lt;code&gt;git log&lt;/code&gt;发现是提交的时候用户邮箱写错了，多打了一个字母&amp;hellip;于是Github认为这些commits都不是我提交的 =_=#
 网上找到了解决办法&lt;/p&gt;

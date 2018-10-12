@@ -17,7 +17,7 @@
       <guid>https://kylingit.com/blog/ganglia-%E6%89%A9%E5%B1%95-python%E6%A8%A1%E5%9D%97/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;Ganglia支持很多模块的扩展，这里介绍python模块的扩展&lt;/p&gt;
 
@@ -168,7 +168,7 @@ if __name__ == &#39;__main__&#39;:
       <guid>https://kylingit.com/blog/ubuntu-server-%E5%AE%89%E8%A3%85%E9%85%8D%E7%BD%AE-ganglia/</guid>
       <description>
 
-&lt;script src=&#34;https://ob5vt1k7f.qnssl.com/pangu.js&#34;&gt;&lt;/script&gt;
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
 &lt;p&gt;&lt;code&gt;Ganglia&lt;/code&gt;是一个开源的集群监控系统，它基于分层设计，使用广泛的技术，如XML数据代表，便携数据传输，&lt;code&gt;RRDtool&lt;/code&gt;用于数据存储和可视化，可以方便地对机器性能及系统运行状态进行可视化监控，广泛应用于对&lt;code&gt;Hadoop&lt;/code&gt;，&lt;code&gt;Spark&lt;/code&gt;等分布式系统的监测管理。&lt;/p&gt;
 
@@ -178,7 +178,7 @@ if __name__ == &#39;__main__&#39;:
 
 &lt;!-- more --&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ganglia.png&#34; alt=&#34;Ganglia&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/ganglia.png&#34; alt=&#34;Ganglia&#34; /&gt;&lt;/p&gt;
 
 &lt;h4 id=&#34;gmond&#34;&gt;Gmond&lt;/h4&gt;
 
@@ -308,7 +308,7 @@ udp_recv_channel {
 
 &lt;p&gt;直接访问&lt;code&gt;http://10.24.84.23/ganglia&lt;/code&gt;就能看到ganglia成功运行&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://ob5vt1k7f.qnssl.com/ganglia_master.png&#34; alt=&#34;ganglia_master&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/ganglia_master.png&#34; alt=&#34;ganglia_master&#34; /&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
