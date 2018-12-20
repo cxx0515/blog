@@ -10,6 +10,191 @@
     <atom:link href="https://kylingit.com/tags/phpggc/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>PrestaShop后台远程代码执行漏洞分析(CVE-2018-19126)</title>
+      <link>https://kylingit.com/blog/prestashop%E5%90%8E%E5%8F%B0%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90cve-2018-19126/</link>
+      <pubDate>Wed, 19 Dec 2018 16:48:02 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/prestashop%E5%90%8E%E5%8F%B0%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90cve-2018-19126/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;PrestaShop是一款针对web2.0设计的全功能、跨平台的免费开源电子商务解决方案，自08年1.0版本发布，短短两年时间，发展迅速，全球已超过四万家网店采用Prestashop进行部署。Prestashop基于Smarty引擎编程设计，模块化设计，扩展性强，能轻易实现多种语言，多种货币浏览交易，支持Paypal等几乎所有的支付手段，是外贸网站建站的佳选。Prestashop是目前为止，操作最简单，最人性化，用户体验最佳的电子商务解决方案之一。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;11月7日 PrestaShop 官方发布新版本，修复两个高危漏洞，其中&lt;a href=&#34;https://nvd.nist.gov/vuln/detail/CVE-2018-19126&#34;&gt;CVE-2018-19126&lt;/a&gt;允许攻击者通过上传精心构造的文件导致任意代码执行，&lt;a href=&#34;https://nvd.nist.gov/vuln/detail/CVE-2018-19125&#34;&gt;CVE-2018-19125&lt;/a&gt;则导致攻击者删除服务器上的默认图片上传文件夹。&lt;/p&gt;
+
+&lt;p&gt;公告：&lt;a href=&#34;http://build.prestashop.com/news/prestashop-1-7-4-4-1-6-1-23-maintenance-releases/&#34;&gt;http://build.prestashop.com/news/prestashop-1-7-4-4-1-6-1-23-maintenance-releases/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;补丁：&lt;a href=&#34;https://github.com/PrestaShop/PrestaShop/pull/11287&#34;&gt;https://github.com/PrestaShop/PrestaShop/pull/11287&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;由于该漏洞触发需要后台上传权限，在这个系统中有上传权限的角色包括物流员、翻译者、销售人员，所以漏洞影响面还是有限。&lt;/p&gt;
+
+&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;1.6.x before 1.6.1.23&lt;/p&gt;
+
+&lt;p&gt;1.7.x before 1.7.4.4&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
+
+&lt;p&gt;下载&lt;code&gt;1.7.4.3&lt;/code&gt;版本并安装&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://assets.prestashop2.com/en/system/files/ps_releases/prestashop_1.7.4.3.zip&#34;&gt;https://assets.prestashop2.com/en/system/files/ps_releases/prestashop_1.7.4.3.zip&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;在安装过程中会强制要求修改默认后台路径&lt;code&gt;admin&lt;/code&gt;，同时要求删除&lt;code&gt;install&lt;/code&gt;文件夹，从安全角度来讲，这是一个好设计：）&lt;/p&gt;
+
+&lt;p&gt;此案例中后台路径命名为&lt;code&gt;/admin-rename/&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;根据&lt;a href=&#34;https://github.com/PrestaShop/PrestaShop/pull/11287/commits/4c6958f40cf7faa58207a203f3a5523cc8015148&#34;&gt;补丁&lt;/a&gt;位置显示漏洞出现在后台处理文件上传的模块，在&lt;code&gt;admin-dev/filemanager/ajax_calls.php&lt;/code&gt;的&lt;code&gt;image_size&lt;/code&gt;case分支，新版本直接删除了这段代码，其中最值得怀疑的是&lt;code&gt;getimagesize()&lt;/code&gt;函数，在10月份披露的国外轻量级开源论坛系统&lt;code&gt;Vanilla Forums&lt;/code&gt;就是因为该函数导致了一个远程代码执行漏洞，详细可以看&lt;a href=&#34;https://srcincite.io/blog/2018/10/02/old-school-pwning-with-new-school-tricks-vanilla-forums-remote-code-execution.html&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;那么&lt;code&gt;getimagesize()&lt;/code&gt;函数存在什么问题呢？在今年的&lt;code&gt;BlackHat&lt;/code&gt;大会上由&lt;code&gt;Sam Thomas&lt;/code&gt;分享的反序列化漏洞议题主要讲了被忽略的&lt;code&gt;phar://&lt;/code&gt;协议导致的&lt;code&gt;phar&lt;/code&gt;反序列化漏洞，此前也简单介绍了一下这个议题，参考&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;由PHPGGC理解PHP反序列化漏洞&lt;/a&gt;，在这里面提到一些在解析&lt;code&gt;phar://&lt;/code&gt;协议时会产生风险的常用函数，如下图&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539063733837.png&#34; alt=&#34;1539063733837&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;getimagesize()&lt;/code&gt;同样存在这个问题，当调用&lt;code&gt;getimagesize(&#39;phar://some/phar.ext&#39;);&lt;/code&gt;的时候，&lt;code&gt;php&lt;/code&gt;解析&lt;code&gt;phar&lt;/code&gt;文件时会进行反序列化，如果其内容是恶意构造的，就能达到任意代码执行的效果&lt;/p&gt;
+
+&lt;p&gt;风险点找到了，接下来看一下如何触发漏洞&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;ajax_calls.php&lt;/code&gt;在&lt;code&gt;filemanager&lt;/code&gt;模块下面，通过&lt;code&gt;http://host/admin-rename/filemanager/dialog.php&lt;/code&gt;页面调用，这个页面主要功能就是上传文件，以及创建文件夹，文件排序、删除等等，通过&lt;code&gt;action&lt;/code&gt;参数控制操作，所以可以直接通过&lt;code&gt;action=image_size&lt;/code&gt;访问到漏洞触发点&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;dialog.php&lt;/code&gt;开头设置了一个&lt;code&gt;verify&lt;/code&gt;字段&lt;/p&gt;
+
+&lt;p&gt;​&lt;code&gt;php
+$_SESSION[&amp;quot;verify&amp;quot;] = &amp;quot;RESPONSIVEfilemanager&amp;quot;;
+​&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;而在页面检查了这个字段的值，所以无法直接访问&lt;code&gt;ajax_calls.php&lt;/code&gt;页面，必须先访问&lt;code&gt;dialog.php&lt;/code&gt;，目的应该是为了保证文件操作都是从&lt;code&gt;dialog.php&lt;/code&gt;页面进行的吧&lt;/p&gt;
+
+&lt;p&gt;​&lt;code&gt;php
+if ($_SESSION[&#39;verify&#39;] != &#39;RESPONSIVEfilemanager&#39;) {
+    die(&#39;Forbidden&#39;);
+}
+​&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们就可以上传一个&lt;code&gt;phar&lt;/code&gt;文件，当然系统限制文件后缀只能在白名单内&lt;code&gt;&#39;jpg&#39;, &#39;jpeg&#39;, &#39;png&#39;, &#39;gif&#39;, &#39;bmp&#39;, &#39;tiff&#39;, &#39;svg&#39;, &#39;pdf&#39;, &#39;mov&#39;, &#39;mpeg&#39;, &#39;mp4&#39;, &#39;avi&#39;, &#39;mpg&#39;, &#39;wma&#39;, &#39;flv&#39;, &#39;webm&#39;&lt;/code&gt;，所以需要将&lt;code&gt;phar&lt;/code&gt;文件重命名符合要求的后缀。由于在&lt;code&gt;phar://&lt;/code&gt;解析时只要满足&lt;code&gt;phar&lt;/code&gt;文件标识，即文件头必须以&lt;code&gt;__HALT_COMPILER();?&amp;gt;&lt;/code&gt;结尾，所以并不限制文件后缀。此处也有一个技巧，我们可以创建一个合法的&lt;code&gt;jpeg&lt;/code&gt;文件，同时又是一个&lt;code&gt;phar&lt;/code&gt;文件，这个文件甚至可以绕过&lt;code&gt;MIME&lt;/code&gt;检查，关于这个技巧可以参考&lt;a href=&#34;https://www.nc-lp.com/blog/disguise-phar-packages-as-images&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;接下来具体看&lt;code&gt;image_size&lt;/code&gt;分支&lt;/p&gt;
+
+&lt;p&gt;​```php
+case &amp;lsquo;image_size&amp;rsquo;:
+    if (realpath(dirname(_PS_ROOT&lt;em&gt;DIR&lt;/em&gt;.$_POST[&amp;lsquo;path&amp;rsquo;])) != realpath(_PS_ROOT&lt;em&gt;DIR&lt;/em&gt;.$upload_dir)) {
+        die();
+    }
+    $pos = strpos($_POST[&amp;lsquo;path&amp;rsquo;], $upload_dir);
+    if ($pos !== false) {
+        $info = getimagesize(substr_replace($_POST[&amp;lsquo;path&amp;rsquo;], $current_path, $pos, strlen($upload_dir)));
+        echo json_encode($info);
+    }&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;break;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;​```&lt;/p&gt;
+
+&lt;p&gt;第一个&lt;code&gt;if&lt;/code&gt;条件，检查&lt;code&gt;path&lt;/code&gt;参数的绝对路径是否和系统定义的&lt;code&gt;upload_dir&lt;/code&gt;绝对路径相等，&lt;code&gt;upload_dir&lt;/code&gt;的值是&lt;/p&gt;
+
+&lt;p&gt;​&lt;code&gt;php
+$upload_dir = Context::getContext()-&amp;gt;shop-&amp;gt;getBaseURI().&#39;img/cms/&#39;; // path from base_url to base of upload folder (with start and final /)
+​&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;而我们要&lt;code&gt;post&lt;/code&gt;的&lt;code&gt;path&lt;/code&gt;参数是这个样子&lt;code&gt;phar://path/phar.jpg&lt;/code&gt;，显然无法通过判断。这时候考虑一下，假如我们把默认上传路径修改了，比如改成&lt;code&gt;img/test/&lt;/code&gt;，那么系统就会找不到&lt;code&gt;img/cms/&lt;/code&gt;这个路径，&lt;code&gt;realpath&lt;/code&gt;返回结果为&lt;code&gt;false&lt;/code&gt;，那么就可以绕过这个条件。&lt;/p&gt;
+
+&lt;p&gt;那么什么办法可以修改这个路径呢？&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;admin-rename/filemanager/execute.php&lt;/code&gt;文件可以看到有一些文件及文件夹操作，允许用户删除或者重命名文件夹，通过&lt;code&gt;action&lt;/code&gt;和&lt;code&gt;name&lt;/code&gt;参数我们可以将默认的&lt;code&gt;img/cms/&lt;/code&gt;修改成自定义文件夹，甚至可以删除这个路径，这也就是&lt;code&gt;CVE-2018-19125&lt;/code&gt;这个漏洞的触发位置。&lt;/p&gt;
+
+&lt;p&gt;接下来看第2个条件&lt;/p&gt;
+
+&lt;p&gt;​&lt;code&gt;php
+$pos = strpos($_POST[&#39;path&#39;], $upload_dir);
+​&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;此处只要让&lt;code&gt;path&lt;/code&gt;参数包含&lt;code&gt;img/cms/&lt;/code&gt;字符串即可，这样经过后面的替换和拼接，&lt;code&gt;path&lt;/code&gt;就类似于&lt;code&gt;phar://img/test/phar.pdf/var/www/html/img/cms/&lt;/code&gt;，不影响&lt;code&gt;phar&lt;/code&gt;解析&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;phar&lt;/code&gt;文件最终进入&lt;code&gt;getimagesize()&lt;/code&gt;，如果序列化一个可以执行任意代码的类，生成恶意的&lt;code&gt;phar&lt;/code&gt;文件，构造一条完整的&lt;code&gt;POP&lt;/code&gt;链，就可以形成一个&lt;code&gt;RCE&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;PrestaShop&lt;/code&gt;项目中存在&lt;code&gt;Monolog&lt;/code&gt;，这是&lt;code&gt;php&lt;/code&gt;下一个日志记录类库， 在这个库中的&lt;code&gt;BufferHandler&lt;/code&gt;类的&lt;code&gt;handle&lt;/code&gt;函数有一段存在风险的代码&lt;/p&gt;
+
+&lt;p&gt;​&lt;code&gt;php
+public function handle(array $record){
+    //...
+    if ($this-&amp;gt;processors) {
+        foreach ($this-&amp;gt;processors as $processor) {
+            $record = call_user_func($processor, $record);
+        }
+    }
+    //...
+}
+​&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;如果&lt;code&gt;$this-&amp;gt;processors&lt;/code&gt;和&lt;code&gt;$record&lt;/code&gt;均可控的话，就可以造成一个命令执行，所以我们可以序列化这个类构造&lt;code&gt;POP&lt;/code&gt;链&lt;/p&gt;
+
+&lt;h4 id=&#34;0x05-漏洞利用&#34;&gt;0x05 漏洞利用&lt;/h4&gt;
+
+&lt;h5 id=&#34;一-生成phar文件&#34;&gt;一、生成phar文件&lt;/h5&gt;
+
+&lt;p&gt;我们利用之前介绍过的&lt;a href=&#34;https://github.com/s-n-t/phpggc&#34;&gt;PHARGCC&lt;/a&gt;工具生成一个包含&lt;code&gt;POP&lt;/code&gt;链的&lt;code&gt;phar&lt;/code&gt;文件，选择&lt;code&gt;Monolog/RCE1&lt;/code&gt;，看一下这个&lt;code&gt;gadget&lt;/code&gt;的使用&lt;/p&gt;
+
+&lt;p&gt;​```shell
+&amp;gt; pharggc -i Monolog/RCE1
+Name           : Monolog/RCE1
+Version        : 1.18 &amp;lt;= 1.23
+Type           :
+Vector         : __destruct&lt;/p&gt;
+
+&lt;p&gt;./pharggc Monolog/RCE1 &lt;code&gt;
+​```&lt;/p&gt;
+
+&lt;p&gt;生成一个&lt;code&gt;out.phar&lt;/code&gt;，并重命名成&lt;code&gt;out.png&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;​&lt;code&gt;shell
+&amp;gt; pharggc Monolog/RCE1 &amp;quot;phpinfo();&amp;quot;
+Payload written to: out.phar
+​&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;然后通过&lt;code&gt;http://host/admin-rename/filemanager/dialog.php&lt;/code&gt;上传到服务器上&lt;/p&gt;
+
+&lt;h5 id=&#34;二-重命名默认上传目录&#34;&gt;二、重命名默认上传目录&lt;/h5&gt;
+
+&lt;p&gt;通过&lt;code&gt;http://host/admin-rename/filemanager/execute.php?action=rename_folder&lt;/code&gt;重命名默认上传目录&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20181220111941.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h5 id=&#34;三-发送payload&#34;&gt;三、发送payload&lt;/h5&gt;
+
+&lt;p&gt;通过&lt;code&gt;path&lt;/code&gt;参数传入上传的&lt;code&gt;phar&lt;/code&gt;文件，&lt;code&gt;getimagesize()&lt;/code&gt;自动解析&lt;code&gt;phar&lt;/code&gt;，触发反序列化&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20181220103714.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x06-补丁分析&#34;&gt;0x06 补丁分析&lt;/h4&gt;
+
+&lt;p&gt;补丁位置：&lt;a href=&#34;https://github.com/PrestaShop/PrestaShop/pull/11287&#34;&gt;https://github.com/PrestaShop/PrestaShop/pull/11287&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20181220105842.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;官方对这两处漏洞做了修复，一方面是直接删除了&lt;code&gt;case &#39;image_size&#39;&lt;/code&gt;分支，一方面也严格检查了文件&lt;code&gt;mime&lt;/code&gt;类型，同时对&lt;code&gt;realpath&lt;/code&gt;检查时限制了必须是已存在的目录&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20181220110721.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20181220110815.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
+
+&lt;p&gt;这个漏洞触发流程并不复杂，几个限制也能简单地绕过，关键在于某些函数没有考虑到传入&lt;code&gt;phar://&lt;/code&gt;的情况，在解析该协议时产生反序列化漏洞，近段时间以来基于&lt;code&gt;phar&lt;/code&gt;的漏洞也在逐渐增加，希望能够引起开发者的重视。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>由PHPGGC理解PHP反序列化漏洞</title>
       <link>https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/</link>
       <pubDate>Mon, 08 Oct 2018 14:43:41 +0000</pubDate>
@@ -347,6 +532,8 @@ class WindowsPipes
 &lt;p&gt;&lt;a href=&#34;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&#34;&gt;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&#34;&gt;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
     </item>
     

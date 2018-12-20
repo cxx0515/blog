@@ -347,6 +347,8 @@ class WindowsPipes
 &lt;p&gt;&lt;a href=&#34;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&#34;&gt;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&#34;&gt;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
     </item>
     
