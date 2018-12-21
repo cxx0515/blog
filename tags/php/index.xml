@@ -178,7 +178,7 @@ Payload written to: out.phar
 
 &lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
 
-&lt;p&gt;这个漏洞触发流程并不复杂，几个限制也能简单地绕过，关键在于某些函数没有考虑到传入&lt;code&gt;phar://&lt;/code&gt;的情况，在解析该协议时产生反序列化漏洞，近段时间以来基于&lt;code&gt;phar&lt;/code&gt;的漏洞也在逐渐增加，希望能够引起开发者的重视。&lt;/p&gt;
+&lt;p&gt;这个漏洞触发流程并不复杂，几个限制也能简单地绕过，关键在于某些函数没有考虑到传入&lt;code&gt;phar://&lt;/code&gt;的情况，在解析该协议时产生反序列化漏洞。另外值得注意的是，&lt;code&gt;php.ini&lt;/code&gt;中&lt;code&gt;phar.readonly = On&lt;/code&gt;选项并不会影响&lt;code&gt;phar&lt;/code&gt;解析，没有关闭此选项(默认为&lt;code&gt;On&lt;/code&gt;)依旧会导致漏洞触发，近段时间以来基于&lt;code&gt;phar&lt;/code&gt;的漏洞也在逐渐增加，希望能够引起开发者的重视。&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
