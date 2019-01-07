@@ -6,7 +6,7 @@
     <description>Recent content in Directory Traversal on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
-    <copyright>Copyright © 2018 kylinking</copyright>
+    <copyright>Copyright © 2019 kylinking</copyright>
     <atom:link href="https://kylingit.com/tags/directory-traversal/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
@@ -133,11 +133,11 @@ def read_file(filename, bufsize=8192):
 &lt;li&gt;使用&lt;code&gt;path(&#39;download/&amp;lt;str:filename&amp;gt;&#39;, views.file_download),&lt;/code&gt;的情况&lt;/li&gt;
 &lt;/ul&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/EQBtS&#34; alt=&#34;str&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/EQBtS&#34; alt=&#34;str&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;可以看到当我们定义url的时候如果使用了&lt;code&gt;&amp;lt;path:filename&amp;gt;&lt;/code&gt;的形式，传入的包含&lt;code&gt;/&lt;/code&gt;的参数会被原样接收，当作完整参数交给路由部分处理，而定义为&lt;code&gt;&amp;lt;str:filename&amp;gt;&lt;/code&gt;(默认即为str)的时候，&lt;code&gt;/&lt;/code&gt;不被后端接收，这时候&lt;code&gt;xx.com/download/../1/1.txt&lt;/code&gt;这种路径下浏览器就根据url往上跳一级，也就是&lt;code&gt;xx.com/1/1.txt&lt;/code&gt;，django收到了的请求也是如此，于是django抛出一个找不到对应页面的异常&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/bZQdj&#34; alt=&#34;404&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/bZQdj&#34; alt=&#34;404&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;Django2.0的url虽然更改了写法，但依然向老版本兼容，兼容的办法就是用&lt;code&gt;re_path()&lt;/code&gt;方法代替&lt;code&gt;path()&lt;/code&gt;方法&lt;/p&gt;
 
@@ -255,9 +255,9 @@ except KeyError as e:
 
 &lt;p&gt;此时对应的regex值为&lt;code&gt;&#39;[^/]+&#39;&lt;/code&gt;，也就是不匹配&lt;code&gt;&#39;/&#39;&lt;/code&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/iVQBV&#34; alt=&#34;cache&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/iVQBV&#34; alt=&#34;cache&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/prryr&#34; alt=&#34;converter&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/prryr&#34; alt=&#34;converter&#34; /&gt;
 最终拼接成的正则为&lt;code&gt;&#39;^download\\/(?P&amp;lt;filename&amp;gt;[^/]+)$&#39;&lt;/code&gt;&lt;/p&gt;
 
 &lt;p&gt;这种情况下由于不匹配&lt;code&gt;/&lt;/code&gt;我们就无法传入&lt;code&gt;../&lt;/code&gt;之类的字符串，也就不能穿越目录&lt;/p&gt;

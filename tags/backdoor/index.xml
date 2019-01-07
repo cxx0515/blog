@@ -6,7 +6,7 @@
     <description>Recent content in Backdoor on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
-    <copyright>Copyright © 2018 kylinking</copyright>
+    <copyright>Copyright © 2019 kylinking</copyright>
     <atom:link href="https://kylingit.com/tags/backdoor/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
@@ -110,7 +110,7 @@ Tag功能更加复杂，操作&lt;code&gt;navbar&lt;/code&gt;模板，使用时�
 
 &lt;p&gt;我们先用&lt;code&gt;-tag&lt;/code&gt;指定一个&lt;code&gt;tag URL&lt;/code&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/yProo&#34; alt=&#34;tag&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/yProo&#34; alt=&#34;tag&#34; /&gt;&lt;/p&gt;
 
 &lt;p&gt;base64解码后的代码长这样&lt;/p&gt;
 
@@ -118,9 +118,12 @@ Tag功能更加复杂，操作&lt;code&gt;navbar&lt;/code&gt;模板，使用时�
 
 &lt;p&gt;当我们访问文章页面&lt;code&gt;http://127.0.0.1/vb3/showthread.php?p=1&lt;/code&gt;或访问私信链接&lt;code&gt;http://127.0.0.1/vb3/private.php?do=showpm&amp;amp;pmid=1&lt;/code&gt;时，就会加载php代码，在&lt;code&gt;datastore&lt;/code&gt;表生成一个“标签”——插入一个序列化后的&lt;code&gt;data&lt;/code&gt;字段，类似&lt;code&gt;a:2:{i:0;i:1517970003;i:1;i:1;}&lt;/code&gt;，其中最后的&lt;code&gt;i&lt;/code&gt;是一个计数器，值在随机数[0,6]之间，每次访问页面时i值递减1，当i减到0时就会触发代码，向我们设置的&lt;code&gt;tag URL&lt;/code&gt;发送用户名经过hex编码后的页面地址&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h&#34; alt=&#34;tag code1&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP&#34; alt=&#34;61646d696e.html&#34; /&gt;
-&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/qmk8S&#34; alt=&#34;61646d696e req&#34; /&gt;(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h&#34; alt=&#34;tag code1&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP&#34; alt=&#34;61646d696e.html&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/qmk8S&#34; alt=&#34;61646d696e req&#34; /&gt;
+(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)&lt;/p&gt;
 
 &lt;p&gt;同时&lt;code&gt;tag&lt;/code&gt;减至&lt;code&gt;-1&lt;/code&gt;并出于等待重置状态，当我们进行&lt;code&gt;reset&lt;/code&gt;操作时就会清空这条“标签”数据&lt;/p&gt;
 

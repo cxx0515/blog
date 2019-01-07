@@ -214,7 +214,7 @@ Tag功能更加复杂，操作<code>navbar</code>模板，使用时有这么几�
 
 <p>我们先用<code>-tag</code>指定一个<code>tag URL</code></p>
 
-<p><img src="http://ob5vt1k7f.qnssl.com/yProo" alt="tag" /></p>
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/yProo" alt="tag" /></p>
 
 <p>base64解码后的代码长这样</p>
 
@@ -222,9 +222,12 @@ Tag功能更加复杂，操作<code>navbar</code>模板，使用时有这么几�
 
 <p>当我们访问文章页面<code>http://127.0.0.1/vb3/showthread.php?p=1</code>或访问私信链接<code>http://127.0.0.1/vb3/private.php?do=showpm&amp;pmid=1</code>时，就会加载php代码，在<code>datastore</code>表生成一个“标签”——插入一个序列化后的<code>data</code>字段，类似<code>a:2:{i:0;i:1517970003;i:1;i:1;}</code>，其中最后的<code>i</code>是一个计数器，值在随机数[0,6]之间，每次访问页面时i值递减1，当i减到0时就会触发代码，向我们设置的<code>tag URL</code>发送用户名经过hex编码后的页面地址</p>
 
-<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h" alt="tag code1" />
-<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP" alt="61646d696e.html" />
-<img src="http://ob5vt1k7f.qnssl.com/qmk8S" alt="61646d696e req" />(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)</p>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h" alt="tag code1" /></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP" alt="61646d696e.html" /></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/qmk8S" alt="61646d696e req" />
+(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)</p>
 
 <p>同时<code>tag</code>减至<code>-1</code>并出于等待重置状态，当我们进行<code>reset</code>操作时就会清空这条“标签”数据</p>
 
@@ -311,7 +314,7 @@ e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
         <div class="copyright">
 
         
-            <a href="https://kylingit.com/license">Copyright © 2018 kylinking</a>
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
         
 
         </div>

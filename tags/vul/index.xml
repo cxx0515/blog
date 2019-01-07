@@ -6,7 +6,7 @@
     <description>Recent content in Vul on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
-    <copyright>Copyright © 2018 kylinking</copyright>
+    <copyright>Copyright © 2019 kylinking</copyright>
     <atom:link href="https://kylingit.com/tags/vul/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
@@ -983,7 +983,7 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2Zhjq&#34; alt=&#34;patch&#34; /&gt;
 其中一个重要操作就是对&lt;code&gt;destination&lt;/code&gt;参数进行了净化&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/CaZPF&#34; alt=&#34;cleanDestination&#34; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/CaZPF&#34; alt=&#34;cleanDestination&#34; /&gt;&lt;/p&gt;
 
 &lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
 
@@ -1357,7 +1357,7 @@ $output = $renderer-&amp;gt;renderRoot($form);
 
 &lt;p&gt;调用&lt;code&gt;doRender()&lt;/code&gt;方法&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;http://ob5vt1k7f.qnssl.com/6Htxw&#34; alt=&#34;doRender&#34; /&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/6Htxw&#34; alt=&#34;doRender&#34; /&gt;
 这个方法比较长，但是我们从中找到了几处执行&lt;code&gt;call_user_func()&lt;/code&gt;的地方，先看一下第三处&lt;/p&gt;
 
 &lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($elements[&#39;#post_render&#39;])) {
