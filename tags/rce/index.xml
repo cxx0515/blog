@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Rce on 诗与胡说</title>
+    <link>https://kylingit.com/tags/rce/index.xml</link>
+    <description>Recent content in Rce on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2019 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/rce/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>ThinkPHP 5.0.x 版本远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/thinkphp-5.0.x-%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Sat, 12 Jan 2019 14:18:20 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/thinkphp-5.0.x-%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;1月11日，&lt;code&gt;ThinkPHP&lt;/code&gt;官方发布新版本5.0.24，修复了一个安全问题，该问题可能导致&lt;code&gt;GetShell&lt;/code&gt;，这是&lt;code&gt;ThinkPHP&lt;/code&gt;近期的第二个高危漏洞，两个漏洞均是无需登录即可远程触发，危害极大。&lt;/p&gt;
+
+&lt;p&gt;公告：&lt;a href=&#34;https://blog.thinkphp.cn/910675&#34;&gt;https://blog.thinkphp.cn/910675&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;补丁：&lt;a href=&#34;https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003&#34;&gt;https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;5.0.x ~ 5.0.23&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;选择&lt;code&gt;5.0.22&lt;/code&gt;版本进行复现分析&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;我们知道可以通过&lt;code&gt;http://127.0.0.1/public/index.php?s=captcha&lt;/code&gt;的方式通过&lt;code&gt;s&lt;/code&gt;参数传递具体的路由，具体调用如下&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;index.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;require __DIR__ . &#39;/../thinkphp/start.php&#39;;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;start.php&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;App::run()-&amp;gt;send();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;跟进&lt;code&gt;run()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112152929.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到在进入&lt;code&gt;self::exec($dispatch, $config)&lt;/code&gt;前，&lt;code&gt;$dispatch&lt;/code&gt;的值是通过&lt;code&gt;$dispatch = self::routeCheck($request, $config)&lt;/code&gt;设置的，先进入&lt;code&gt;exec()&lt;/code&gt;方法看一下：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153147.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;exec()&lt;/code&gt;方法根据&lt;code&gt;$dispatch&lt;/code&gt;的值选择进入不同的分支，当进入&lt;code&gt;method&lt;/code&gt;分支时，调用&lt;code&gt;Request::instance()-&amp;gt;param()&lt;/code&gt;方法，跟进&lt;code&gt;param()&lt;/code&gt;，看到调用了&lt;code&gt;Request&lt;/code&gt;类的&lt;code&gt;method()&lt;/code&gt;方法 ：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$method = $this-&amp;gt;method(true);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;其中&lt;code&gt;method()&lt;/code&gt;方法就是补丁修改的位置，在这个方法中，如果&lt;code&gt;method&lt;/code&gt;等于&lt;code&gt;true&lt;/code&gt;，则调用&lt;code&gt;$this-&amp;gt;server()&lt;/code&gt;方法：：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;server()&lt;/code&gt;方法中调用&lt;code&gt;$this-&amp;gt;input&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154611.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着调用了&lt;code&gt;filterValue()&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154923.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而&lt;code&gt;filterValue()&lt;/code&gt;则调用了&lt;code&gt;call_user_func()&lt;/code&gt;方法，如果两个参数均可控，则会造成命令执行：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175411.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;回头看一下&lt;code&gt;$filter&lt;/code&gt;和&lt;code&gt;$value&lt;/code&gt;参数从哪里来：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;$filter&lt;/code&gt;：&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$filter = $this-&amp;gt;getFilter($filter, $default);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在&lt;code&gt;getFilter()&lt;/code&gt;中设置了&lt;code&gt;$filter&lt;/code&gt;值：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$filter = $filter ?: $this-&amp;gt;filter;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;也即由&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;决定&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;$value&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;code&gt;$value&lt;/code&gt;为第一个参数&lt;code&gt;$data&lt;/code&gt;，即为传入数组的值，由&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;决定&lt;/p&gt;
+
+&lt;p&gt;所以最终的问题就是如何从请求中传入&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;和&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;这两个值，构造&lt;code&gt;call_user_func()&lt;/code&gt;的参数触发漏洞。&lt;/p&gt;
+
+&lt;p&gt;回到最开始的&lt;code&gt;run()&lt;/code&gt;方法，其中：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$dispatch = self::routeCheck($request, $config);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;$dispatch&lt;/code&gt; 的值通过&lt;code&gt;routeCheck()&lt;/code&gt;方法设置，根据routeCheck()方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155407.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用了&lt;code&gt;check()&lt;/code&gt;方法：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155704.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;check()&lt;/code&gt;方法中根据不同的&lt;code&gt;$rules&lt;/code&gt;值返回不同的结果，而&lt;code&gt;$rules&lt;/code&gt;的值由&lt;code&gt;$method&lt;/code&gt;决定，&lt;code&gt;$method&lt;/code&gt;则由&lt;code&gt;$request-&amp;gt;method()&lt;/code&gt;返回值取小写获得，所以再次回到&lt;code&gt;$request-&amp;gt;method()&lt;/code&gt;方法，这次没有参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;如果&lt;code&gt;$method&lt;/code&gt;不等于&lt;code&gt;true&lt;/code&gt;，则会取配置选项&lt;code&gt;var_method&lt;/code&gt;，该值为&lt;code&gt;_method&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153759.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后调用&lt;code&gt;$this-&amp;gt;{$this-&amp;gt;method}($_POST);&lt;/code&gt;语句，此时假设我们控制了&lt;code&gt;$method&lt;/code&gt;的值，也就意味着可以调用&lt;code&gt;Request&lt;/code&gt;类的任意方法，而当调用构造方法&lt;code&gt;__construct()&lt;/code&gt;时，就可以覆盖&lt;code&gt;Request&lt;/code&gt;类的任意成员变量，也就是上面分析的&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;和&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;两个值，同时也可以覆盖&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;，直接指定了&lt;code&gt;check()&lt;/code&gt;方法中的&lt;code&gt;$method&lt;/code&gt;值。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-构造poc&#34;&gt;0x05 构造PoC&lt;/h3&gt;
+
+&lt;p&gt;首先要主动触发&lt;code&gt;Request&lt;/code&gt;类的构造函数，通过参数&lt;code&gt;_method=__construct&lt;/code&gt;传入，进入到&lt;code&gt;__construct&lt;/code&gt;方法，该方法把参数遍历并设置值：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163221.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;所以我们可以传入&lt;strong&gt;&lt;code&gt;filter=system&lt;/code&gt;&lt;/strong&gt;来设置&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;的值&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;此处&lt;code&gt;filter&lt;/code&gt;不是数组也可以，因为在&lt;code&gt;getFilter()&lt;/code&gt;中虽然对&lt;code&gt;filter&lt;/code&gt;是字符串的情况进行了按&lt;code&gt;,&lt;/code&gt;分割，但是传入一个值的情况下不影响最终的返回值&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;再看&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;，在调用&lt;code&gt;$this-&amp;gt;server(&#39;REQUEST_METHOD&#39;)&lt;/code&gt;时指定了键值，所以通过传入&lt;code&gt;server&lt;/code&gt;数组即可&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;server[REQUEST_METHOD]=id&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们注意到上面&lt;code&gt;check()&lt;/code&gt;方法，&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;$rules = isset(self::$rules[$method]) ? self::$rules[$method] : [];&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;它的返回值由&lt;code&gt;$rules&lt;/code&gt;决定，而&lt;code&gt;$rules&lt;/code&gt;的值取决于键值&lt;code&gt;$method&lt;/code&gt;，当我们指定&lt;code&gt;$method&lt;/code&gt;为&lt;code&gt;get&lt;/code&gt;时，可以正确获取到路由信息，从而通过&lt;code&gt;checkRoute()&lt;/code&gt;检查，此时我们通过指定&lt;strong&gt;&lt;code&gt;method=get&lt;/code&gt;&lt;/strong&gt;覆盖&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;的值即可&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112173807.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;最终的&lt;code&gt;PoC&lt;/code&gt;：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;_method=__construct&amp;amp;filter=system&amp;amp;method=get&amp;amp;server[REQUEST_METHOD]=id&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163746.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用栈如下图所示&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175904.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞本质上是一个覆盖漏洞，通过&lt;code&gt;_method&lt;/code&gt;覆盖了配置文件的&lt;code&gt;_method&lt;/code&gt;，导致可以访问&lt;code&gt;Request&lt;/code&gt;类的任意函数，而在&lt;code&gt;Request&lt;/code&gt;的构造函数中又创建了恶意的成员变量，导致后面的命令执行，整个漏洞利用可以说是非常巧妙了。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>
