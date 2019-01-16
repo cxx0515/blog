@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="ThinkPHP 5.0.x-5.0.23、5.1.x、5.2.x 全版本远程代码执行漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - ThinkPHP 5.0.x-5.0.23、5.1.x、5.2.x 全版本远程代码执行漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/thinkphp-5.0.x-5.0.235.1.x5.2.x-%E5%85%A8%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    ThinkPHP 5.0.x-5.0.23、5.1.x、5.2.x 全版本远程代码执行漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Sat Jan 12 2019 14:18:20 UTC">Jan 12, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>1月11日，<code>ThinkPHP</code>官方发布新版本<code>5.0.24</code>，在1月14日和15日又接连发布两个更新，这三次更新都修复了一个安全问题，该问题可能导致远程代码执行 ，这是<code>ThinkPHP</code>近期的第二个高危漏洞，两个漏洞均是无需登录即可远程触发，危害极大。</p>
+
+<ul>
+<li>公告</li>
+</ul>
+
+<p><a href="https://blog.thinkphp.cn/910675">https://blog.thinkphp.cn/910675</a></p>
+
+<p><a href="http://blog.nsfocus.net/thinkphp-5-0-5-0-23-rce/">http://blog.nsfocus.net/thinkphp-5-0-5-0-23-rce/</a></p>
+
+<h3 id="0x02-影响版本">0x02 影响版本</h3>
+
+<blockquote>
+<p>ThinkPHP 5.0.x ~ 5.0.23</p>
+
+<p>ThinkPHP 5.1.x ~ 5.1.31</p>
+
+<p>ThinkPHP 5.2.0beta1</p>
+</blockquote>
+
+<h3 id="0x03-环境搭建">0x03 环境搭建</h3>
+
+<p>选择<code>5.0.22</code>完整版和<code>5.1.31</code>版本进行复现分析</p>
+
+<h3 id="0x04-漏洞分析">0x04 漏洞分析</h3>
+
+<h4 id="一-5-0-x-版本">一、<code>5.0.x</code>版本</h4>
+
+<p>我们知道可以通过<code>http://127.0.0.1/public/index.php?s=index</code>的方式通过<code>s</code>参数传递具体的路由，具体调用如下</p>
+
+<p><code>index.php</code></p>
+
+<pre><code class="language-php">require __DIR__ . '/../thinkphp/start.php';
+</code></pre>
+
+<p><code>start.php</code></p>
+
+<pre><code class="language-php">App::run()-&gt;send();
+</code></pre>
+
+<p>跟进<code>run()</code>方法</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112152929.png" alt="" /></p>
+
+<p>可以看到在进入<code>self::exec($dispatch, $config)</code>前，<code>$dispatch</code>的值是通过</p>
+
+<p><code>$dispatch = self::routeCheck($request, $config)</code></p>
+
+<p>设置的，这时候如果<code>debug</code>模式开启，就会调用<code>$request-&gt;param()</code>，也就是下面<code>exec()</code>中会调用到的函数，经过下面分析就能发现，在<code>debug</code>模式开启时就能直接触发漏洞，原理是一样的。</p>
+
+<p>进入<code>exec()</code>方法看一下：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153147.png" alt="" /></p>
+
+<p><code>exec()</code>方法根据<code>$dispatch</code>的值选择进入不同的分支，当进入<code>method</code>分支时，调用<code>Request::instance()-&gt;param()</code>方法，跟进<code>param()</code>，看到调用了<code>Request</code>类的<code>method()</code>方法 ：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190114120946.png" alt="" /></p>
+
+<p>其中<code>method()</code>方法就是补丁修改的位置，在这个方法中，如果<code>method</code>等于<code>true</code>，则调用<code>$this-&gt;server()</code>方法：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png" alt="" /></p>
+
+<p>在<code>server()</code>方法中调用<code>$this-&gt;input</code>方法：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154611.png" alt="" /></p>
+
+<p>接着调用了<code>filterValue()</code>方法：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154923.png" alt="" /></p>
+
+<p>而<code>filterValue()</code>则调用了<code>call_user_func()</code>函数，如果两个参数均可控，则会造成命令执行：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175411.png" alt="" /></p>
+
+<p>此时的调用栈如下：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190114104035.png" alt="" /></p>
+
+<p>回头看一下<code>$filter</code>和<code>$value</code>参数从哪里来：</p>
+
+<ul>
+<li><code>$filter</code>：</li>
+</ul>
+
+<pre><code class="language-php">$filter = $this-&gt;getFilter($filter, $default);
+</code></pre>
+
+<p>在<code>getFilter()</code>中设置了<code>$filter</code>值：</p>
+
+<pre><code class="language-php">$filter = $filter ?: $this-&gt;filter;
+</code></pre>
+
+<p>也即由<code>$this-&gt;filter</code>决定</p>
+
+<ul>
+<li><code>$value</code></li>
+</ul>
+
+<p><code>$value</code>为第一个参数<code>$data</code>，即为传入数组的值，由<code>$this-&gt;server</code>决定</p>
+
+<p>所以最终的问题就是如何从请求中传入<code>$this-&gt;filter</code>和<code>$this-&gt;server</code>这两个值，构造<code>call_user_func()</code>的参数触发漏洞。</p>
+
+<p>回到最开始的<code>run()</code>方法，其中：</p>
+
+<pre><code class="language-php">$dispatch = self::routeCheck($request, $config);
+</code></pre>
+
+<p><code>$dispatch</code> 的值通过<code>routeCheck()</code>方法设置，跟进<code>routeCheck()</code>方法：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155407.png" alt="" /></p>
+
+<p>调用了<code>check()</code>方法：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155704.png" alt="" /></p>
+
+<p><code>check()</code>方法中根据不同的<code>$rules</code>值返回不同的结果，而<code>$rules</code>的值由<code>$method</code>决定，<code>$method</code>则由<code>$request-&gt;method()</code>返回值取小写获得，所以再次回到<code>$request-&gt;method()</code>方法，这次没有参数</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png" alt="" /></p>
+
+<p>如果<code>$method</code>不等于<code>true</code>，则会取配置选项<code>var_method</code>，该值为<code>_method</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153759.png" alt="" /></p>
+
+<p>然后调用<code>$this-&gt;{$this-&gt;method}($_POST);</code>语句，此时假设我们控制了<code>$method</code>的值，也就意味着可以调用<code>Request</code>类的任意方法，而当调用构造方法<code>__construct()</code>时，就可以覆盖<code>Request</code>类的任意成员变量，也就是上面分析的<code>$this-&gt;filter</code>和<code>$this-&gt;server</code>两个值，同时也可以覆盖<code>$this-&gt;method</code>，直接指定了<code>check()</code>方法中的<code>$method</code>值。</p>
+
+<h5 id="1-构造-poc">1. 构造<code>PoC</code></h5>
+
+<p>首先要主动触发<code>Request</code>类的构造函数，通过参数<code>_method=__construct</code>传入，进入到<code>__construct</code>方法，该方法把参数遍历并设置值：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163221.png" alt="" /></p>
+
+<p>所以我们可以传入<strong><code>filter=system</code></strong>来设置<code>$this-&gt;filter</code>的值</p>
+
+<blockquote>
+<p>此处<code>filter</code>不是数组也可以，因为在<code>getFilter()</code>中虽然对<code>filter</code>是字符串的情况进行了按<code>,</code>分割，但是传入一个值的情况下不影响最终的返回值</p>
+</blockquote>
+
+<p>再看<code>$this-&gt;server</code>，在调用<code>$this-&gt;server('REQUEST_METHOD')</code>时指定了键值，所以通过传入<code>server</code>数组即可</p>
+
+<p><strong><code>server[REQUEST_METHOD]=id</code></strong></p>
+
+<p>然后我们注意到上面<code>check()</code>方法，</p>
+
+<p><code>$rules = isset(self::$rules[$method]) ? self::$rules[$method] : [];</code></p>
+
+<p>它的返回值由<code>$rules</code>决定，而<code>$rules</code>的值取决于键值<code>$method</code>，当我们指定<code>$method</code>为<code>get</code>时，可以正确获取到路由信息，从而通过<code>checkRoute()</code>检查，此时我们通过指定<strong><code>method=get</code></strong>覆盖<code>$this-&gt;method</code>的值即可</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112173807.png" alt="" /></p>
+
+<p>最终的<code>PoC</code>：</p>
+
+<p><code>_method=__construct&amp;filter=system&amp;method=get&amp;server[REQUEST_METHOD]=id</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163746.png" alt="" /></p>
+
+<p>调用栈如下图所示</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175904.png" alt="" /></p>
+
+<h5 id="2-流程图">2. 流程图</h5>
+
+<p>整个漏洞的调用流程图如下所示：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116110438.png" alt="" /></p>
+
+<h4 id="二-5-1-x-5-2-x-版本">二、<code>5.1.x</code>/<code>5.2.x</code>版本</h4>
+
+<p>在<code>5.1</code>和<code>5.2</code>版本上，这个变量覆盖依然存在，我们同样可以通过<code>_method</code>参数覆盖<code>var_method</code>，并最终执行到<code>Request::input()</code>方法，通过<code>array_walk_recursive</code>把传入的数组传给回调函数<code>filterValue</code>，最终也是在<code>filterValue</code>中完成命令执行，具体调用如下</p>
+
+<p>当传入<code>_method</code>参数为<code>filter</code>时，覆盖了<code>Request</code>原始的<code>filter</code>成员，在经过路由检查进入<code>Request::instance()-&gt;param()</code>方法时，经过<code>$this-&gt;method(true)调用，</code>返回的<code>$method</code>值为<code>POST</code>，于是进入<code>post</code>分支，调用<code>input()</code>方法，由于第一个参数为空，返回我们传入的<code>post</code>值</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116095414.png" alt="" /></p>
+
+<p>然后把数组合并到<code>$this-&gt;param</code>，接着再次调用<code>input()</code>方法，经过<code>$this-&gt;getFilter</code>返回<code>filter</code>值，由于此时<code>$data</code>是一个数组(即<code>$this-&gt;param</code>)，于是进入<code>if</code>分支，经过<code>array_walk_recursive()</code>函数把数组传给回调函数<code>filterValue</code>，遍历键值后同样由<code>call_user_func</code>完成命令执行</p>
+
+<pre><code class="language-php">if (is_array($data)) {
+    array_walk_recursive($data, [$this, 'filterValue'], $filter);
+    if (version_compare(PHP_VERSION, '7.1.0', '&lt;')) {
+        // 恢复PHP版本低于 7.1 时 array_walk_recursive 中消耗的内部指针
+        $this-&gt;arrayReset($data);
+    }
+} else {
+    $this-&gt;filterValue($data, $name, $filter);
+}
+</code></pre>
+
+<h5 id="1-构造-poc-1">1. 构造<code>PoC</code></h5>
+
+<pre><code class="language-php">a=system&amp;b=id&amp;_method=filter
+</code></pre>
+
+<p>需要在程序加入忽略异常提示：</p>
+
+<pre><code class="language-php">error_reporting(0);
+</code></pre>
+
+<p>调用栈如图</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116095551.png" alt="" /></p>
+
+<h5 id="2-流程图-1">2. 流程图</h5>
+
+<p><code>5.1.x</code>版本的漏洞调用流程图如下所示：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116104019.png" alt="" /></p>
+
+<h3 id="0x05-补丁分析">0x05 补丁分析</h3>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190114134401.png" alt="" /></p>
+
+<p>在三个版本的更新补丁中，限制了<code>$this-&gt;method</code>为<code>GET</code>，<code>POST</code>，<code>DELETE</code>，<code>PUT</code>，<code>PATCH</code>这几个方法，因此不能从外部传入方法名再调用<code>Request</code>类的任意方法或是覆盖原有变量。</p>
+
+<p>补丁链接：</p>
+
+<ul>
+<li>5.0.24：</li>
+</ul>
+
+<p><a href="https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003">https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003</a></p>
+
+<ul>
+<li>5.1.31：</li>
+</ul>
+
+<p><a href="https://github.com/top-think/framework/commit/2454cebcdb6c12b352ac0acd4a4e6b25b31982e6">https://github.com/top-think/framework/commit/2454cebcdb6c12b352ac0acd4a4e6b25b31982e6</a></p>
+
+<ul>
+<li>5.2-beta.2：</li>
+</ul>
+
+<p><a href="https://github.com/top-think/framework/commit/7c24500e463704583e0778b7ec6efce607ddef5f">https://github.com/top-think/framework/commit/7c24500e463704583e0778b7ec6efce607ddef5f</a></p>
+
+<h3 id="0x06-总结">0x06 总结</h3>
+
+<p>这三漏洞本质上都是变量覆盖漏洞，在一处存在缺陷的方法中没有对用户输入做严格判断，通过传递<code>_method</code>参数覆盖了配置文件的<code>_method</code>，导致可以访问<code>Request</code>类的任意函数，而在<code>Request</code>的构造函数中又创建了恶意的成员变量，导致后面的命令执行；而在<code>5.1</code>和<code>5.2</code>版本中则是直接覆盖了过滤器，在忽略运行异常的情况下会触发漏洞，整个利用链可以说是非常巧妙了。</p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/thinkphp-5.0.x-5.0.235.1.x5.2.x-%E5%85%A8%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'ThinkPHP 5.0.x-5.0.23、5.1.x、5.2.x 全版本远程代码执行漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/thinkphp-5.0.x-5.0.235.1.x5.2.x-%E5%85%A8%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+
