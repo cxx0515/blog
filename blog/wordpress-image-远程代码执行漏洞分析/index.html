@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Wordpress Image 远程代码执行漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Wordpress Image 远程代码执行漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Wordpress Image 远程代码执行漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Thu Feb 21 2019 14:45:49 UTC">Feb 21, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>2月20日，RIPS披露了<code>Wordpress</code>内核<code>Image</code>模块相关的一个高危漏洞，该漏洞由目录穿越和文件包含组成，最终可导致远程代码执行，目前还没有PoC披露。</p>
+
+<p>从<code>RIPS</code>描述的细节来看，漏洞出现在<code>wordpress</code>编辑图片时，由于没有过滤<code>Post Meta</code> 值导致可以修改数据库中<code>wp_postmeta</code>表的任意字段，而在加载本地服务器上的文件时没有对路径进行过滤，导致可以传递目录穿越参数，最终保存图片时可以保存至任意目录。当某个主题include了某目录下的文件时，便可以造成代码执行。</p>
+
+<h3 id="0x02-环境搭建">0x02 环境搭建</h3>
+
+<p>该漏洞影响<code>4.9.9</code>版本以下的<code>wordpress</code>程序，<code>4.9.9</code>引入了过滤函数，对用户输入的<code>post data</code>进行了检查，不合法的参数被过滤，主要修改如下图：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221162810.png" alt="" /></p>
+
+<p>值得注意的是，在安装低版本时，安装过程中会自动更新核心文件，因此旧版本的<code>wp-admin/includes/post.php</code>会更新至最新版本，所以安装过程中可以删除自动更新相关模块，或者离线安装。</p>
+
+<h3 id="0x03-漏洞分析">0x03 漏洞分析</h3>
+
+<h4 id="漏洞一-数据覆盖">漏洞一：数据覆盖</h4>
+
+<p>漏洞出现在wordpress媒体库裁剪图片的过程，当我们上传图片到媒体库时，图片会被保存至<code>wp-content/uploads/yyyy/mm</code>目录，同时会在数据库中wp_postmeta表插入两个值，分别是<code>_wp_attached_file</code>和<code>_wp_attachment_metadata</code>，保存了图片位置和属性相关的序列化信息。</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221164008.png" alt="" /></p>
+
+<p>当我们修改图片属性（例如修改标题或者说明）的时候，<code>admin-media-Edit more details</code> 会调用<code>wp-admin/includes/post.php</code>的<code>edit_post()</code>方法，该方法的参数全部来自于<code>$_POST</code>，没有进行过滤</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221163553.png" alt="" /></p>
+
+<p>然后会调用到<code>update_post_meta()</code>方法，该方法根据<code>$post_ID</code>修改<code>post meta field</code>，接着调用<code>update_metadata()</code>更新<code>meta</code>数据，完成之后更新<code>post</code>数据，调用<code>wp_update_post()</code>方法</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221165642.png" alt="" /></p>
+
+<p>在<code>wp_update_post()</code>方法中，如果<code>post_type=attachment</code>，则进入<code>wp_insert_attachment()</code>，接着调用<code>wp_insert_post()</code>，在<code>wp_insert_post()</code>方法中判断了<code>meta_input</code>参数，如果传入了该参数，就遍历数组用来更新<code>post_meta</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221172343.png" alt="" /></p>
+
+<p>进入<code>update_post_meta()</code>，调用<code>update_metadata()</code>，在<code>update_metadata()</code>方法中对数据库进行更新操作，而在整个过程中对键值没有任何过滤，意味着我们可以传入指定的key来设置它的值，调用栈如下图所示</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221165806.png" alt="" /></p>
+
+<p>于是构造数据包更新数据库中<code>_wp_attached_file</code>的值，插入一个包含<code>../</code>的值，以便在下面触发目录遍历。</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221183004.png" alt="" /></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221174154.png" alt="" /></p>
+
+<p>这是第一个漏洞——通过参数覆盖了数据库数据，在补丁处正是对<code>meta_input</code>这个参数做了过滤，如果包含则通过对比<code>array</code>舍弃该参数。</p>
+
+<h4 id="漏洞二-目录遍历">漏洞二：目录遍历</h4>
+
+<p>接着寻找一个获取<code>_wp_attached_file</code>的值并进行了文件操作相关的方法。</p>
+
+<p>在<code>wordpress</code>的<code>图片裁剪</code>功能中，有这样的功能：</p>
+
+<ol>
+<li>图片存在于<code>wp-content\uploads\yyyy\mm</code>目录，则从该目录读取图片，修改尺寸后另存为一张图片；</li>
+<li>如果图片在该目录不存在，则通过<strong>本地</strong>服务器下载该图片，如从<code>http://127.0.0.1/wordpress/wp-content/uploads/2019/02/admin.jpeg</code>下载，裁剪后重新保存。</li>
+</ol>
+
+<p>这个功能是为了方便一些插件动态加载图片时使用。</p>
+
+<p>然而因为本地读取和通过<code>url</code>读取的差异性，导致可以构造一个带参数的<code>url</code>，如<code>http://127.0.0.1/wordpress/wp-content/uploads/2019/02/admin.jpeg?1.png</code>，在本地读取时会发现找不到<code>admin.jpeg?1.png</code>，而远程获取时会忽略<code>?</code>后面的参数部分，照样获取到<code>admin.jpeg</code>，裁剪后保存。如果构造的url包含路径穿越，例如<code>http://127.0.0.1/wordpress/wp-content/uploads/2019/02/admin.jpeg?../../1/1.png</code>，<code>wordpress</code>将裁减后的图片保存至指定的文件夹，当图片包含恶意代码被引用时，就可能造成代码执行。</p>
+
+<p>图片裁剪功能在<code>wp_crop_image()</code>方法中，但是该方法不能在页面中触发，需要手动更改相应的<code>action</code></p>
+
+<p>首先在页面裁剪图片，并点击保存</p>
+
+<p><img src="E:DocumentBlogcontentblogassets1550743458074.png" alt="1550743458074" /></p>
+
+<p>抓取数据包：</p>
+
+<pre><code>action=image-editor&amp;_ajax_nonce=4c354c778b&amp;postid=5&amp;history=%5B%7B%22c%22%3A%7B%22x%22%3A0%2C%22y%22%3A5%2C%22w%22%3A347%2C%22h%22%3A335%7D%7D%5D&amp;target=all&amp;context=edit-attachment&amp;do=save
+</code></pre>
+
+<p><code>post body</code>包含了相应的<code>action</code>和<code>context</code>，以及供还原文件的历史文件大小，此处需要修改<code>action</code>为<code>crop-image</code>以便触发<code>wp_crop_image()</code>方法，相关调用如下</p>
+
+<p>在<code>wp-admin/admin-ajax.php</code>定义了裁剪图片的操作</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221180906.png" alt="" /></p>
+
+<p>判断了用户权限和<code>action</code>名称后调用<code>do_action</code>，最终在<code>apply_filters()</code>中进入<code>wp_crop_image()</code>:</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221181053.png" alt="" /></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221181232.png" alt="" /></p>
+
+<p>进入<code>wp_ajax_crop_image()</code>方法，在这个方法中进行了多项判断，全部符合才能进入裁剪图片方法，如下图注释所示</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221181644.png" alt="" /></p>
+
+<p>首先计算<code>nonce</code>和<code>expected</code>值并对比，如果不一致就验证不通过，相关方法是<code>check_ajax_referer()</code>&ndash;&gt;<code>wp_verify_nonce()</code>。注意到传入<code>check_ajax_referer()</code>的<code>$attachment_id</code>参数，该参数取自<code>$_POST['id']</code>，并参与后面的<code>expected</code>计算，因此当我们直接更改<code>action=crop-image</code>是无法通过校验的，需要传入<code>id</code>的，即为<code>postid</code>的值。</p>
+
+<p>在进入<code>wp_crop_image()</code>时还需要传递裁剪后的图片宽度和高度信息，所以还需要增加c<code>ropDetails[dst_width]</code>和<code>cropDetails[dst_height]</code>两个参数。</p>
+
+<p><code>wp_crop_image()</code>方法如下</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221183701.png" alt="" /></p>
+
+<p>从数据库取出<code>_wp_attached_file</code>后并没有做检查，形如<code>2019/02/admin.jpeg?../../1.png</code>的文件无法被找到，于是进入<code>_load_image_to_edit_path()</code>通过<code>wp_get_attachment_url()</code>方法生成本地<code>url</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221184123.png" alt="" /></p>
+
+<p>随后实例化一个<code>WP_Image_Editor</code>用来裁剪并生成裁剪后的图片，之后调用<code>wp_mkdir_p()</code>方法创建文件夹，含有<code>../</code>的参数进入该方法后同样没有经过过滤，最终执行到<code>mkdir</code>创建文件夹</p>
+
+<pre><code class="language-php">mkdir( $target, $dir_perms, true)
+</code></pre>
+
+<p>此时的<code>target</code>值是这个样子，穿越目录后在<code>2019</code>目录下创建<code>1</code>文件夹，并生成<code>cropped-1.png</code>文件</p>
+
+<pre><code>D:\phpStudy\PHPTutorial\WWW\wordpress-4.9.8/wp-content/uploads/2019/02/admin.jpeg?../../../1
+</code></pre>
+
+<p>注意：此处有一个坑，我们观察上面的<code>url</code>，在<code>mkdir</code>的时候会把<code>admin.jpeg?../</code>作为一个目录，而在Windows下的目录不能出现<code>?</code>，所以上面的payload在Windows下无法成功，经过测试，<code>#</code>可以存在于Windows目录，因此在Windows下的payload如下所示：</p>
+
+<pre><code>meta_input[_wp_attached_file]=2019/02/admin.jpeg#../../../1/1.png
+</code></pre>
+
+<p>写入数据库中即为<code>2019/02/admin.jpeg#../../../1/1.png</code></p>
+
+<p>最终构造第二个数据包触发裁剪图片并保存：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221182857.png" alt="" /></p>
+
+<p>最终在指定目录下生成裁剪后的图片文件，以<code>cropped-</code>作为前缀</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221232341.png" alt="" /></p>
+
+<p>这样子我们可以制作一张图片马，在主题文件夹下生成，或者指定任意目录，被<code>include</code>后即可造成代码执行。</p>
+
+<h3 id="0x04-poc">0x04 PoC</h3>
+
+<p>见上面分析</p>
+
+<h3 id="0x05-总结">0x05 总结</h3>
+
+<p>这个漏洞主要成因在于我们可以通过参数传递任意值覆盖数据库中的字段，从而引入<code>../</code>构成目录穿越，在裁剪图片后保存文件时并没有对文件目录做检查，造成目录穿越漏洞，最终可以写入恶意图片被包含或者通过<code>Imagick</code>漏洞触发远程代码执行，利用链挺巧妙，值得学习。</p>
+
+<p>参考：</p>
+
+<ul>
+<li><a href="https://blog.ripstech.com/2019/wordpress-image-remote-code-execution/">https://blog.ripstech.com/2019/wordpress-image-remote-code-execution/</a></li>
+<li><a href="https://github.com/WordPress/WordPress/commit/43bdb0e193955145a5ab1137890bb798bce5f0d2#diff-c3d5c535db5622f3b0242411ee5f9dfd">https://github.com/WordPress/WordPress/commit/43bdb0e193955145a5ab1137890bb798bce5f0d2#diff-c3d5c535db5622f3b0242411ee5f9dfd</a></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'Wordpress Image 远程代码执行漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

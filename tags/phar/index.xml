@@ -133,7 +133,7 @@
 
 &lt;h5 id=&#34;一-生成phar文件&#34;&gt;一、生成phar文件&lt;/h5&gt;
 
-&lt;p&gt;我们利用之前介绍过的&lt;a href=&#34;https://github.com/s-n-t/phpggc&#34;&gt;PHARGCC&lt;/a&gt;工具生成一个包含&lt;code&gt;POP&lt;/code&gt;链的&lt;code&gt;phar&lt;/code&gt;文件，选择&lt;code&gt;Monolog/RCE1&lt;/code&gt;，看一下这个&lt;code&gt;gadget&lt;/code&gt;的使用&lt;/p&gt;
+&lt;p&gt;我们利用之前介绍过的&lt;a href=&#34;https://github.com/s-n-t/phpggc&#34;&gt;PHARGGC&lt;/a&gt;工具生成一个包含&lt;code&gt;POP&lt;/code&gt;链的&lt;code&gt;phar&lt;/code&gt;文件，选择&lt;code&gt;Monolog/RCE1&lt;/code&gt;，看一下这个&lt;code&gt;gadget&lt;/code&gt;的使用&lt;/p&gt;
 
 &lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;&amp;gt; pharggc -i Monolog/RCE1
 Name           : Monolog/RCE1
