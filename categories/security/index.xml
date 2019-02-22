@@ -146,6 +146,32 @@
 
 &lt;p&gt;这样子我们可以制作一张图片马，在主题文件夹下生成，或者指定任意目录，被&lt;code&gt;include&lt;/code&gt;后即可造成代码执行。&lt;/p&gt;
 
+&lt;h3 id=&#34;0x04-关于mkdir&#34;&gt;0x04 关于mkdir&lt;/h3&gt;
+
+&lt;p&gt;在漏洞调试过程中最后一步&lt;code&gt;$editor-&amp;gt;save( $dst_file )&lt;/code&gt;过程，最终执行到的是&lt;code&gt;wp_mkdir_p()&lt;/code&gt;方法中的&lt;code&gt;mkdir&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;mkdir( $target, $dir_perms, true)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;关于&lt;code&gt;mkdir()&lt;/code&gt;函数，需要注意的是&lt;code&gt;mode&lt;/code&gt;参数和&lt;code&gt;recursive&lt;/code&gt;参数，分别代表了创建的文件夹权限和是否递归创建，这两个参数的不同导致在&lt;code&gt;Linux&lt;/code&gt;平台和&lt;code&gt;Windows&lt;/code&gt;平台的结果不一致&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222093526.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在上面漏洞链中，进入最终&lt;code&gt;mkdir()&lt;/code&gt;的参数是这样的&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;mkdir( &#39;D:\phpStudy\PHPTutorial\WWW\wordpress-4.9.8/wp-content/uploads/2019/02/admin.jpeg?../../../1&#39;, 511, true)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222094608.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;单独把&lt;code&gt;path&lt;/code&gt;拿出来测试，在第三个参数&lt;code&gt;recursive&lt;/code&gt;分别为&lt;code&gt;true&lt;/code&gt;和&lt;code&gt;false&lt;/code&gt;时，测试结果如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222095108.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这里导致结果不一致是因为Windows下文件夹对&lt;code&gt;?&lt;/code&gt;的处理，当指定递归创建模式时，系统会尝试创建名为&lt;code&gt;admin.jpeg?..&lt;/code&gt;的目录，又因为Windows下的目录不能含有&lt;code&gt;?&lt;/code&gt;，因此&lt;code&gt;recursive=true&lt;/code&gt;时是创建失败的，导致&lt;code&gt;wordpress&lt;/code&gt;最终生成图片也无法成功。而在Linux下可以没有&lt;code&gt;?&lt;/code&gt;的限制，&lt;code&gt;payload&lt;/code&gt;可以成功触发。&lt;/p&gt;
+
+&lt;p&gt;要想在&lt;code&gt;Windows&lt;/code&gt;下利用漏洞，一个技巧是利用&lt;code&gt;#&lt;/code&gt;字符，&lt;code&gt;#&lt;/code&gt;在&lt;code&gt;url&lt;/code&gt;中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在&lt;code&gt;wordpress&lt;/code&gt;中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。&lt;/p&gt;
+
 &lt;h3 id=&#34;0x04-poc&#34;&gt;0x04 PoC&lt;/h3&gt;
 
 &lt;p&gt;见上面分析&lt;/p&gt;

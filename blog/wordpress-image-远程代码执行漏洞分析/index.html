@@ -250,6 +250,32 @@
 
 <p>这样子我们可以制作一张图片马，在主题文件夹下生成，或者指定任意目录，被<code>include</code>后即可造成代码执行。</p>
 
+<h3 id="0x04-关于mkdir">0x04 关于mkdir</h3>
+
+<p>在漏洞调试过程中最后一步<code>$editor-&gt;save( $dst_file )</code>过程，最终执行到的是<code>wp_mkdir_p()</code>方法中的<code>mkdir</code>函数</p>
+
+<pre><code class="language-php">mkdir( $target, $dir_perms, true)
+</code></pre>
+
+<p>关于<code>mkdir()</code>函数，需要注意的是<code>mode</code>参数和<code>recursive</code>参数，分别代表了创建的文件夹权限和是否递归创建，这两个参数的不同导致在<code>Linux</code>平台和<code>Windows</code>平台的结果不一致</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222093526.png" alt="" /></p>
+
+<p>在上面漏洞链中，进入最终<code>mkdir()</code>的参数是这样的</p>
+
+<pre><code class="language-php">mkdir( 'D:\phpStudy\PHPTutorial\WWW\wordpress-4.9.8/wp-content/uploads/2019/02/admin.jpeg?../../../1', 511, true)
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222094608.png" alt="" /></p>
+
+<p>单独把<code>path</code>拿出来测试，在第三个参数<code>recursive</code>分别为<code>true</code>和<code>false</code>时，测试结果如下</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222095108.png" alt="" /></p>
+
+<p>这里导致结果不一致是因为Windows下文件夹对<code>?</code>的处理，当指定递归创建模式时，系统会尝试创建名为<code>admin.jpeg?..</code>的目录，又因为Windows下的目录不能含有<code>?</code>，因此<code>recursive=true</code>时是创建失败的，导致<code>wordpress</code>最终生成图片也无法成功。而在Linux下可以没有<code>?</code>的限制，<code>payload</code>可以成功触发。</p>
+
+<p>要想在<code>Windows</code>下利用漏洞，一个技巧是利用<code>#</code>字符，<code>#</code>在<code>url</code>中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在<code>wordpress</code>中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。</p>
+
 <h3 id="0x04-poc">0x04 PoC</h3>
 
 <p>见上面分析</p>
