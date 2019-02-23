@@ -7,8 +7,175 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Thu, 21 Feb 2019 14:45:49 +0000</lastBuildDate>
+    <lastBuildDate>Fri, 22 Feb 2019 22:19:04 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2019-003&#34;&gt;https://www.drupal.org/sa-core-2019-003&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Drupal 8.6.x &amp;lt; 8.6.10&lt;/li&gt;
+&lt;li&gt;Drupal 8.5.x &amp;lt; 8.5.11&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;影响条件&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;站点启用了&lt;code&gt;Drupal 8&lt;/code&gt;核心&lt;code&gt;RESTful&lt;/code&gt; Web服务&lt;code&gt;(rest)&lt;/code&gt;模块，并允许&lt;code&gt;PATCH&lt;/code&gt;或&lt;code&gt;POST&lt;/code&gt;请求&lt;/li&gt;
+&lt;li&gt;站点启用了另一个&lt;code&gt;Web&lt;/code&gt;服务模块，如&lt;code&gt;Drupal 8&lt;/code&gt;中的&lt;code&gt;JSON:API&lt;/code&gt;，或&lt;code&gt;Drupal 7&lt;/code&gt;中的&lt;code&gt;Services&lt;/code&gt;或&lt;code&gt;RESTful Web Services&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;0x03-web-services&#34;&gt;0x03 Web Services&lt;/h3&gt;
+
+&lt;p&gt;Drupal框架的&lt;code&gt;RESTful&lt;/code&gt; Web服务是为了更方便地访问Drupal站点的资源，支持常规的api请求，如GET / POST / PATCH / DELETE（出于一些原因不支持PUT ）&lt;/p&gt;
+
+&lt;p&gt;更详细的介绍可以参考 &lt;a href=&#34;https://www.drupal.org/docs/8/core/modules/rest/overview&#34;&gt;https://www.drupal.org/docs/8/core/modules/rest/overview&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞影响REST Web Services，所以首先在Drupal 8中开启rest服务&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;下载&lt;a href=&#34;https://www.drupal.org/project/restui&#34;&gt;REST UI&lt;/a&gt;并解压至&lt;code&gt;core/modules/&lt;/code&gt;目录&lt;/li&gt;
+&lt;li&gt;在&lt;code&gt;admin-config-extend&lt;/code&gt;勾选Web services中的&lt;code&gt;RESTful Web Services&lt;/code&gt;和&lt;code&gt;REST UI&lt;/code&gt;并安装，drupal会自动安装&lt;code&gt;Serialization&lt;/code&gt; ，最好也安装&lt;code&gt;HAL&lt;/code&gt;扩展，后续会使用&lt;code&gt;hal_json&lt;/code&gt;数据格式&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;HAL(Hypertext Application Language)是一个简单的API数据格式.它以xml和json为基础，让API变的可读性更高，并且具有discoverable的特性.当我们拿到HAL API返回的数据时，我们将会很容易根据当前数据查找与其相关的数据。在Micro Service API设计中，倾向于采用HAL这种类型的数据交换格式.&lt;/p&gt;
+
+&lt;p&gt;HAL的出现，主要弥补plain json在API交互中的不足.让plain json更具有描述性，更具有导航性.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;ol&gt;
+&lt;li&gt;开启权限。在&lt;code&gt;admin-config-services-rest&lt;/code&gt;开启匿名用户注册权限&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222161612.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;根据补丁位置判断漏洞点在&lt;code&gt;unserialize&lt;/code&gt;部分，因此这是一个反序列化漏洞。补丁主要修复了&lt;code&gt;core/modules/link/src/Plugin/Field/FieldType/LinkItem.php&lt;/code&gt;和&lt;code&gt;core/lib/Drupal/Core/Field/Plugin/Field/FieldType/MapItem.php&lt;/code&gt;两个文件，这两处应该都是能触发的，这里选择&lt;code&gt;LinkItem&lt;/code&gt;进行分析&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222160822.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222160859.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;看一下&lt;code&gt;setValue()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222161825.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到简单判断了&lt;code&gt;$values[&#39;options&#39;]&lt;/code&gt;后直接进行了反序列化，没有进行数据合法性校验，如果能够控制&lt;code&gt;$values[&#39;options&#39;]&lt;/code&gt;就能直接触发漏洞&lt;/p&gt;
+
+&lt;p&gt;接下来梳理一下数据传递过程，以及如何进入到&lt;code&gt;setValue()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;通过rest接口注册用户时，发送的数据包类似这个样子&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222164151.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;(图片来源：&lt;a href=&#34;https://areatype.com/blog/register-user-drupal-8-rest-api&#34;&gt;https://areatype.com/blog/register-user-drupal-8-rest-api&lt;/a&gt;)&lt;/p&gt;
+
+&lt;p&gt;在进入&lt;code&gt;drupal&lt;/code&gt;后，由&lt;code&gt;RequestHandler-&amp;gt;handle()&lt;/code&gt;方法处理请求，进入&lt;code&gt;deserialize()&lt;/code&gt;方法，然后调用&lt;code&gt;$this-&amp;gt;serializer-&amp;gt;denormalize()&lt;/code&gt;反序列化出相应的类，此时的&lt;code&gt;$unserialized&lt;/code&gt;为&lt;code&gt;Serializer&lt;/code&gt;类&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222171019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222171158.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后调用&lt;code&gt;Serializer-&amp;gt;denormalize()&lt;/code&gt;方法，在该方法中首先通过&lt;code&gt;getDenormalizer()&lt;/code&gt;获得一个匹配的&lt;code&gt;denormalizer&lt;/code&gt;，才能进行后续的&lt;code&gt;denormalize()&lt;/code&gt;操作，匹配的过程则是和当前类的&lt;code&gt;supportedInterfaceOrClass&lt;/code&gt;变量比较，返回最终可以进行&lt;code&gt;denormalize()&lt;/code&gt;操作的类&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($normalizer = $this-&amp;gt;getDenormalizer($data, $type, $format, $context)) {
+    return $normalizer-&amp;gt;denormalize($data, $type, $format, $context);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;此处跟入比较深，可以略过，总之返回匹配的类是&lt;code&gt;ContentEntityNormalizer&lt;/code&gt;，跟进它的&lt;code&gt;denormalize()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$typed_data_ids = $this-&amp;gt;getTypedDataIds($data[&#39;_links&#39;][&#39;type&#39;], $context);
+$entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity_type&#39;]);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个方法中根据 &lt;code&gt;_links.type&lt;/code&gt; 的值取出&lt;code&gt;typed data IDs&lt;/code&gt;，&lt;code&gt;_links.type&lt;/code&gt; 值即是&lt;code&gt;post json&lt;/code&gt;部分的
+&lt;code&gt;&amp;quot;type&amp;quot;: {
+      &amp;quot;href&amp;quot;: &amp;quot;http://127.0.0.1/drupal-8.6.5/rest/type/user/user&amp;quot;
+}&lt;/code&gt;
+      值，这个值决定了后面获取到的&lt;code&gt;Entity&lt;/code&gt;实体，通过&lt;code&gt;getTypeInternalIds()&lt;/code&gt;方法取出所有预定义的类型并返回相应的&lt;code&gt;URI&lt;/code&gt;，然后才获取对应的实体类型定义&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222173004.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着会调用这个实体的&lt;code&gt;denormalizeFieldData()&lt;/code&gt;方法，在&lt;code&gt;denormalizeFieldData()&lt;/code&gt;中调用相应的&lt;code&gt;denormalize()&lt;/code&gt;方法，最终调用到这个&lt;code&gt;field_item&lt;/code&gt;的&lt;code&gt;setValue()&lt;/code&gt;。因此为了触发到存在漏洞的&lt;code&gt;setValue()&lt;/code&gt;，我们需要让&lt;code&gt;field_item&lt;/code&gt;为&lt;code&gt;LinkItem&lt;/code&gt;类或者&lt;code&gt;MapItem&lt;/code&gt;类，这个赋值过程在获取到相应实体后的&lt;code&gt;getStorage()-&amp;gt;create()&lt;/code&gt;过程：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$entity = $this-&amp;gt;entityManager-&amp;gt;getStorage($typed_data_ids[&#39;entity_type&#39;])-&amp;gt;create($values);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;调用流程&lt;code&gt;create()-&amp;gt;doCreate()-&amp;gt;initFieldValues()&lt;/code&gt;，此时的调用栈是这样的：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223102241.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;现在的问题就是找到相应的&lt;code&gt;Entity&lt;/code&gt;，在其中实体化了&lt;code&gt;LinkItem&lt;/code&gt;类或&lt;code&gt;MapItem&lt;/code&gt;类，通过查找，在&lt;code&gt;core/modules&lt;/code&gt;中这样的类有两个，&lt;code&gt;Shortcut&lt;/code&gt;和&lt;code&gt;MenuLinkContent&lt;/code&gt;，这里选择&lt;code&gt;MenuLinkContent&lt;/code&gt;来触发，此时的&lt;code&gt;_links.type&lt;/code&gt;为&lt;code&gt;http://127.0.0.1/drupal-8.6.5/rest/type/menu_link_content/menu_link_conten&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223103404.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此最后的数据包类似这个样子，注意&lt;code&gt;link&lt;/code&gt;必须为数组&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &amp;quot;link&amp;quot;: [
+    {
+      &amp;quot;options&amp;quot;: payload
+    }
+  ],
+  &amp;quot;_links&amp;quot;: {
+    &amp;quot;type&amp;quot;: {
+      &amp;quot;href&amp;quot;: &amp;quot;http://127.0.0.1/drupal-8.6.5/rest/type/menu_link_content/menu_link_content&amp;quot;
+    }
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;发送数据包成功触发到&lt;code&gt;setValue()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223103837.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接下来就是寻找内置的风险类了，进入&lt;code&gt;setValue()&lt;/code&gt;后通过&lt;code&gt;unserialize()&lt;/code&gt;执行代码。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h3&gt;
+
+&lt;p&gt;在之前介绍&lt;code&gt;phpggc&lt;/code&gt;工具的时候总结了&lt;code&gt;Drupal&lt;/code&gt;中存在风险的三个类，分别可以导致远程代码执行、任意文件写入和任意文件删除，这三个类分别是&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;FnStream&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;FileCookieJar&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;WindowsPipes&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;具体参考：&lt;a href=&#34;https://kylingit.com/blog/由phpggc理解php反序列化漏洞/&#34;&gt;由phpggc理解php反序列化漏洞&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;同样地，借助&lt;code&gt;phpggc&lt;/code&gt;直接生成序列化数据：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-bash&#34;&gt;root@localhost:/opt/phpggc# ./phpggc guzzle/rce1 assert &#39;phpinfo()&#39; -j
+&amp;quot;O:24:\&amp;quot;GuzzleHttp\\Psr7\\FnStream\&amp;quot;:2:{s:33:\&amp;quot;\u0000GuzzleHttp\\Psr7\\FnStream\u0000methods\&amp;quot;;a:1:{s:5:\&amp;quot;close\&amp;quot;;a:2:{i:0;O:23:\&amp;quot;GuzzleHttp\\HandlerStack\&amp;quot;:3:{s:32:\&amp;quot;\u0000GuzzleHttp\\HandlerStack\u0000handler\&amp;quot;;s:9:\&amp;quot;phpinfo()\&amp;quot;;s:30:\&amp;quot;\u0000GuzzleHttp\\HandlerStack\u0000stack\&amp;quot;;a:1:{i:0;a:1:{i:0;s:6:\&amp;quot;assert\&amp;quot;;}}s:31:\&amp;quot;\u0000GuzzleHttp\\HandlerStack\u0000cached\&amp;quot;;b:0;}i:1;s:7:\&amp;quot;resolve\&amp;quot;;}}s:9:\&amp;quot;_fn_close\&amp;quot;;a:2:{i:0;r:4;i:1;s:7:\&amp;quot;resolve\&amp;quot;;}}&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;发送payload&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223111019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞触发点并不复杂，但是调用链相当深，利用条件则是开启了&lt;code&gt;REST Web services&lt;/code&gt;，并且允许用户通过&lt;code&gt;rest api&lt;/code&gt;注册，在一些功能比较齐全的站点或者方便插件调用时可能会开启，影响面减小了不少，但并不影响这依然是个非常巧妙的漏洞，也进一步说明了开发时考虑不周全的话，风险点就在那里，被利用只是时间问题。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>Wordpress Image 远程代码执行漏洞分析</title>
@@ -173,11 +340,11 @@
 
 &lt;p&gt;要想在&lt;code&gt;Windows&lt;/code&gt;下利用漏洞，一个技巧是利用&lt;code&gt;#&lt;/code&gt;字符，&lt;code&gt;#&lt;/code&gt;在&lt;code&gt;url&lt;/code&gt;中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在&lt;code&gt;wordpress&lt;/code&gt;中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。&lt;/p&gt;
 
-&lt;h3 id=&#34;0x04-poc&#34;&gt;0x04 PoC&lt;/h3&gt;
+&lt;h3 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h3&gt;
 
 &lt;p&gt;见上面分析&lt;/p&gt;
 
-&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
 
 &lt;p&gt;这个漏洞主要成因在于我们可以通过参数传递任意值覆盖数据库中的字段，从而引入&lt;code&gt;../&lt;/code&gt;构成目录穿越，在裁剪图片后保存文件时并没有对文件目录做检查，造成目录穿越漏洞，最终可以写入恶意图片被包含或者通过&lt;code&gt;Imagick&lt;/code&gt;漏洞触发远程代码执行，利用链挺巧妙，值得学习。&lt;/p&gt;
 
@@ -3542,197 +3709,6 @@ e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
 &lt;li&gt;&lt;a href=&#34;https://github.com/x0rz/EQGRP&#34;&gt;https://github.com/x0rz/EQGRP&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime&#34;&gt;https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码</title>
-      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
-      <pubDate>Fri, 19 Jan 2018 15:20:32 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;上回分析的dede重置密码漏洞有一定局限性，一是只能影响没有设置密保问题的用户，二是不能重置管理员admin的密码，原因当时也说了，管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。但是前几天又有一个缺陷被爆出来，可以绕过一些判断条件从而从前台登录管理员账户，配合上一个重置密码漏洞，可以达到从前台修改&lt;code&gt;dede_admin&lt;/code&gt;表里是密码，也就是真正修改了管理员密码。&lt;/p&gt;
-
-&lt;p&gt;下面来简单分析一下&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h3&gt;
-
-&lt;p&gt;先来看一下DedeCMS判断登录用户的逻辑
-&lt;code&gt;include/memberlogin.class.php:292&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;function IsLogin()
-{
-    if($this-&amp;gt;M_ID &amp;gt; 0) return TRUE;
-    else return FALSE;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟进&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;看一下，170行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = $this-&amp;gt;GetNum(GetCookie(&amp;quot;DedeUserID&amp;quot;));
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;GetNum()&lt;code&gt;include/memberlogin.class.php:398&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;/**
-*  获取整数值
-*
-* @access    public
-* @param     string  $fnum  处理的数值
-* @return    string
-*/
-function GetNum($fnum){
-    $fnum = preg_replace(&amp;quot;/[^0-9\.]/&amp;quot;, &#39;&#39;, $fnum);
-    return $fnum;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;正则匹配，去除了数字以外的字符，这里就可以构造一个利用点，一会儿再看&lt;/p&gt;
-
-&lt;p&gt;看一下&lt;code&gt;GetCookie()&lt;/code&gt;
-&lt;code&gt;include/helpers/cookie.helper.php:54&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/IO7Rf&#34; alt=&#34;GetCookie&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;关键点在这个判断条件&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;if($_COOKIE[$key.&#39;__ckMd5&#39;] != substr(md5($cfg_cookie_encode.$_COOKIE[$key]),0,16))
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;就是说从cookie中取到&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，与&lt;code&gt;md5($cfg_cookie_encode.$_COOKIE[$key])&lt;/code&gt;取前16位比较，相等才能进行下一步&lt;/p&gt;
-
-&lt;p&gt;我们知道admin的&lt;code&gt;DedeUserID&lt;/code&gt;为1，现在需要知道&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值&lt;/p&gt;
-
-&lt;p&gt;其实再思考一下，就算我们不知道admin的&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，只要能过这个if条件就能绕过接着往下走了，那我们可不可以利用其他用户来绕过if条件呢？&lt;/p&gt;
-
-&lt;p&gt;在本程序中从数据库取用户的过程其实很简单，就是简单的查询语句&lt;code&gt;Select * From #@__member where mid=&#39;$mid&#39;&lt;/code&gt;。当我们利用其他用户的cookie通过了上面的if判断，然后修改mid为admin的id(1)，就可以从前台登录到admin账户。
-那么如何在请求过程中修改&lt;code&gt;DedeUserID&lt;/code&gt;的值让它能和admin的id相等呢？&lt;/p&gt;
-
-&lt;h4 id=&#34;利用点一&#34;&gt;利用点一&lt;/h4&gt;
-
-&lt;p&gt;我们使进入&lt;code&gt;GetNum&lt;/code&gt;方法的参数为&lt;code&gt;数字1+字母&lt;/code&gt;的形式，经过正则替换就会变成&lt;code&gt;1&lt;/code&gt;，也就是&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;的值，然后带入数据库查询&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/4zlB8&#34; alt=&#34;GetNum&#34; /&gt;
-&lt;code&gt;$fnum&lt;/code&gt;为&lt;code&gt;1qqqq&lt;/code&gt;的情况，经过正则替换后值成为了1&lt;/p&gt;
-
-&lt;h4 id=&#34;利用点二&#34;&gt;利用点二&lt;/h4&gt;
-
-&lt;p&gt;在&lt;code&gt;include/memberlogin.class.php:178&lt;/code&gt;有这么一行代码&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = intval($this-&amp;gt;M_ID);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;对&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;进行了整数类型转换，假设注册一个用户名，经过&lt;code&gt;intval&lt;/code&gt;转换后为&lt;code&gt;1&lt;/code&gt;就能使查询条件变成&lt;code&gt;Select * From #@__member where mid=&#39;1&#39;&lt;/code&gt;，也就取出了管理员在&lt;code&gt;dede_member&lt;/code&gt;表里的密码，此时配合上一个漏洞，我们已经修改了&lt;code&gt;dede_member&lt;/code&gt;中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Av52c&#34; alt=&#34;intval&#34; /&gt;
-这是调试的时候注册用户名为&lt;code&gt;0000001&lt;/code&gt;的情况，经过&lt;code&gt;intval&lt;/code&gt;转换后&lt;code&gt;M_ID&lt;/code&gt;的值变成了1&lt;/p&gt;
-
-&lt;p&gt;下面看一下如何从前台登录admin账户&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;index.php&lt;/code&gt;里有一个&lt;code&gt;最近访客记录&lt;/code&gt;的功能，&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;else
-{
-    require_once(DEDEMEMBER.&#39;/inc/config_space.php&#39;);
-    if($action == &#39;&#39;)
-    {
-        include_once(DEDEINC.&amp;quot;/channelunit.func.php&amp;quot;);
-        $dpl = new DedeTemplate();
-        $tplfile = DEDEMEMBER.&amp;quot;/space/{$_vars[&#39;spacestyle&#39;]}/index.htm&amp;quot;;
-
-        //更新最近访客记录及站点统计记录
-        $vtime = time();
-        $last_vtime = GetCookie(&#39;last_vtime&#39;);
-        $last_vid = GetCookie(&#39;last_vid&#39;);
-        if(empty($last_vtime))
-        {
-            $last_vtime = 0;
-        }
-        if($vtime - $last_vtime &amp;gt; 3600 || !preg_match(&#39;#,&#39;.$uid.&#39;,#i&#39;, &#39;,&#39;.$last_vid.&#39;,&#39;) )
-        {
-            if($last_vid!=&#39;&#39;)
-            {
-                $last_vids = explode(&#39;,&#39;,$last_vid);
-                $i = 0;
-                $last_vid = $uid;
-                foreach($last_vids as $lsid)
-                {
-                    if($i&amp;gt;10)
-                    {
-                        break;
-                    }
-                    else if($lsid != $uid)
-                    {
-                        $i++;
-                        $last_vid .= &#39;,&#39;.$last_vid;
-                    }
-                }
-            }
-            else
-            {
-                $last_vid = $uid;
-            }
-            PutCookie(&#39;last_vtime&#39;, $vtime, 3600*24, &#39;/&#39;);
-            PutCookie(&#39;last_vid&#39;, $last_vid, 3600*24, &#39;/&#39;);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;else条件是当访问页面&lt;code&gt;http://127.0.0.1/dedecms/uploads/member/index.php?uid=1111&lt;/code&gt;传入的uid不为空时进入&lt;/p&gt;
-
-&lt;p&gt;当我们传入的&lt;code&gt;last_vid&lt;/code&gt;为空的时候，&lt;code&gt;$last_vid = $uid;&lt;/code&gt;而&lt;code&gt;uid&lt;/code&gt;是我们能控制的，所以我们就能控制传给&lt;code&gt;PutCookie&lt;/code&gt;的参数，进入&lt;code&gt;PutCookie&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;if ( ! function_exists(&#39;PutCookie&#39;))
-{
-    function PutCookie($key, $value, $kptime=0, $pa=&amp;quot;/&amp;quot;)
-    {
-        global $cfg_cookie_encode,$cfg_domain_cookie;
-        setcookie($key, $value, time()+$kptime, $pa,$cfg_domain_cookie);
-        setcookie($key.&#39;__ckMd5&#39;, substr(md5($cfg_cookie_encode.$value),0,16), time()+$kptime, $pa,$cfg_domain_cookie);
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在这里设置了&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/p&gt;
-
-&lt;p&gt;所以攻击流程已经明确了&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;注册一个普通用户，用户名满足&lt;code&gt;数字1+字母&lt;/code&gt;的形式，或者经过&lt;code&gt;intval()&lt;/code&gt;后值为&lt;code&gt;1&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;访问用户主页，记录cookie中&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/li&gt;
-&lt;li&gt;访问index页面，替换cookie中&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值，替换成我们注册的用户名和&lt;code&gt;last_vid__ckMd5&lt;/code&gt;，就能登录到前台admin&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h3 id=&#34;0x03-漏洞利用&#34;&gt;0x03 漏洞利用&lt;/h3&gt;
-
-&lt;ol&gt;
-&lt;li&gt;前台注册普通用户，这里注册一个&lt;code&gt;1qqqq&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;访问&lt;code&gt;/member/index.php?uid=1qqqq&lt;/code&gt;，获取&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2izw4&#34; alt=&#34;uid&#34; /&gt;&lt;/li&gt;
-&lt;li&gt;访问&lt;code&gt;/member/index.php&lt;/code&gt;，替换&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3uAj1&#34; alt=&#34;admin&#34; /&gt;
-可以发现以admin身份成功登录到了前台
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aGGc5&#34; alt=&#34;admin&#34; /&gt;&lt;/li&gt;
-&lt;li&gt;同样的，修改密码访问&lt;code&gt;member/edit_baseinfo.php&lt;/code&gt;，还是要修改cookie值
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OacVb&#34; alt=&#34;reset passwd&#34; /&gt;
-原登录密码就是我们利用上一个漏洞修改的密码，也就是&lt;code&gt;dede_member&lt;/code&gt;表中的admin密码，这样就达到了真正修改admin的密码
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OUrvR&#34; alt=&#34;reset admin passwd&#34; /&gt;
-更新数据库的时候判断如果是管理员，就更新admin表中的数据&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;h3 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h3&gt;
-
-&lt;p&gt;还是判断不够严谨，这回有两处可导致判断条件的绕过，有时候一个漏洞影响力有限的时候也不能轻视，往往配合另一处缺陷就可以造成很大的危害&lt;/p&gt;
-
-&lt;p&gt;参考：
-- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1961&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1961&lt;/a&gt;
-- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1959&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1959&lt;/a&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

