@@ -314,7 +314,66 @@ $entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity
 
 &lt;p&gt;这样子我们可以制作一张图片马，在主题文件夹下生成，或者指定任意目录，被&lt;code&gt;include&lt;/code&gt;后即可造成代码执行。&lt;/p&gt;
 
-&lt;h3 id=&#34;0x04-关于mkdir&#34;&gt;0x04 关于mkdir&lt;/h3&gt;
+&lt;h3 id=&#34;0x04-lfi-to-rce&#34;&gt;0x04 LFI to RCE&lt;/h3&gt;
+
+&lt;p&gt;到目前为止我们可以把含有恶意代码的图片写入任意目录，下一步就是想办法包含这个文件。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;Wordpress&lt;/code&gt;中，访问一篇文章或者任意页面，都需要从数据库取出相应的模板文件位置并由浏览器渲染出来。注意到上面截图，&lt;code&gt;wp_postmeta&lt;/code&gt;数据库中有个字段名称为&lt;code&gt;_wp_page_template&lt;/code&gt;，这个字段用来保存加载页面所需要的模板文件，默认为&lt;code&gt;default&lt;/code&gt;，&lt;code&gt;wordpress&lt;/code&gt;程序根据需要加载的页面类型从当前主题下选择需要的模板，例如访问一篇单独的文章，这个过程会拼凑出文件名并检查主题下的这些文件是否存在，如果存在则包含进来，相关方法是&lt;code&gt;locate_template()&lt;/code&gt;和&lt;code&gt;load_template()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225145624.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225145650.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;搜索发现实现从数据库取出&lt;code&gt;_wp_page_template&lt;/code&gt;变量的方法是&lt;code&gt;get_page_template_slug()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150445.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着发现调用&lt;code&gt;get_page_template_slug()&lt;/code&gt;方法的&lt;code&gt;get_single_template()&lt;/code&gt;方法，其最后返回的是查找模板函数，即&lt;code&gt;get_query_template()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150545.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而正是在&lt;code&gt;get_query_template()&lt;/code&gt;中，执行了定位模板文件的操作&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150712.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;至此一条利用链就串起来了，利用第一个漏洞覆盖数据库中的&lt;code&gt;_wp_page_template&lt;/code&gt;值，修改为包含恶意代码的图片所在路径，在页面加载的过程中&lt;code&gt;wordpress&lt;/code&gt;查询并定位该文件，包含后造成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Wordpress&lt;/code&gt;中处理图片相关的库有两个，分别是&lt;code&gt;Imagick&lt;/code&gt;和&lt;code&gt;GD&lt;/code&gt;，优先选择使用&lt;code&gt;Imagick&lt;/code&gt;，而&lt;code&gt;Imagick&lt;/code&gt;处理图片时不处理&lt;code&gt;EXIF&lt;/code&gt;信息，因此可以把恶意代码设置在&lt;code&gt;EXIF&lt;/code&gt;部分，经过裁剪后会保留&lt;code&gt;EXIF&lt;/code&gt;信息，此时再进行包含就能造成代码执行。&lt;/p&gt;
+
+&lt;p&gt;在选择相应图片库处理图片时，如果此时加载的是&lt;code&gt;Imagick&lt;/code&gt;，在&lt;code&gt;$editor-&amp;gt;load()&lt;/code&gt;时会创建&lt;code&gt;Imagick()&lt;/code&gt;对象，然后尝试读取远程图片地址。此时需要注意的是，高版本的&lt;code&gt;Imagick&lt;/code&gt;库不支持远程链接，测试&lt;code&gt;Imagick-6.9.7&lt;/code&gt;版本正常创建并写入图片&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$implementation = _wp_image_editor_choose( $args );
+
+if ( $implementation ) {
+    $editor = new $implementation( $path );
+    $loaded = $editor-&amp;gt;load();
+
+    if ( is_wp_error( $loaded ) )
+        return $loaded;
+
+    return $editor;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$this-&amp;gt;image = new Imagick();
+//...
+$this-&amp;gt;image-&amp;gt;readImage( $filename );
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;复现：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;上传图片，更新描述信息并保存，抓包修改&lt;code&gt;meta_input[_wp_attached_file]&lt;/code&gt;，目录穿越至当前主题文件夹
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;裁剪图片并在主题文件夹下生成裁剪后图片
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;上传一个附件，更新描述信息并抓包，修改&lt;code&gt;meta_input[_wp_page_template]&lt;/code&gt;，加载模板的时候自动包含该图片，代码执行成功
+&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;0x05-关于mkdir&#34;&gt;0x05 关于mkdir&lt;/h3&gt;
 
 &lt;p&gt;在漏洞调试过程中最后一步&lt;code&gt;$editor-&amp;gt;save( $dst_file )&lt;/code&gt;过程，最终执行到的是&lt;code&gt;wp_mkdir_p()&lt;/code&gt;方法中的&lt;code&gt;mkdir&lt;/code&gt;函数&lt;/p&gt;
 
@@ -340,11 +399,20 @@ $entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity
 
 &lt;p&gt;要想在&lt;code&gt;Windows&lt;/code&gt;下利用漏洞，一个技巧是利用&lt;code&gt;#&lt;/code&gt;字符，&lt;code&gt;#&lt;/code&gt;在&lt;code&gt;url&lt;/code&gt;中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在&lt;code&gt;wordpress&lt;/code&gt;中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。&lt;/p&gt;
 
-&lt;h3 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h3&gt;
+&lt;h3 id=&#34;0x06-poc&#34;&gt;0x06 PoC&lt;/h3&gt;
 
 &lt;p&gt;见上面分析&lt;/p&gt;
 
-&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+&lt;h3 id=&#34;0x0-7-总结&#34;&gt;0x0 7 总结&lt;/h3&gt;
+
+&lt;p&gt;在分析过程中踩了不少坑，每一个都浪费了不少时间，简单记录避免再次踩中。主要的有这么几个：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;Wordpress&lt;/code&gt;自动更新；&lt;/li&gt;
+&lt;li&gt;需要手动修改触发裁剪函数的&lt;code&gt;action&lt;/code&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;mkdir&lt;/code&gt;创建文件夹时特殊字符的问题；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Imagick&lt;/code&gt;读取远程文件的问题；&lt;/li&gt;
+&lt;/ol&gt;
 
 &lt;p&gt;这个漏洞主要成因在于我们可以通过参数传递任意值覆盖数据库中的字段，从而引入&lt;code&gt;../&lt;/code&gt;构成目录穿越，在裁剪图片后保存文件时并没有对文件目录做检查，造成目录穿越漏洞，最终可以写入恶意图片被包含或者通过&lt;code&gt;Imagick&lt;/code&gt;漏洞触发远程代码执行，利用链挺巧妙，值得学习。&lt;/p&gt;
 

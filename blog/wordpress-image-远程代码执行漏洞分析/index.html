@@ -250,7 +250,66 @@
 
 <p>这样子我们可以制作一张图片马，在主题文件夹下生成，或者指定任意目录，被<code>include</code>后即可造成代码执行。</p>
 
-<h3 id="0x04-关于mkdir">0x04 关于mkdir</h3>
+<h3 id="0x04-lfi-to-rce">0x04 LFI to RCE</h3>
+
+<p>到目前为止我们可以把含有恶意代码的图片写入任意目录，下一步就是想办法包含这个文件。</p>
+
+<p>在<code>Wordpress</code>中，访问一篇文章或者任意页面，都需要从数据库取出相应的模板文件位置并由浏览器渲染出来。注意到上面截图，<code>wp_postmeta</code>数据库中有个字段名称为<code>_wp_page_template</code>，这个字段用来保存加载页面所需要的模板文件，默认为<code>default</code>，<code>wordpress</code>程序根据需要加载的页面类型从当前主题下选择需要的模板，例如访问一篇单独的文章，这个过程会拼凑出文件名并检查主题下的这些文件是否存在，如果存在则包含进来，相关方法是<code>locate_template()</code>和<code>load_template()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225145624.png" alt="" /></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225145650.png" alt="" /></p>
+
+<p>搜索发现实现从数据库取出<code>_wp_page_template</code>变量的方法是<code>get_page_template_slug()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150445.png" alt="" /></p>
+
+<p>接着发现调用<code>get_page_template_slug()</code>方法的<code>get_single_template()</code>方法，其最后返回的是查找模板函数，即<code>get_query_template()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150545.png" alt="" /></p>
+
+<p>而正是在<code>get_query_template()</code>中，执行了定位模板文件的操作</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150712.png" alt="" /></p>
+
+<p>至此一条利用链就串起来了，利用第一个漏洞覆盖数据库中的<code>_wp_page_template</code>值，修改为包含恶意代码的图片所在路径，在页面加载的过程中<code>wordpress</code>查询并定位该文件，包含后造成代码执行。</p>
+
+<p><code>Wordpress</code>中处理图片相关的库有两个，分别是<code>Imagick</code>和<code>GD</code>，优先选择使用<code>Imagick</code>，而<code>Imagick</code>处理图片时不处理<code>EXIF</code>信息，因此可以把恶意代码设置在<code>EXIF</code>部分，经过裁剪后会保留<code>EXIF</code>信息，此时再进行包含就能造成代码执行。</p>
+
+<p>在选择相应图片库处理图片时，如果此时加载的是<code>Imagick</code>，在<code>$editor-&gt;load()</code>时会创建<code>Imagick()</code>对象，然后尝试读取远程图片地址。此时需要注意的是，高版本的<code>Imagick</code>库不支持远程链接，测试<code>Imagick-6.9.7</code>版本正常创建并写入图片</p>
+
+<pre><code class="language-php">$implementation = _wp_image_editor_choose( $args );
+
+if ( $implementation ) {
+    $editor = new $implementation( $path );
+    $loaded = $editor-&gt;load();
+
+    if ( is_wp_error( $loaded ) )
+        return $loaded;
+
+    return $editor;
+}
+</code></pre>
+
+<pre><code class="language-php">$this-&gt;image = new Imagick();
+//...
+$this-&gt;image-&gt;readImage( $filename );
+</code></pre>
+
+<p>复现：</p>
+
+<ol>
+<li><p>上传图片，更新描述信息并保存，抓包修改<code>meta_input[_wp_attached_file]</code>，目录穿越至当前主题文件夹
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png" alt="" /></p></li>
+
+<li><p>裁剪图片并在主题文件夹下生成裁剪后图片
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png" alt="" /></p></li>
+
+<li><p>上传一个附件，更新描述信息并抓包，修改<code>meta_input[_wp_page_template]</code>，加载模板的时候自动包含该图片，代码执行成功
+<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png" alt="" /></p></li>
+</ol>
+
+<h3 id="0x05-关于mkdir">0x05 关于mkdir</h3>
 
 <p>在漏洞调试过程中最后一步<code>$editor-&gt;save( $dst_file )</code>过程，最终执行到的是<code>wp_mkdir_p()</code>方法中的<code>mkdir</code>函数</p>
 
@@ -276,11 +335,20 @@
 
 <p>要想在<code>Windows</code>下利用漏洞，一个技巧是利用<code>#</code>字符，<code>#</code>在<code>url</code>中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在<code>wordpress</code>中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。</p>
 
-<h3 id="0x05-poc">0x05 PoC</h3>
+<h3 id="0x06-poc">0x06 PoC</h3>
 
 <p>见上面分析</p>
 
-<h3 id="0x06-总结">0x06 总结</h3>
+<h3 id="0x0-7-总结">0x0 7 总结</h3>
+
+<p>在分析过程中踩了不少坑，每一个都浪费了不少时间，简单记录避免再次踩中。主要的有这么几个：</p>
+
+<ol>
+<li><code>Wordpress</code>自动更新；</li>
+<li>需要手动修改触发裁剪函数的<code>action</code>；</li>
+<li><code>mkdir</code>创建文件夹时特殊字符的问题；</li>
+<li><code>Imagick</code>读取远程文件的问题；</li>
+</ol>
 
 <p>这个漏洞主要成因在于我们可以通过参数传递任意值覆盖数据库中的字段，从而引入<code>../</code>构成目录穿越，在裁剪图片后保存文件时并没有对文件目录做检查，造成目录穿越漏洞，最终可以写入恶意图片被包含或者通过<code>Imagick</code>漏洞触发远程代码执行，利用链挺巧妙，值得学习。</p>
 
