@@ -298,16 +298,17 @@ $this-&gt;image-&gt;readImage( $filename );
 
 <p>复现：</p>
 
-<ol>
-<li><p>上传图片，更新描述信息并保存，抓包修改<code>meta_input[_wp_attached_file]</code>，目录穿越至当前主题文件夹
-<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png" alt="" /></p></li>
+<p>1.上传图片，更新描述信息并保存，抓包修改<code>meta_input[_wp_attached_file]</code>，目录穿越至当前主题文件夹</p>
 
-<li><p>裁剪图片并在主题文件夹下生成裁剪后图片
-<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png" alt="" /></p></li>
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png" alt="" /></p>
 
-<li><p>上传一个附件，更新描述信息并抓包，修改<code>meta_input[_wp_page_template]</code>，加载模板的时候自动包含该图片，代码执行成功
-<img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png" alt="" /></p></li>
-</ol>
+<p>2.裁剪图片并在主题文件夹下生成裁剪后图片</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png" alt="" /></p>
+
+<p>3.上传一个附件，更新描述信息并抓包，修改<code>meta_input[_wp_page_template]</code>，加载模板的时候自动包含该图片，代码执行成功</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png" alt="" /></p>
 
 <h3 id="0x05-关于mkdir">0x05 关于mkdir</h3>
 
@@ -339,7 +340,7 @@ $this-&gt;image-&gt;readImage( $filename );
 
 <p>见上面分析</p>
 
-<h3 id="0x0-7-总结">0x0 7 总结</h3>
+<h3 id="0x07-总结">0x07 总结</h3>
 
 <p>在分析过程中踩了不少坑，每一个都浪费了不少时间，简单记录避免再次踩中。主要的有这么几个：</p>
 

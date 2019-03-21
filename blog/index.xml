@@ -7,8 +7,190 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Fri, 22 Feb 2019 22:19:04 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 20 Mar 2019 15:27:20 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>对PHP中的mkdir()函数的研究</title>
+      <link>https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/</link>
+      <pubDate>Wed, 20 Mar 2019 15:27:20 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-缘起&#34;&gt;0x01 缘起&lt;/h3&gt;
+
+&lt;p&gt;在前阵子分析&lt;a href=&#34;https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;WORDPRESS IMAGE 远程代码执行漏洞&lt;/a&gt;的过程中，在文末提到一点关于&lt;code&gt;php&lt;/code&gt;中的&lt;code&gt;mkdir()&lt;/code&gt;函数，在触发漏洞时这个地方存在一点疑惑，即当&lt;code&gt;mkdir()&lt;/code&gt;第三个参数分别为&lt;code&gt;false&lt;/code&gt;和&lt;code&gt;true&lt;/code&gt;时，分别是能成功创建文件夹和创建失败，后来有同学发现和他的测试结果有偏差，两种情况都无法创建，在互相确认了&lt;code&gt;php&lt;/code&gt;版本后，对&lt;code&gt;mkdir()&lt;/code&gt;函数进行了深入的研究，发现里面大有文章。&lt;/p&gt;
+
+&lt;p&gt;当时的测试结果是这样的，环境是&lt;code&gt;Windows&lt;/code&gt;+&lt;code&gt;php-7.0.12-nts&lt;/code&gt;，在&lt;code&gt;recursive=false&lt;/code&gt;时成功穿越目录并创建了文件夹&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222095108.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;本文重新编译了php方便调试，版本是&lt;code&gt;php-7.2.16-ts&lt;/code&gt;和&lt;code&gt;php-7.2.16-nts&lt;/code&gt;，测试结果如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320161208.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320161651.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到只有在非线程安全下并且&lt;code&gt;recursive=false&lt;/code&gt;时才成功创建，总结如下表所示&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th align=&#34;center&#34;&gt;Windows&lt;/th&gt;
+&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;thread-safe&lt;/strong&gt;&lt;/th&gt;
+&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;non-thread safe&lt;/strong&gt;&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=false&lt;/strong&gt;&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (No error)&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;success&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=true&lt;/strong&gt;&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;接下来从源码角度看看&lt;code&gt;php&lt;/code&gt;如何实现&lt;code&gt;mkdir()&lt;/code&gt;函数，探究一下为何会出现差异&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-调试&#34;&gt;0x02 调试&lt;/h3&gt;
+
+&lt;p&gt;用&lt;code&gt;Visual Studio 2017&lt;/code&gt;打开项目，定位到&lt;code&gt;php-7.2.16-src/main/streams/plain_wrapper.c&lt;/code&gt;line 1234，方法&lt;code&gt;php_plain_files_mkdir()&lt;/code&gt;即&lt;code&gt;mkdir()&lt;/code&gt;的实现，在此处下个断点，然后运行脚本，接着选择&lt;code&gt;调试-附加到进程&lt;/code&gt;，选择编译好的&lt;code&gt;php.exe&lt;/code&gt;进程，成功命中断点。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-源码分析&#34;&gt;0x03 源码分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;1-recursive-true&#34;&gt;1. recursive=true&lt;/h4&gt;
+
+&lt;h5 id=&#34;thread-safe&#34;&gt;thread-safe&lt;/h5&gt;
+
+&lt;p&gt;首先分析在&lt;code&gt;recursive=true&lt;/code&gt;的情况，跟随断点来看一下&lt;code&gt;php_plain_files_mkdir()&lt;/code&gt;这个方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320162930.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;看到对&lt;code&gt;recursive&lt;/code&gt;进行了判断，进了不同的分支，分别执行&lt;code&gt;php_mkdir()&lt;/code&gt;和&lt;code&gt;expand_filepath_with_mode()&lt;/code&gt;。&lt;code&gt;recursive=true&lt;/code&gt;时进入&lt;code&gt;expand_filepath_with_mode()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320163530.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这个&lt;code&gt;expand_filepath_with_mode()&lt;/code&gt;方法会判断当前路径是相对路径还是绝对路径，然后把路径传入&lt;code&gt;virtual_file_ex()&lt;/code&gt;，如果是相对路径的话会在该方法中拼接成完整的路径，随后进行一个重要的判断&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320165438.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;如果是&lt;code&gt;Windows&lt;/code&gt;系统且路径中包含了&lt;code&gt;*&lt;/code&gt;或&lt;code&gt;?&lt;/code&gt;，则直接返回错误，这也就是为什么在复现&lt;code&gt;wordpress&lt;/code&gt;漏洞时构造的&lt;code&gt;PoC&lt;/code&gt;中含有&lt;code&gt;?&lt;/code&gt;无法创建目录的原因(&lt;code&gt;wordpress&lt;/code&gt;指定了&lt;code&gt;recursive=true&lt;/code&gt;)，当时使用&lt;code&gt;#&lt;/code&gt;绕过了这个限制&lt;/p&gt;
+
+&lt;p&gt;回到上面，&lt;code&gt;virtual_file_ex()&lt;/code&gt;没有通过验证，最终抛出的异常是&lt;code&gt;&amp;quot;Invalid path&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;if (!expand_filepath_with_mode(dir, buf, NULL, 0, CWD_EXPAND )) {
+    php_error_docref(NULL, E_WARNING, &amp;quot;Invalid path&amp;quot;);
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;non-thread-safe&#34;&gt;non-thread safe&lt;/h5&gt;
+
+&lt;p&gt;在非线程安全模式下，流程是完全一样的，最终也会因为无法通过&lt;code&gt;*&lt;/code&gt;或&lt;code&gt;?&lt;/code&gt;的检查，抛出&lt;code&gt;&amp;quot;Invalid path&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;2-recursive-false&#34;&gt;2. recursive=false&lt;/h4&gt;
+
+&lt;p&gt;接下来看一下&lt;code&gt;recursive=false&lt;/code&gt;的情况，在这个情况下，线程安全与非线程安全产生了不一样的结果。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;recursive=false&lt;/code&gt;时进入&lt;code&gt;php_mkdir()&lt;/code&gt;方法，随后进入&lt;code&gt;php_mkdir_ex()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320171340.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在进行&lt;code&gt;basedir&lt;/code&gt;检查后进入&lt;code&gt;VCWD_MKDIR&lt;/code&gt;，这是一个宏命令，在源码中有三处定义，在&lt;code&gt;php-7.2.16-src/Zend/zend_virtual_cwd.h&lt;/code&gt;中，分别是&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;mkdir(pathname, mode)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;php_win32_ioutil_mkdir(pathname, mode)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;virtual_mkdir(pathname, mode)&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320172231.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;注意这三个定义是根据不同的条件执行的，看一下逻辑&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#ifdef VIRTUAL_DIR
+#define VCWD_MKDIR(pathname, mode) virtual_mkdir(pathname, mode)
+#endif
+
+#if defined(ZEND_WIN32)
+#define VCWD_MKDIR(pathname, mode) php_win32_ioutil_mkdir(pathname, mode)
+#else
+#define VCWD_MKDIR(pathname, mode) mkdir(pathname, mode)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;也就是说，如果定义了&lt;code&gt;VIRTUAL_DIR&lt;/code&gt;，那么执行的是&lt;code&gt;virtual_mkdir()&lt;/code&gt;，否则如果是&lt;code&gt;Windows&lt;/code&gt;系统，就执行&lt;code&gt;php_win32_ioutil_mkdir()&lt;/code&gt;创建目录，&lt;code&gt;linux&lt;/code&gt;下则是&lt;code&gt;mkdir&lt;/code&gt;命令&lt;/p&gt;
+
+&lt;p&gt;那么，既然在&lt;code&gt;recursive=false&lt;/code&gt;的情况下，线程安全与非线程安全出现了不一样的结果，肯定是此处走的分支不一样，一个使用了&lt;code&gt;virtual_mkdir()&lt;/code&gt;，另一个使用了&lt;code&gt;php_win32_ioutil_mkdir()&lt;/code&gt;，分别进入两个方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320173806.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;virtual_mkdir()&lt;/code&gt;中，同上面的情况一样，进行了&lt;code&gt;virtual_file_ex()&lt;/code&gt;判断，因此也会走到对&lt;code&gt;*&lt;/code&gt;和&lt;code&gt;?&lt;/code&gt;的判断，同样因为通不过检查而抛出&lt;code&gt;&amp;quot;Invalid path&amp;quot;&lt;/code&gt;，而在&lt;code&gt;php_win32_ioutil_mkdir()&lt;/code&gt;中则是调用了&lt;code&gt;CreateDirectoryW&lt;/code&gt;创建目录&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320174124.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;CreateDirectoryW&lt;/code&gt;是&lt;code&gt;Windows&lt;/code&gt;下创建目录的&lt;code&gt;API&lt;/code&gt;，走到这个分支并不检查&lt;code&gt;*&lt;/code&gt;和&lt;code&gt;?&lt;/code&gt;，因此能够成功创建目录。&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;有关&lt;code&gt;CreateDirectoryW&lt;/code&gt;参考&lt;a href=&#34;https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-createdirectoryw&#34;&gt;Microsoft Doc&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;与&lt;code&gt;CreateDirectoryW&lt;/code&gt;对应的还有&lt;code&gt;CreateDirectoryA&lt;/code&gt;，两个函数功能一样，只是第一个参数的类型不同，一个是&lt;code&gt;LPCWSTR&lt;/code&gt; 另一个是&lt;code&gt;LPCSTR&lt;/code&gt; ，这两者是&lt;code&gt;CHAR&lt;/code&gt; 和&lt;code&gt;WCHAR&lt;/code&gt;的区别 ，详细可以参考&lt;a href=&#34;https://stackoverflow.com/questions/321413/lpcstr-lpctstr-and-lptstr&#34;&gt;StackOverflow&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;现在剩下最关键的一个问题，什么情况下会走&lt;code&gt;virtual_mkdir()&lt;/code&gt;的流程，也就是说&lt;code&gt;VIRTUAL_DIR&lt;/code&gt;是在何处定义的？&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320175730.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;php-7.2.16-src/Zend?zend_virtual_cwd.h&lt;/code&gt;line 41定义了这个变量，前置条件是&lt;code&gt;ZTS&lt;/code&gt;，也就是线程安全的标识，只有在线程安全模式下，才使用&lt;code&gt;virtual_mkdir()&lt;/code&gt;创建目录，调用的系统函数同样是&lt;code&gt;CreateDirectoryW&lt;/code&gt;，但是在此之前得先通过&lt;code&gt;virtual_file_ex()&lt;/code&gt;校验，含有&lt;code&gt;*&lt;/code&gt;和&lt;code&gt;?&lt;/code&gt;则无法创建成功。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-流程图&#34;&gt;0x04 流程图&lt;/h3&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190321152354.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-深入&#34;&gt;0x05 深入&lt;/h3&gt;
+
+&lt;p&gt;现在清楚了&lt;code&gt;php&lt;/code&gt;对&lt;code&gt;mkdir()&lt;/code&gt;的实现，之所以结果不一样是因为&lt;code&gt;ZTS&lt;/code&gt;与&lt;code&gt;NTS&lt;/code&gt;下的两种不同的处理流程，那么为什么在TS模式下，在调用&lt;code&gt;Windows&lt;/code&gt;的&lt;code&gt;API&lt;/code&gt;创建目录之前，需要设置一个“虚拟目录”呢？&lt;/p&gt;
+
+&lt;p&gt;这里涉及到&lt;code&gt;php&lt;/code&gt;内核中的&lt;code&gt;TSRM&lt;/code&gt;机制，也就是&lt;code&gt;线程安全资源管理器(Thread Safe Resource Manager)&lt;/code&gt; ，这个机制的引入是为了解决线程并发的问题，我们知道，如果线程访问的内存地址空间相同，当一个线程修改资源时会影响其它线程，所以为了确保不会出现资源竞争，&lt;code&gt;php&lt;/code&gt;将多个资源复制为多份，每个线程需要的资源在当前进程空间中各有一份，各取所取，这样就不会出现竞争问题。&lt;/p&gt;
+
+&lt;p&gt;那么不同线程怎么获取自身所需要的资源呢？&lt;code&gt;php&lt;/code&gt;中通过&lt;code&gt;ts_allocate_id()&lt;/code&gt;函数实现， 这个函数的作用就是遍历所有线程，为每一个分配一个&lt;code&gt;线程安全资源id&lt;/code&gt;，每一次调用&lt;code&gt;ts_allocate_id()&lt;/code&gt;函数时，都会执行这个操作，而为了避免重复分配，这个过程是在调用模块初始化的时候就完成了&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;TSRMG&lt;/code&gt;的定义如下，其中&lt;code&gt;tsrm_get_ls_cache()&lt;/code&gt;有多个定义，但功能是一样的，就是根据资源id的&lt;code&gt;tls_key&lt;/code&gt;取出相应&lt;code&gt;value&lt;/code&gt;的过程：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#define TSRMG(id, type, element)	(TSRMG_BULK(id, type)-&amp;gt;element)
+#define TSRMG_BULK(id, type)	((type) (*((void ***) tsrm_get_ls_cache()))[TSRM_UNSHUFFLE_RSRC_ID(id)])
+
+# define tsrm_tls_get()			pthread_getspecific(tls_key)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在启动&lt;code&gt;cli&lt;/code&gt;或者&lt;code&gt;cgi&lt;/code&gt;时，都会通过&lt;code&gt;SAPI&lt;/code&gt;调用&lt;code&gt;tsrm_startup()&lt;/code&gt;启动&lt;code&gt;TSRM&lt;/code&gt; ，随后进行模块初始化，在这个过程中分配资源id，初始化时的调用栈如下图所示&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190321140835.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;当非ZTS模式时，线程直接调用全局变量的属性， 而ZTS模式设置“虚拟目录”的概念其实就是“根据资源id查找所需的全局变量”的过程，本质上是为了避免线程间资源读取出现竞争，保证了线程安全。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+
+&lt;p&gt;本文通过&lt;code&gt;php&lt;/code&gt;中&lt;code&gt;mkdir()&lt;/code&gt;函数在不同环境下表现结果不一致的现象，分析了&lt;code&gt;php&lt;/code&gt;内核对&lt;code&gt;mkdir()&lt;/code&gt;函数的实现，引申出&lt;code&gt;php&lt;/code&gt;中线程安全与非线程安全两个重要的机制，抛砖引玉，如有表述不妥或者错误之处欢迎指正，最后感谢@maple提出最初的问题以及探讨过程中给予的莫大的帮助。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://php.net/manual/en/function.mkdir.php&#34;&gt;http://php.net/manual/en/function.mkdir.php&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://segmentfault.com/a/1190000010004035&#34;&gt;https://segmentfault.com/a/1190000010004035&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
@@ -362,16 +544,17 @@ $this-&amp;gt;image-&amp;gt;readImage( $filename );
 
 &lt;p&gt;复现：&lt;/p&gt;
 
-&lt;ol&gt;
-&lt;li&gt;&lt;p&gt;上传图片，更新描述信息并保存，抓包修改&lt;code&gt;meta_input[_wp_attached_file]&lt;/code&gt;，目录穿越至当前主题文件夹
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;p&gt;1.上传图片，更新描述信息并保存，抓包修改&lt;code&gt;meta_input[_wp_attached_file]&lt;/code&gt;，目录穿越至当前主题文件夹&lt;/p&gt;
 
-&lt;li&gt;&lt;p&gt;裁剪图片并在主题文件夹下生成裁剪后图片
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;li&gt;&lt;p&gt;上传一个附件，更新描述信息并抓包，修改&lt;code&gt;meta_input[_wp_page_template]&lt;/code&gt;，加载模板的时候自动包含该图片，代码执行成功
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
-&lt;/ol&gt;
+&lt;p&gt;2.裁剪图片并在主题文件夹下生成裁剪后图片&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;3.上传一个附件，更新描述信息并抓包，修改&lt;code&gt;meta_input[_wp_page_template]&lt;/code&gt;，加载模板的时候自动包含该图片，代码执行成功&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
 &lt;h3 id=&#34;0x05-关于mkdir&#34;&gt;0x05 关于mkdir&lt;/h3&gt;
 
@@ -403,7 +586,7 @@ $this-&amp;gt;image-&amp;gt;readImage( $filename );
 
 &lt;p&gt;见上面分析&lt;/p&gt;
 
-&lt;h3 id=&#34;0x0-7-总结&#34;&gt;0x0 7 总结&lt;/h3&gt;
+&lt;h3 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h3&gt;
 
 &lt;p&gt;在分析过程中踩了不少坑，每一个都浪费了不少时间，简单记录避免再次踩中。主要的有这么几个：&lt;/p&gt;
 
@@ -3607,178 +3790,6 @@ print &#39;0x&#39; + shellcode .encode(&#39;hex&#39;)
 &lt;p&gt;总结：
 - RPO可以结合XSS进行攻击，开发时不注意的话容易被利用
 - 反序列化问题一直都存在，这道题中虽然代码比较简单，利用起来还是有几个坑，还需要多学习&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>vBulletin 论坛定向攻击脚本分析</title>
-      <link>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</link>
-      <pubDate>Mon, 05 Feb 2018 17:18:38 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;花了几天时间研究了一下Equation Group泄露的针对&lt;code&gt;vBulletin&lt;/code&gt;论坛的定向攻击工具，期间非常感谢&lt;a href=&#34;https://mp.weixin.qq.com/s/5WRXpljL7RFSPRQ2NdHhtA&#34;&gt;风流@逢魔安全实验室&lt;/a&gt;的帮助，最主要的动力也是在技术分享上听了这个课题，感觉非常有意思，于是搭了环境研究了利用过程，期间也踩了好几个坑，整个过程下来却感受到脚本作者扎实的代码功底和缜密的逻辑，虽然是“过时”的工具了却有很多值得学习的地方。另外，这个过程是参考&lt;a href=&#34;https://paper.seebug.org/517/&#34;&gt;Equation Group泄露工具之vBulletin无文件后门分析&lt;/a&gt;进行的，只是把其中碰到的一些问题梳理一下，大家可以结合着看，希望能起到帮助。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;vBulletin是国外知名的论坛程序，使用广泛，但在国内见得不多。程序算得上比较古老，披露的漏洞也不算少，但是针对这个系统的集成利用工具还是非方程式这个莫属，攻击工具高度融合论坛本身的代码逻辑，无论是安插后门还是插入代理，全程都是无文件攻击，是真正“高级持续化威胁”的典型例子。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-脚本介绍&#34;&gt;0x02 脚本介绍&lt;/h3&gt;
-
-&lt;p&gt;攻击脚本名为&lt;code&gt;funnelout.pl&lt;/code&gt;，在方程式工具包的&lt;code&gt;linux/up&lt;/code&gt;目录下，&lt;a href=&#34;https://github.com/x0rz/EQGRP&#34;&gt;github&lt;/a&gt;上有完整的解压缩后的文件，本文件&lt;a href=&#34;https://github.com/x0rz/EQGRP/blob/master/Linux/up/funnelout.v4.1.0.1.pl&#34;&gt;地址&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;它一共有三个版本，v3.0.0.1, v4.0.0.1和v4.1.0.1，内容上大同小异，新版本修改和增加了几处代码，我们就选择v4.1.0.1来研究。
-脚本基于perl语言编写，x0rz给它的介绍是&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;FUNNELOUT: database-based web-backdoor for vbulletin&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;可以看出它是基于数据库的后门，也就是说攻击过程中不会生成文件，传统安全评估漏洞扫描之类的很难发现这种后门，再根据脚本生成的攻击代码中出现的一个时间戳&lt;code&gt;1258466920&lt;/code&gt;，推测开发时间大致在2009年11月份，如果真是这样，10年前的攻击工具现在看来依旧非常牛逼，用@风流的话来说“细思极恐”。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h3&gt;
-
-&lt;p&gt;&lt;code&gt;funnelout.pl&lt;/code&gt;中涉及到的&lt;code&gt;vBulletin&lt;/code&gt;版本是3和4，所以我们选择&lt;code&gt;vBulletin v3.8.6&lt;/code&gt;来测试。提一句这套系统的代码好难找，官网仅开放下载给注册会员，而且现在已经更新到v5.x，所以需要代码的同学可以联系我。&lt;/p&gt;
-
-&lt;p&gt;安装时在建立数据库的过程中可能出现设置默认日期&lt;code&gt;0000-00-00&lt;/code&gt;的错误，这应该和mysql的版本有关，可以选择低版本的mysql，也可以修改&lt;code&gt;upload\install\mysql-schema.php&lt;/code&gt;，将默认的&lt;code&gt;0000-00-00&lt;/code&gt;为&lt;code&gt;1000-01-01&lt;/code&gt;。&lt;/p&gt;
-
-&lt;p&gt;另外如果安装过程中设置了数据库表名的前缀，那么需要修改&lt;code&gt;$DB_table&lt;/code&gt;和&lt;code&gt;$DB_datastore&lt;/code&gt;涉及sql语句的部分，例如&lt;code&gt;SELECT title FROM datastore&lt;/code&gt;修改为&lt;code&gt;SELECT title FROM $DB_datastore&lt;/code&gt;，其中&lt;code&gt;$DB_datastore&lt;/code&gt;需要自己声明。&lt;/p&gt;
-
-&lt;p&gt;其它的可以参考说明文档，这里不再赘述。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-复现-分析&#34;&gt;0x04 复现&amp;amp;分析&lt;/h3&gt;
-
-&lt;p&gt;在分析代码之前我们先了解一下&lt;code&gt;vBulletin&lt;/code&gt;的设计逻辑，特别是在模板渲染方面。&lt;/p&gt;
-
-&lt;p&gt;程序在安装过程中会通过&lt;code&gt;includes/adminfunctions_template.php&lt;/code&gt;加载xml文件&lt;code&gt;install/vbulletin-language.xml&lt;/code&gt;，里面定义了基本的样式，根据样式的&lt;code&gt;id&lt;/code&gt;取出对应的内容插入到数据表&lt;code&gt;template&lt;/code&gt;中，渲染过程则是相反，根据模板的&lt;code&gt;title&lt;/code&gt;加载进程序，进行前端渲染，因此才能够被“无文件“安装后门，这算是论坛当初设计时一个比较明显的缺陷吧。将后门代码插入在模板中本身不容易被发现，更何况模板不以文件的方式存在而是储存在数据库中，这也为这个攻击工具提供了很好的隐蔽方式，同时也能解释脚本使用时需要指定数据库连接，因为它本身是直接对数据库进行操作的。&lt;/p&gt;
-
-&lt;p&gt;来看一下脚本的整体功能&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/TbgPz&#34; alt=&#34;funnelout.pl&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;-op&lt;/code&gt;参数展示了可以选择的操作，最主要的是&lt;code&gt;door&lt;/code&gt;,&lt;code&gt;proxy&lt;/code&gt;和&lt;code&gt;tag&lt;/code&gt;功能，以及相应的&lt;code&gt;show&lt;/code&gt;操作，我们也是选择这三部分功能进行分析&lt;/p&gt;
-
-&lt;p&gt;因为脚本是直接对数据库进行操作，所以需要指定数据库的连接信息，也可以指定&lt;code&gt;-conf&lt;/code&gt;参数跟上论坛的配置文件，脚本会自动提取里面的基本信息。其他的参数就是字面意思，包括设置ssl，要包括及排除的用户，设置黑名单等等，可以看出脚本的功能是相当强大的。&lt;/p&gt;
-
-&lt;h4 id=&#34;backdoor-功能分析&#34;&gt;Backdoor 功能分析&lt;/h4&gt;
-
-&lt;p&gt;这应该是脚本最简单粗暴的方法，直接在数据库中插入后门代码，之后通过HTTP请求中的&lt;code&gt;Referrer&lt;/code&gt;字段发送指令，注意此处是&lt;code&gt;Referrer&lt;/code&gt;而不是默认的&lt;code&gt;Referer&lt;/code&gt;，隐蔽性非常好。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/uLFsU&#34; alt=&#34;backdoor&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;看一下插入后门的方法(在脚本中打印了执行的sql语句来方便理解)，可以看到插入后门的操作对页脚模板插入了一段base64编码后的代码&lt;code&gt;eval($_SERVER[&amp;quot;HTTP_REFERRER&amp;quot;]);&lt;/code&gt;，在页面渲染页脚部分时就会加载恶意代码，攻击者就可以通过&lt;code&gt;HTTP_REFERRER&lt;/code&gt;字段下发指令，利用非常简单。我们来看一下它具体是如何实现的&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/TPKug&#34; alt=&#34;op_door&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/J1Q9m&#34; alt=&#34;patch_db&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;很简单的逻辑，将base64编码后的一句话代码插入&lt;code&gt;template&lt;/code&gt;表的&lt;code&gt;footer&lt;/code&gt;模板下，在&lt;code&gt;global.php&lt;/code&gt;调用过程中被加载执行。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/06Abt&#34; alt=&#34;global.php&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/wSBon&#34; alt=&#34;debug&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Eumco&#34; alt=&#34;phpinfo&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;proxy-功能分析&#34;&gt;Proxy 功能分析&lt;/h4&gt;
-
-&lt;p&gt;Proxy功能相对复杂一些，但也离不开对模板的操作，它涉及的是&lt;code&gt;header&lt;/code&gt;模板&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/gGsRT&#34; alt=&#34;proxyTemplate&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KS5ci&#34; alt=&#34;op_proxy&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;使用proxy时需要指定一个&lt;code&gt;tag&lt;/code&gt;，而且tagurl需要符合正则表达式&lt;code&gt;/(.+?)\/.+?\/.+?\/(.+?)\/\d+\/(.+?)\/(.*)/&lt;/code&gt;也就是&lt;code&gt;x.x.x.x/a/b/c/1/d/&lt;/code&gt;的格式，这地方是个坑&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;指定tagurl生成相应的proxy代码&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1UrLg&#34; alt=&#34;proxy&#34; /&gt;
-解码后&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oXMfY&#34; alt=&#34;proxy code&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;$fahost&lt;/code&gt;就是我们指定的tag的ip。当满足if条件——请求路径中含有&lt;code&gt;/&lt;/code&gt;且ip不是&lt;code&gt;64.38.3.50&lt;/code&gt;时，&lt;code&gt;header&lt;/code&gt;渲染过程中会加载这些php代码，构造一个请求发送给我们的tagUrl。值得注意的是这里不仅支持GET请求，同样支持POST请求，也就是说我们可以作为“中间人”的角色时刻监听着用户与论坛之间的通信，实现了真正意义上的代理，而且用户在这过程中完全无法察觉到，细思极恐&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/jEOhg&#34; alt=&#34;proxy request&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可以确定的是&lt;code&gt;64.38.3.50&lt;/code&gt;这个ip一定与攻击组织有关，也许在测试的时候就将此ip排除在外，避免一些麻烦，同时这也是整个脚本泄露的唯一一个确定的ip。&lt;/p&gt;
-
-&lt;h4 id=&#34;tag-功能分析&#34;&gt;Tag 功能分析&lt;/h4&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/NXTqW&#34; alt=&#34;op_tag&#34; /&gt;
-Tag功能更加复杂，操作&lt;code&gt;navbar&lt;/code&gt;模板，使用时有这么几个选项可以指定，&lt;code&gt;-tag&lt;/code&gt;指定标记的url，&lt;code&gt;-nohttp&lt;/code&gt;表示不自动加上&lt;code&gt;http://&lt;/code&gt;，这种情况可以在正常访问时嵌入一个网站本身的url，&lt;code&gt;-f&lt;/code&gt;Force，还有&lt;code&gt;ssl&lt;/code&gt;选项，适用于https的情况。&lt;/p&gt;
-
-&lt;p&gt;我们先用&lt;code&gt;-tag&lt;/code&gt;指定一个&lt;code&gt;tag URL&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/yProo&#34; alt=&#34;tag&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;base64解码后的代码长这样&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kLa7C&#34; alt=&#34;tag code&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当我们访问文章页面&lt;code&gt;http://127.0.0.1/vb3/showthread.php?p=1&lt;/code&gt;或访问私信链接&lt;code&gt;http://127.0.0.1/vb3/private.php?do=showpm&amp;amp;pmid=1&lt;/code&gt;时，就会加载php代码，在&lt;code&gt;datastore&lt;/code&gt;表生成一个“标签”——插入一个序列化后的&lt;code&gt;data&lt;/code&gt;字段，类似&lt;code&gt;a:2:{i:0;i:1517970003;i:1;i:1;}&lt;/code&gt;，其中最后的&lt;code&gt;i&lt;/code&gt;是一个计数器，值在随机数[0,6]之间，每次访问页面时i值递减1，当i减到0时就会触发代码，向我们设置的&lt;code&gt;tag URL&lt;/code&gt;发送用户名经过hex编码后的页面地址&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h&#34; alt=&#34;tag code1&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP&#34; alt=&#34;61646d696e.html&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/qmk8S&#34; alt=&#34;61646d696e req&#34; /&gt;
-(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)&lt;/p&gt;
-
-&lt;p&gt;同时&lt;code&gt;tag&lt;/code&gt;减至&lt;code&gt;-1&lt;/code&gt;并出于等待重置状态，当我们进行&lt;code&gt;reset&lt;/code&gt;操作时就会清空这条“标签”数据&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/0wgAc&#34; alt=&#34;showTagged&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/szepl&#34; alt=&#34;reset&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;值得注意的是，“标签”功能只在一天内有效，超过一天后就无法触发，只能先进行重置操作&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-nohttp&lt;/code&gt;选项&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;当使用&lt;code&gt;-nohttp&lt;/code&gt;时，生成url后就可以请求网站本身的路径+hex(用户名)的页面，但是这个页面不一定存在，所以一时没想明白为什么这样设置。而没有设置&lt;code&gt;-nohttp&lt;/code&gt;时可以向我们自定义地址发送请求，结合脚本的功能推测是给访问某些特定页面的用户做一个标记，便于以后再定向攻击。&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-crumb&lt;/code&gt;选项&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;指定了&lt;code&gt;-crumb&lt;/code&gt;选项后则是在页面嵌入一张1x1的图片，加载的是&lt;code&gt;images/&lt;/code&gt;目录下的&lt;code&gt;hex(用户名).gif&lt;/code&gt;，属性设置为不可见，这块的功能也没有理解透彻，总之会传递一个用户名信息，用户不知不觉中就被标记上了，细思极恐again&amp;hellip;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-特征&#34;&gt;0x05 特征&lt;/h3&gt;
-
-&lt;p&gt;截图中也注意到了两个特殊的md5&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;84b8026b3f5e6dcfb29e82e0b0b0f386 Unregistered (EN)
-e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这也是攻击脚本中硬编码的“黑名单”，或许理解为“白名单”更合适？&lt;/p&gt;
-
-&lt;p&gt;另外有几个ip段，地理位置分布在各个国家&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&#39;/^(64.38.3.50|195.28.|94.102.|91.93.|41.130.|212.118.|79.173.|85.159.|94.249.|86.108.)/&#39;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;而根据另一个特殊的字符串&lt;code&gt;l9ed39e2fea93e5&lt;/code&gt;搜索，发现网上存在可能被攻击的案例，里面出现了一个域名&lt;code&gt;http://technology-revealed.com&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OFkMN&#34; alt=&#34;technology-revealed&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;这几条线索之间的关系不得而知，或许对威胁情报能起到一起参考作用，虽然这个APT攻击已经过去好多年了。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
-
-&lt;p&gt;方程式泄露的工具包对整个世界带来了巨大的影响，像“永恒之蓝”甚至成为了目前勒索病毒和挖矿木马的标配，而这个针对vb论坛的攻击工具仅仅是里面的一个文件，整个工具包里还隐藏着什么威力巨大的武器，真值得我们好好研究。单从&lt;code&gt;funnelout.v4.1.0.1.pl&lt;/code&gt;这个脚本看虽然它的利用面可能没那么广了，但作者的思维角度和攻击方法依旧没有过时，值得学习。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h3&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://paper.seebug.org/517/&#34;&gt;https://paper.seebug.org/517/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/x0rz/EQGRP&#34;&gt;https://github.com/x0rz/EQGRP&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime&#34;&gt;https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
     </item>
     

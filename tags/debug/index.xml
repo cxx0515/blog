@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Debug on 诗与胡说</title>
+    <link>https://kylingit.com/tags/debug/index.xml</link>
+    <description>Recent content in Debug on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2019 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/debug/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>对PHP中的mkdir()函数的研究</title>
+      <link>https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/</link>
+      <pubDate>Wed, 20 Mar 2019 15:27:20 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-缘起&#34;&gt;0x01 缘起&lt;/h3&gt;
+
+&lt;p&gt;在前阵子分析&lt;a href=&#34;https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;WORDPRESS IMAGE 远程代码执行漏洞&lt;/a&gt;的过程中，在文末提到一点关于&lt;code&gt;php&lt;/code&gt;中的&lt;code&gt;mkdir()&lt;/code&gt;函数，在触发漏洞时这个地方存在一点疑惑，即当&lt;code&gt;mkdir()&lt;/code&gt;第三个参数分别为&lt;code&gt;false&lt;/code&gt;和&lt;code&gt;true&lt;/code&gt;时，分别是能成功创建文件夹和创建失败，后来有同学发现和他的测试结果有偏差，两种情况都无法创建，在互相确认了&lt;code&gt;php&lt;/code&gt;版本后，对&lt;code&gt;mkdir()&lt;/code&gt;函数进行了深入的研究，发现里面大有文章。&lt;/p&gt;
+
+&lt;p&gt;当时的测试结果是这样的，环境是&lt;code&gt;Windows&lt;/code&gt;+&lt;code&gt;php-7.0.12-nts&lt;/code&gt;，在&lt;code&gt;recursive=false&lt;/code&gt;时成功穿越目录并创建了文件夹&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222095108.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;本文重新编译了php方便调试，版本是&lt;code&gt;php-7.2.16-ts&lt;/code&gt;和&lt;code&gt;php-7.2.16-nts&lt;/code&gt;，测试结果如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320161208.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320161651.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到只有在非线程安全下并且&lt;code&gt;recursive=false&lt;/code&gt;时才成功创建，总结如下表所示&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th align=&#34;center&#34;&gt;Windows&lt;/th&gt;
+&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;thread-safe&lt;/strong&gt;&lt;/th&gt;
+&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;non-thread safe&lt;/strong&gt;&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=false&lt;/strong&gt;&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (No error)&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;success&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=true&lt;/strong&gt;&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;接下来从源码角度看看&lt;code&gt;php&lt;/code&gt;如何实现&lt;code&gt;mkdir()&lt;/code&gt;函数，探究一下为何会出现差异&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-调试&#34;&gt;0x02 调试&lt;/h3&gt;
+
+&lt;p&gt;用&lt;code&gt;Visual Studio 2017&lt;/code&gt;打开项目，定位到&lt;code&gt;php-7.2.16-src/main/streams/plain_wrapper.c&lt;/code&gt;line 1234，方法&lt;code&gt;php_plain_files_mkdir()&lt;/code&gt;即&lt;code&gt;mkdir()&lt;/code&gt;的实现，在此处下个断点，然后运行脚本，接着选择&lt;code&gt;调试-附加到进程&lt;/code&gt;，选择编译好的&lt;code&gt;php.exe&lt;/code&gt;进程，成功命中断点。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-源码分析&#34;&gt;0x03 源码分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;1-recursive-true&#34;&gt;1. recursive=true&lt;/h4&gt;
+
+&lt;h5 id=&#34;thread-safe&#34;&gt;thread-safe&lt;/h5&gt;
+
+&lt;p&gt;首先分析在&lt;code&gt;recursive=true&lt;/code&gt;的情况，跟随断点来看一下&lt;code&gt;php_plain_files_mkdir()&lt;/code&gt;这个方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320162930.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;看到对&lt;code&gt;recursive&lt;/code&gt;进行了判断，进了不同的分支，分别执行&lt;code&gt;php_mkdir()&lt;/code&gt;和&lt;code&gt;expand_filepath_with_mode()&lt;/code&gt;。&lt;code&gt;recursive=true&lt;/code&gt;时进入&lt;code&gt;expand_filepath_with_mode()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320163530.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这个&lt;code&gt;expand_filepath_with_mode()&lt;/code&gt;方法会判断当前路径是相对路径还是绝对路径，然后把路径传入&lt;code&gt;virtual_file_ex()&lt;/code&gt;，如果是相对路径的话会在该方法中拼接成完整的路径，随后进行一个重要的判断&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320165438.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;如果是&lt;code&gt;Windows&lt;/code&gt;系统且路径中包含了&lt;code&gt;*&lt;/code&gt;或&lt;code&gt;?&lt;/code&gt;，则直接返回错误，这也就是为什么在复现&lt;code&gt;wordpress&lt;/code&gt;漏洞时构造的&lt;code&gt;PoC&lt;/code&gt;中含有&lt;code&gt;?&lt;/code&gt;无法创建目录的原因(&lt;code&gt;wordpress&lt;/code&gt;指定了&lt;code&gt;recursive=true&lt;/code&gt;)，当时使用&lt;code&gt;#&lt;/code&gt;绕过了这个限制&lt;/p&gt;
+
+&lt;p&gt;回到上面，&lt;code&gt;virtual_file_ex()&lt;/code&gt;没有通过验证，最终抛出的异常是&lt;code&gt;&amp;quot;Invalid path&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;if (!expand_filepath_with_mode(dir, buf, NULL, 0, CWD_EXPAND )) {
+    php_error_docref(NULL, E_WARNING, &amp;quot;Invalid path&amp;quot;);
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;non-thread-safe&#34;&gt;non-thread safe&lt;/h5&gt;
+
+&lt;p&gt;在非线程安全模式下，流程是完全一样的，最终也会因为无法通过&lt;code&gt;*&lt;/code&gt;或&lt;code&gt;?&lt;/code&gt;的检查，抛出&lt;code&gt;&amp;quot;Invalid path&amp;quot;&lt;/code&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;2-recursive-false&#34;&gt;2. recursive=false&lt;/h4&gt;
+
+&lt;p&gt;接下来看一下&lt;code&gt;recursive=false&lt;/code&gt;的情况，在这个情况下，线程安全与非线程安全产生了不一样的结果。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;recursive=false&lt;/code&gt;时进入&lt;code&gt;php_mkdir()&lt;/code&gt;方法，随后进入&lt;code&gt;php_mkdir_ex()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320171340.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在进行&lt;code&gt;basedir&lt;/code&gt;检查后进入&lt;code&gt;VCWD_MKDIR&lt;/code&gt;，这是一个宏命令，在源码中有三处定义，在&lt;code&gt;php-7.2.16-src/Zend/zend_virtual_cwd.h&lt;/code&gt;中，分别是&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;mkdir(pathname, mode)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;php_win32_ioutil_mkdir(pathname, mode)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;virtual_mkdir(pathname, mode)&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320172231.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;注意这三个定义是根据不同的条件执行的，看一下逻辑&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#ifdef VIRTUAL_DIR
+#define VCWD_MKDIR(pathname, mode) virtual_mkdir(pathname, mode)
+#endif
+
+#if defined(ZEND_WIN32)
+#define VCWD_MKDIR(pathname, mode) php_win32_ioutil_mkdir(pathname, mode)
+#else
+#define VCWD_MKDIR(pathname, mode) mkdir(pathname, mode)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;也就是说，如果定义了&lt;code&gt;VIRTUAL_DIR&lt;/code&gt;，那么执行的是&lt;code&gt;virtual_mkdir()&lt;/code&gt;，否则如果是&lt;code&gt;Windows&lt;/code&gt;系统，就执行&lt;code&gt;php_win32_ioutil_mkdir()&lt;/code&gt;创建目录，&lt;code&gt;linux&lt;/code&gt;下则是&lt;code&gt;mkdir&lt;/code&gt;命令&lt;/p&gt;
+
+&lt;p&gt;那么，既然在&lt;code&gt;recursive=false&lt;/code&gt;的情况下，线程安全与非线程安全出现了不一样的结果，肯定是此处走的分支不一样，一个使用了&lt;code&gt;virtual_mkdir()&lt;/code&gt;，另一个使用了&lt;code&gt;php_win32_ioutil_mkdir()&lt;/code&gt;，分别进入两个方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320173806.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;virtual_mkdir()&lt;/code&gt;中，同上面的情况一样，进行了&lt;code&gt;virtual_file_ex()&lt;/code&gt;判断，因此也会走到对&lt;code&gt;*&lt;/code&gt;和&lt;code&gt;?&lt;/code&gt;的判断，同样因为通不过检查而抛出&lt;code&gt;&amp;quot;Invalid path&amp;quot;&lt;/code&gt;，而在&lt;code&gt;php_win32_ioutil_mkdir()&lt;/code&gt;中则是调用了&lt;code&gt;CreateDirectoryW&lt;/code&gt;创建目录&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320174124.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;CreateDirectoryW&lt;/code&gt;是&lt;code&gt;Windows&lt;/code&gt;下创建目录的&lt;code&gt;API&lt;/code&gt;，走到这个分支并不检查&lt;code&gt;*&lt;/code&gt;和&lt;code&gt;?&lt;/code&gt;，因此能够成功创建目录。&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;有关&lt;code&gt;CreateDirectoryW&lt;/code&gt;参考&lt;a href=&#34;https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-createdirectoryw&#34;&gt;Microsoft Doc&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;与&lt;code&gt;CreateDirectoryW&lt;/code&gt;对应的还有&lt;code&gt;CreateDirectoryA&lt;/code&gt;，两个函数功能一样，只是第一个参数的类型不同，一个是&lt;code&gt;LPCWSTR&lt;/code&gt; 另一个是&lt;code&gt;LPCSTR&lt;/code&gt; ，这两者是&lt;code&gt;CHAR&lt;/code&gt; 和&lt;code&gt;WCHAR&lt;/code&gt;的区别 ，详细可以参考&lt;a href=&#34;https://stackoverflow.com/questions/321413/lpcstr-lpctstr-and-lptstr&#34;&gt;StackOverflow&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;现在剩下最关键的一个问题，什么情况下会走&lt;code&gt;virtual_mkdir()&lt;/code&gt;的流程，也就是说&lt;code&gt;VIRTUAL_DIR&lt;/code&gt;是在何处定义的？&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320175730.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;php-7.2.16-src/Zend?zend_virtual_cwd.h&lt;/code&gt;line 41定义了这个变量，前置条件是&lt;code&gt;ZTS&lt;/code&gt;，也就是线程安全的标识，只有在线程安全模式下，才使用&lt;code&gt;virtual_mkdir()&lt;/code&gt;创建目录，调用的系统函数同样是&lt;code&gt;CreateDirectoryW&lt;/code&gt;，但是在此之前得先通过&lt;code&gt;virtual_file_ex()&lt;/code&gt;校验，含有&lt;code&gt;*&lt;/code&gt;和&lt;code&gt;?&lt;/code&gt;则无法创建成功。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-流程图&#34;&gt;0x04 流程图&lt;/h3&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190321152354.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-深入&#34;&gt;0x05 深入&lt;/h3&gt;
+
+&lt;p&gt;现在清楚了&lt;code&gt;php&lt;/code&gt;对&lt;code&gt;mkdir()&lt;/code&gt;的实现，之所以结果不一样是因为&lt;code&gt;ZTS&lt;/code&gt;与&lt;code&gt;NTS&lt;/code&gt;下的两种不同的处理流程，那么为什么在TS模式下，在调用&lt;code&gt;Windows&lt;/code&gt;的&lt;code&gt;API&lt;/code&gt;创建目录之前，需要设置一个“虚拟目录”呢？&lt;/p&gt;
+
+&lt;p&gt;这里涉及到&lt;code&gt;php&lt;/code&gt;内核中的&lt;code&gt;TSRM&lt;/code&gt;机制，也就是&lt;code&gt;线程安全资源管理器(Thread Safe Resource Manager)&lt;/code&gt; ，这个机制的引入是为了解决线程并发的问题，我们知道，如果线程访问的内存地址空间相同，当一个线程修改资源时会影响其它线程，所以为了确保不会出现资源竞争，&lt;code&gt;php&lt;/code&gt;将多个资源复制为多份，每个线程需要的资源在当前进程空间中各有一份，各取所取，这样就不会出现竞争问题。&lt;/p&gt;
+
+&lt;p&gt;那么不同线程怎么获取自身所需要的资源呢？&lt;code&gt;php&lt;/code&gt;中通过&lt;code&gt;ts_allocate_id()&lt;/code&gt;函数实现， 这个函数的作用就是遍历所有线程，为每一个分配一个&lt;code&gt;线程安全资源id&lt;/code&gt;，每一次调用&lt;code&gt;ts_allocate_id()&lt;/code&gt;函数时，都会执行这个操作，而为了避免重复分配，这个过程是在调用模块初始化的时候就完成了&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;TSRMG&lt;/code&gt;的定义如下，其中&lt;code&gt;tsrm_get_ls_cache()&lt;/code&gt;有多个定义，但功能是一样的，就是根据资源id的&lt;code&gt;tls_key&lt;/code&gt;取出相应&lt;code&gt;value&lt;/code&gt;的过程：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#define TSRMG(id, type, element)	(TSRMG_BULK(id, type)-&amp;gt;element)
+#define TSRMG_BULK(id, type)	((type) (*((void ***) tsrm_get_ls_cache()))[TSRM_UNSHUFFLE_RSRC_ID(id)])
+
+# define tsrm_tls_get()			pthread_getspecific(tls_key)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在启动&lt;code&gt;cli&lt;/code&gt;或者&lt;code&gt;cgi&lt;/code&gt;时，都会通过&lt;code&gt;SAPI&lt;/code&gt;调用&lt;code&gt;tsrm_startup()&lt;/code&gt;启动&lt;code&gt;TSRM&lt;/code&gt; ，随后进行模块初始化，在这个过程中分配资源id，初始化时的调用栈如下图所示&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190321140835.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;当非ZTS模式时，线程直接调用全局变量的属性， 而ZTS模式设置“虚拟目录”的概念其实就是“根据资源id查找所需的全局变量”的过程，本质上是为了避免线程间资源读取出现竞争，保证了线程安全。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
+
+&lt;p&gt;本文通过&lt;code&gt;php&lt;/code&gt;中&lt;code&gt;mkdir()&lt;/code&gt;函数在不同环境下表现结果不一致的现象，分析了&lt;code&gt;php&lt;/code&gt;内核对&lt;code&gt;mkdir()&lt;/code&gt;函数的实现，引申出&lt;code&gt;php&lt;/code&gt;中线程安全与非线程安全两个重要的机制，抛砖引玉，如有表述不妥或者错误之处欢迎指正，最后感谢@maple提出最初的问题以及探讨过程中给予的莫大的帮助。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://php.net/manual/en/function.mkdir.php&#34;&gt;http://php.net/manual/en/function.mkdir.php&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://segmentfault.com/a/1190000010004035&#34;&gt;https://segmentfault.com/a/1190000010004035&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

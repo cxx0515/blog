@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="对PHP中的mkdir()函数的研究">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - 对PHP中的mkdir()函数的研究 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    对PHP中的mkdir()函数的研究
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Wed Mar 20 2019 15:27:20 UTC">Mar 20, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-缘起">0x01 缘起</h3>
+
+<p>在前阵子分析<a href="https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">WORDPRESS IMAGE 远程代码执行漏洞</a>的过程中，在文末提到一点关于<code>php</code>中的<code>mkdir()</code>函数，在触发漏洞时这个地方存在一点疑惑，即当<code>mkdir()</code>第三个参数分别为<code>false</code>和<code>true</code>时，分别是能成功创建文件夹和创建失败，后来有同学发现和他的测试结果有偏差，两种情况都无法创建，在互相确认了<code>php</code>版本后，对<code>mkdir()</code>函数进行了深入的研究，发现里面大有文章。</p>
+
+<p>当时的测试结果是这样的，环境是<code>Windows</code>+<code>php-7.0.12-nts</code>，在<code>recursive=false</code>时成功穿越目录并创建了文件夹</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222095108.png" alt="" /></p>
+
+<p>本文重新编译了php方便调试，版本是<code>php-7.2.16-ts</code>和<code>php-7.2.16-nts</code>，测试结果如下</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320161208.png" alt="" /></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320161651.png" alt="" /></p>
+
+<p>可以看到只有在非线程安全下并且<code>recursive=false</code>时才成功创建，总结如下表所示</p>
+
+<table>
+<thead>
+<tr>
+<th align="center">Windows</th>
+<th align="center"><strong>thread-safe</strong></th>
+<th align="center"><strong>non-thread safe</strong></th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td align="center"><strong>recursive=false</strong></td>
+<td align="center">fail (No error)</td>
+<td align="center"><strong>success</strong></td>
+</tr>
+
+<tr>
+<td align="center"><strong>recursive=true</strong></td>
+<td align="center">fail (Invalid path)</td>
+<td align="center">fail (Invalid path)</td>
+</tr>
+</tbody>
+</table>
+
+<p>接下来从源码角度看看<code>php</code>如何实现<code>mkdir()</code>函数，探究一下为何会出现差异</p>
+
+<h3 id="0x02-调试">0x02 调试</h3>
+
+<p>用<code>Visual Studio 2017</code>打开项目，定位到<code>php-7.2.16-src/main/streams/plain_wrapper.c</code>line 1234，方法<code>php_plain_files_mkdir()</code>即<code>mkdir()</code>的实现，在此处下个断点，然后运行脚本，接着选择<code>调试-附加到进程</code>，选择编译好的<code>php.exe</code>进程，成功命中断点。</p>
+
+<h3 id="0x03-源码分析">0x03 源码分析</h3>
+
+<h4 id="1-recursive-true">1. recursive=true</h4>
+
+<h5 id="thread-safe">thread-safe</h5>
+
+<p>首先分析在<code>recursive=true</code>的情况，跟随断点来看一下<code>php_plain_files_mkdir()</code>这个方法</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320162930.png" alt="" /></p>
+
+<p>看到对<code>recursive</code>进行了判断，进了不同的分支，分别执行<code>php_mkdir()</code>和<code>expand_filepath_with_mode()</code>。<code>recursive=true</code>时进入<code>expand_filepath_with_mode()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320163530.png" alt="" /></p>
+
+<p>这个<code>expand_filepath_with_mode()</code>方法会判断当前路径是相对路径还是绝对路径，然后把路径传入<code>virtual_file_ex()</code>，如果是相对路径的话会在该方法中拼接成完整的路径，随后进行一个重要的判断</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320165438.png" alt="" /></p>
+
+<p>如果是<code>Windows</code>系统且路径中包含了<code>*</code>或<code>?</code>，则直接返回错误，这也就是为什么在复现<code>wordpress</code>漏洞时构造的<code>PoC</code>中含有<code>?</code>无法创建目录的原因(<code>wordpress</code>指定了<code>recursive=true</code>)，当时使用<code>#</code>绕过了这个限制</p>
+
+<p>回到上面，<code>virtual_file_ex()</code>没有通过验证，最终抛出的异常是<code>&quot;Invalid path&quot;</code></p>
+
+<pre><code class="language-c">if (!expand_filepath_with_mode(dir, buf, NULL, 0, CWD_EXPAND )) {
+    php_error_docref(NULL, E_WARNING, &quot;Invalid path&quot;);
+    return 0;
+}
+</code></pre>
+
+<h5 id="non-thread-safe">non-thread safe</h5>
+
+<p>在非线程安全模式下，流程是完全一样的，最终也会因为无法通过<code>*</code>或<code>?</code>的检查，抛出<code>&quot;Invalid path&quot;</code></p>
+
+<h4 id="2-recursive-false">2. recursive=false</h4>
+
+<p>接下来看一下<code>recursive=false</code>的情况，在这个情况下，线程安全与非线程安全产生了不一样的结果。</p>
+
+<p><code>recursive=false</code>时进入<code>php_mkdir()</code>方法，随后进入<code>php_mkdir_ex()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320171340.png" alt="" /></p>
+
+<p>在进行<code>basedir</code>检查后进入<code>VCWD_MKDIR</code>，这是一个宏命令，在源码中有三处定义，在<code>php-7.2.16-src/Zend/zend_virtual_cwd.h</code>中，分别是</p>
+
+<ul>
+<li><code>mkdir(pathname, mode)</code></li>
+<li><code>php_win32_ioutil_mkdir(pathname, mode)</code></li>
+<li><code>virtual_mkdir(pathname, mode)</code></li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320172231.png" alt="" /></p>
+
+<p>注意这三个定义是根据不同的条件执行的，看一下逻辑</p>
+
+<pre><code class="language-c">#ifdef VIRTUAL_DIR
+#define VCWD_MKDIR(pathname, mode) virtual_mkdir(pathname, mode)
+#endif
+
+#if defined(ZEND_WIN32)
+#define VCWD_MKDIR(pathname, mode) php_win32_ioutil_mkdir(pathname, mode)
+#else
+#define VCWD_MKDIR(pathname, mode) mkdir(pathname, mode)
+</code></pre>
+
+<p>也就是说，如果定义了<code>VIRTUAL_DIR</code>，那么执行的是<code>virtual_mkdir()</code>，否则如果是<code>Windows</code>系统，就执行<code>php_win32_ioutil_mkdir()</code>创建目录，<code>linux</code>下则是<code>mkdir</code>命令</p>
+
+<p>那么，既然在<code>recursive=false</code>的情况下，线程安全与非线程安全出现了不一样的结果，肯定是此处走的分支不一样，一个使用了<code>virtual_mkdir()</code>，另一个使用了<code>php_win32_ioutil_mkdir()</code>，分别进入两个方法</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320173806.png" alt="" /></p>
+
+<p>在<code>virtual_mkdir()</code>中，同上面的情况一样，进行了<code>virtual_file_ex()</code>判断，因此也会走到对<code>*</code>和<code>?</code>的判断，同样因为通不过检查而抛出<code>&quot;Invalid path&quot;</code>，而在<code>php_win32_ioutil_mkdir()</code>中则是调用了<code>CreateDirectoryW</code>创建目录</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320174124.png" alt="" /></p>
+
+<p><code>CreateDirectoryW</code>是<code>Windows</code>下创建目录的<code>API</code>，走到这个分支并不检查<code>*</code>和<code>?</code>，因此能够成功创建目录。</p>
+
+<blockquote>
+<p>有关<code>CreateDirectoryW</code>参考<a href="https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-createdirectoryw">Microsoft Doc</a></p>
+
+<p>与<code>CreateDirectoryW</code>对应的还有<code>CreateDirectoryA</code>，两个函数功能一样，只是第一个参数的类型不同，一个是<code>LPCWSTR</code> 另一个是<code>LPCSTR</code> ，这两者是<code>CHAR</code> 和<code>WCHAR</code>的区别 ，详细可以参考<a href="https://stackoverflow.com/questions/321413/lpcstr-lpctstr-and-lptstr">StackOverflow</a></p>
+</blockquote>
+
+<p>现在剩下最关键的一个问题，什么情况下会走<code>virtual_mkdir()</code>的流程，也就是说<code>VIRTUAL_DIR</code>是在何处定义的？</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190320175730.png" alt="" /></p>
+
+<p>在<code>php-7.2.16-src/Zend?zend_virtual_cwd.h</code>line 41定义了这个变量，前置条件是<code>ZTS</code>，也就是线程安全的标识，只有在线程安全模式下，才使用<code>virtual_mkdir()</code>创建目录，调用的系统函数同样是<code>CreateDirectoryW</code>，但是在此之前得先通过<code>virtual_file_ex()</code>校验，含有<code>*</code>和<code>?</code>则无法创建成功。</p>
+
+<h3 id="0x04-流程图">0x04 流程图</h3>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190321152354.png" alt="" /></p>
+
+<h3 id="0x05-深入">0x05 深入</h3>
+
+<p>现在清楚了<code>php</code>对<code>mkdir()</code>的实现，之所以结果不一样是因为<code>ZTS</code>与<code>NTS</code>下的两种不同的处理流程，那么为什么在TS模式下，在调用<code>Windows</code>的<code>API</code>创建目录之前，需要设置一个“虚拟目录”呢？</p>
+
+<p>这里涉及到<code>php</code>内核中的<code>TSRM</code>机制，也就是<code>线程安全资源管理器(Thread Safe Resource Manager)</code> ，这个机制的引入是为了解决线程并发的问题，我们知道，如果线程访问的内存地址空间相同，当一个线程修改资源时会影响其它线程，所以为了确保不会出现资源竞争，<code>php</code>将多个资源复制为多份，每个线程需要的资源在当前进程空间中各有一份，各取所取，这样就不会出现竞争问题。</p>
+
+<p>那么不同线程怎么获取自身所需要的资源呢？<code>php</code>中通过<code>ts_allocate_id()</code>函数实现， 这个函数的作用就是遍历所有线程，为每一个分配一个<code>线程安全资源id</code>，每一次调用<code>ts_allocate_id()</code>函数时，都会执行这个操作，而为了避免重复分配，这个过程是在调用模块初始化的时候就完成了</p>
+
+<p><code>TSRMG</code>的定义如下，其中<code>tsrm_get_ls_cache()</code>有多个定义，但功能是一样的，就是根据资源id的<code>tls_key</code>取出相应<code>value</code>的过程：</p>
+
+<pre><code class="language-c">#define TSRMG(id, type, element)	(TSRMG_BULK(id, type)-&gt;element)
+#define TSRMG_BULK(id, type)	((type) (*((void ***) tsrm_get_ls_cache()))[TSRM_UNSHUFFLE_RSRC_ID(id)])
+
+# define tsrm_tls_get()			pthread_getspecific(tls_key)
+</code></pre>
+
+<p>在启动<code>cli</code>或者<code>cgi</code>时，都会通过<code>SAPI</code>调用<code>tsrm_startup()</code>启动<code>TSRM</code> ，随后进行模块初始化，在这个过程中分配资源id，初始化时的调用栈如下图所示</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190321140835.png" alt="" /></p>
+
+<p>当非ZTS模式时，线程直接调用全局变量的属性， 而ZTS模式设置“虚拟目录”的概念其实就是“根据资源id查找所需的全局变量”的过程，本质上是为了避免线程间资源读取出现竞争，保证了线程安全。</p>
+
+<h3 id="0x06-总结">0x06 总结</h3>
+
+<p>本文通过<code>php</code>中<code>mkdir()</code>函数在不同环境下表现结果不一致的现象，分析了<code>php</code>内核对<code>mkdir()</code>函数的实现，引申出<code>php</code>中线程安全与非线程安全两个重要的机制，抛砖引玉，如有表述不妥或者错误之处欢迎指正，最后感谢@maple提出最初的问题以及探讨过程中给予的莫大的帮助。</p>
+
+<p>参考：</p>
+
+<p><a href="http://php.net/manual/en/function.mkdir.php">http://php.net/manual/en/function.mkdir.php</a></p>
+
+<p><a href="https://segmentfault.com/a/1190000010004035">https://segmentfault.com/a/1190000010004035</a></p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6\/';
+    var disqus_title = '对PHP中的mkdir()函数的研究';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+
