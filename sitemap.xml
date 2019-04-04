@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://kylingit.com/blog/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions/</loc>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
+  </url>
+  
+  <url>
     <loc>https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/</loc>
     <lastmod>2019-03-20T15:27:20+00:00</lastmod>
   </url>
@@ -256,13 +261,19 @@
   
   <url>
     <loc>https://kylingit.com/blog/</loc>
-    <lastmod>2019-03-20T15:27:20+00:00</lastmod>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
     <loc>https://kylingit.com/tags/bot/</loc>
     <lastmod>2018-06-06T10:01:49+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://kylingit.com/tags/bypass/</loc>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -304,6 +315,12 @@
   <url>
     <loc>https://kylingit.com/tags/directory-traversal/</loc>
     <lastmod>2018-05-16T10:59:02+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://kylingit.com/tags/disbale_functions/</loc>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -421,7 +438,7 @@
   
   <url>
     <loc>https://kylingit.com/tags/php/</loc>
-    <lastmod>2019-03-20T15:27:20+00:00</lastmod>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -469,7 +486,7 @@
   
   <url>
     <loc>https://kylingit.com/categories/research/</loc>
-    <lastmod>2019-03-20T15:27:20+00:00</lastmod>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -598,7 +615,7 @@
   
   <url>
     <loc>https://kylingit.com/</loc>
-    <lastmod>2019-03-20T15:27:20+00:00</lastmod>
+    <lastmod>2019-04-02T10:21:42+00:00</lastmod>
     <priority>0</priority>
   </url>
   

