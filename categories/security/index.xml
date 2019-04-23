@@ -10,6 +10,193 @@
     <atom:link href="https://kylingit.com/categories/security/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析</title>
+      <link>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Mon, 22 Apr 2019 15:19:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;3月20日，Drupal官方发布SA-CORE-2019-004漏洞预警，修复了一处处理文件名异常，官方描述为中危，因为该漏洞需要作者权限来上传文件&lt;/p&gt;
+
+&lt;p&gt;详细参考：&lt;a href=&#34;https://www.drupal.org/sa-core-2019-004&#34;&gt;https://www.drupal.org/sa-core-2019-004&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;根据官方&lt;a href=&#34;https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c&#34;&gt;补丁&lt;/a&gt;，最主要修改了一处&lt;code&gt;preg_replace&lt;/code&gt;异常，修改的方法为&lt;code&gt;file.inc:file_create_filename()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422165341.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;该方法的主要功能是将返回上传文件的路径，返回形如&lt;code&gt;public://2019-04/1.png&lt;/code&gt;的路径，然后由&lt;code&gt;drupal&lt;/code&gt;自身实现的方法将&lt;code&gt;public://&lt;/code&gt;路径转换为相对路径。问题出在这行处理&lt;code&gt;utf-8&lt;/code&gt;编码的代码上&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;$basename = preg_replace(&#39;/[\x00-\x1F]/u&#39;, &#39;_&#39;, $basename);&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;这行代码的意思的如果文件名中含有&lt;code&gt;0x00-0x1F&lt;/code&gt;区间的字符时，将其转换为&lt;code&gt;_&lt;/code&gt;。查看标准&lt;code&gt;ASCII&lt;/code&gt;码表，字符所对应的十进制数范围为&lt;code&gt;0-127&lt;/code&gt;，&lt;code&gt;0x00-0x1F&lt;/code&gt;对应的数为&lt;code&gt;0-31&lt;/code&gt;，也就是前32个不常见或者说不可显字符。&lt;strong&gt;假如我们传入的字符范围大于128时，&lt;code&gt;preg_replace&lt;/code&gt;便会出错&lt;/strong&gt;，返回一个&lt;code&gt;NULL&lt;/code&gt;值，于是此时的&lt;code&gt;basename&lt;/code&gt;便被赋值为空，而下面对&lt;code&gt;basename&lt;/code&gt;也没有多余的操作，于是我们就得到了一个没有后缀的文件，而且这个文件的名称也是可以预测的，相关代码如下&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (file_exists($destination)) {
+    // Destination file already exists, generate an alternative.
+    $pos = strrpos($basename, &#39;.&#39;);
+    if ($pos !== FALSE) {
+      $name = substr($basename, 0, $pos);
+      $ext = substr($basename, $pos);
+    }
+    else {
+      $name = $basename;
+      $ext = &#39;&#39;;
+    }
+
+    $counter = 0;
+    do {
+      $destination = $directory . $separator . $name . &#39;_&#39; . $counter++ . $ext;
+    } while (file_exists($destination));
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在开始有一个&lt;code&gt;file_exists&lt;/code&gt;判断，所以我们需要上传相同文件至少两次，才能进入&lt;code&gt;if&lt;/code&gt;分支。由于&lt;code&gt;$basename&lt;/code&gt;为空，&lt;code&gt;$name&lt;/code&gt;也被赋值为空，接下来进入一个循环，如果文件已经存在，就把文件命名为&lt;code&gt;路径+分隔符+name+_+counter+后缀&lt;/code&gt;的形式，也就是说同名文件会加上后缀&lt;code&gt;_0&lt;/code&gt; &lt;code&gt;_1&lt;/code&gt;等，而此时表达式的值即为&lt;code&gt;下划线+计数器&lt;/code&gt;的值，于是我们在&lt;code&gt;/sites/default/files/pictures/&amp;lt;YYYY-MM&amp;gt;/&lt;/code&gt;目录下得到类似&lt;code&gt;_0 _1&lt;/code&gt;的无后缀文件。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422171620.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;值得注意的是，上传的文件可以是任意类型，不局限于图片文件，可以通过&lt;code&gt;http://drupal-site/sites/default/files/&amp;lt;YYYY-MM&amp;gt;/_1&lt;/code&gt;访问到文件。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-尝试利用&#34;&gt;0x03 尝试利用&lt;/h3&gt;
+
+&lt;h4 id=&#34;初探&#34;&gt;初探&lt;/h4&gt;
+
+&lt;p&gt;此时我们想到，可以上传一个html文件，诱使管理员点击形成一个XSS漏洞。&lt;/p&gt;
+
+&lt;p&gt;但是这里存在一个问题，当通过&lt;code&gt;Home &amp;gt;&amp;gt; Add content &amp;gt;&amp;gt; 上传Image&lt;/code&gt;上传文件时，如果传了一个纯HTML文件，是无法上传成功的，因为在&lt;code&gt;core/modules/file/file.module&lt;/code&gt;里有一个检查&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;$errors = file_validate($file, $validators);&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;file_validate()&lt;/code&gt;方法通过下图4个方法检查图片有效性&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111858.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;其中&lt;code&gt;file_validate_is_image&lt;/code&gt;方法使用了&lt;code&gt;ImageFactory&lt;/code&gt;库，非图片文件无法通过这个检查，于是上传失败，也就无法在&lt;code&gt;sites/default/files/&amp;lt;YYYY-MM&amp;gt;/&lt;/code&gt;生成文件。&lt;/p&gt;
+
+&lt;p&gt;当然这里是可以绕过的，那就是在上传的内容前加上图片文件头，例如&lt;code&gt;GIF&lt;/code&gt;或&lt;code&gt;GIF89a&lt;/code&gt;，能够绕过&lt;code&gt;file_validate_is_image&lt;/code&gt;检查上传文件，然而这并没有什么用，因为访问&lt;code&gt;http://drupal-site/sites/default/files/&amp;lt;YYYY-MM&amp;gt;/_1&lt;/code&gt;时，浏览器无法判断文件类型，所以不会解析&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;也就是说&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;纯HTML文件无后缀，浏览器可以解析，但是无法上传；&lt;/li&gt;
+&lt;li&gt;增加图片文件头，可以上传，但是浏览器不能解析；&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;于是现在陷入一个尴尬境地，需要找个另外的点。&lt;/p&gt;
+
+&lt;h4 id=&#34;突破&#34;&gt;突破&lt;/h4&gt;
+
+&lt;p&gt;我们注意到在&lt;code&gt;新建文章&lt;/code&gt;页面除了上传图片外，还有一个编辑器内置的图片上传接口，这个接口是否可以上传html呢&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111342.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;跟入分析一下，之前的流程都是一样的，同样会进入&lt;code&gt;file_validate()&lt;/code&gt;方法，同样检测文件合法性，但是此时的&lt;code&gt;$validators&lt;/code&gt;有所不一样：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111805.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;file_validate_is_image&lt;/code&gt;变成了&lt;code&gt;file_validate_image_resolution&lt;/code&gt;，这个方法是检测图片是否符合大小，但是对于非图片文件&amp;hellip;直接忽略了，返回一个空数组&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113048.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;方法说明里也说了会忽略非图片文件&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Non-image files will be ignored.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;于是&lt;code&gt;file_validate()&lt;/code&gt;不报错，校验通过，成功上传文件，目录是&lt;code&gt;sites/default/files/inline-images/&lt;/code&gt;，访问文件成功触发&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113606.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;现在可以利用这个漏洞上传一个html文件，攻击面就扩大了许多，简单的可以是一个XSS，复杂的可以是个钓鱼页面(这个漏洞需要作者权限，故可以钓鱼管理员)，再进一步，如何进行命令执行甚至直接反弹一个shell呢？&lt;/p&gt;
+
+&lt;h4 id=&#34;组合拳&#34;&gt;组合拳&lt;/h4&gt;
+
+&lt;p&gt;联想到1月份Drupal官方修复的&lt;a href=&#34;https://www.drupal.org/sa-core-2019-002&#34;&gt;SA-CORE-2019-002&lt;/a&gt;漏洞，文件操作函数处理&lt;code&gt;phar&lt;/code&gt;文件时反序列化形成代码执行漏洞，在此处正好可以用上。phar反序列化风险影响几乎所有文件操作函数，而在Drupal中&lt;code&gt;File system&lt;/code&gt;功能就存在这个缺陷，在设置本地临时文件夹的时候会进行路径检查，相关方法是&lt;code&gt;system_check_directory()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423135902.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在这个方法中存在&lt;code&gt;is_dir()&lt;/code&gt;函数，当&lt;code&gt;is_dir()&lt;/code&gt;函数处理&lt;code&gt;phar:// stream wrapper&lt;/code&gt;时，便会触发反序列化，如果传入一个恶意构造的&lt;code&gt;phar&lt;/code&gt;文件就可以造成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423140328.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;那么现在的思路是，上传一个&lt;code&gt;phar&lt;/code&gt;文件，诱使管理员点击链接把临时文件路径设置为&lt;code&gt;phar://test.phar&lt;/code&gt;触发漏洞反弹shell&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h3&gt;
+
+&lt;p&gt;通过上述分析，有几个限制需要突破：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;生成的phar文件不能通过图片上传接口上传，否则会失败；&lt;/li&gt;
+&lt;li&gt;需要写一个html让管理员打开链接自动发送请求来修改临时文件路径；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;因此漏洞利用分为以下几步：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;生成一个能反弹shell的phar文件；&lt;/p&gt;
+
+&lt;p&gt;Drupal反序列化的POP链已经比较多了，可以参考&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;选择&lt;code&gt;GuzzleHttp\Psr7&lt;/code&gt;类，使用&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;PHARGGC&lt;/a&gt;直接生成phar文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423143704.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;上传phar文件&lt;/p&gt;
+
+&lt;p&gt;把&lt;code&gt;out.phar&lt;/code&gt;修改为png后缀，通过编辑器的接口上传，获得文件路径&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;http://127.0.0.1/drupal-8.6.5/sites/default/files/inline-images/phar.png&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;生成一个html文件；&lt;/p&gt;
+
+&lt;p&gt;这个html文件需要让管理员打开链接时自动发送请求来修改临时文件路径，与&lt;code&gt;CSRF&lt;/code&gt;非常相似，所以直接使用&lt;code&gt;burpsuite&lt;/code&gt;抓个包生成&lt;code&gt;CSRF PoC&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423150512.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们增加一个自动点击提交表单的操作，省去手动submit&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-html&#34;&gt;&amp;lt;script type=&amp;quot;text/javascript&amp;quot;&amp;gt;
+    var a  = document.getElementById(&#39;form1&#39;)
+    a.submit()
+&amp;lt;/script&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;再通过编辑器的接口上传这个html文件，修改文件名的&lt;code&gt;ascii&lt;/code&gt;值大于128。&lt;strong&gt;注意需要上传至少两次&lt;/strong&gt;，以生成&lt;code&gt;_0、_1&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153014.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;访问&lt;code&gt;http://drupal-site/sites/default/files/inline-images/_0&lt;/code&gt;时浏览器解析为html并自动提交表单，触发漏洞&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这里因为反弹shell会把页面卡住，可以增加一个跳转首页，这样可以更隐蔽&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞由一个&lt;code&gt;preg_replace()&lt;/code&gt;引起的，没有正确处理异常，导致可以上传“任意”文件，结合phar反序列化漏洞组合成一条漂亮的攻击链，值得学习。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c&#34;&gt;https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://www.zerodayinitiative.com/blog/2019/4/11/a-series-of-unfortunate-images-drupal-1-click-to-rce-exploit-chain-detailed&#34;&gt;https://www.zerodayinitiative.com/blog/2019/4/11/a-series-of-unfortunate-images-drupal-1-click-to-rce-exploit-chain-detailed&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://paper.seebug.org/897/&#34;&gt;https://paper.seebug.org/897/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
@@ -3607,178 +3794,6 @@ print &#39;0x&#39; + shellcode .encode(&#39;hex&#39;)
 &lt;p&gt;总结：
 - RPO可以结合XSS进行攻击，开发时不注意的话容易被利用
 - 反序列化问题一直都存在，这道题中虽然代码比较简单，利用起来还是有几个坑，还需要多学习&lt;/p&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>vBulletin 论坛定向攻击脚本分析</title>
-      <link>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</link>
-      <pubDate>Mon, 05 Feb 2018 17:18:38 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/vbulletin-%E8%AE%BA%E5%9D%9B%E5%AE%9A%E5%90%91%E6%94%BB%E5%87%BB%E8%84%9A%E6%9C%AC%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;花了几天时间研究了一下Equation Group泄露的针对&lt;code&gt;vBulletin&lt;/code&gt;论坛的定向攻击工具，期间非常感谢&lt;a href=&#34;https://mp.weixin.qq.com/s/5WRXpljL7RFSPRQ2NdHhtA&#34;&gt;风流@逢魔安全实验室&lt;/a&gt;的帮助，最主要的动力也是在技术分享上听了这个课题，感觉非常有意思，于是搭了环境研究了利用过程，期间也踩了好几个坑，整个过程下来却感受到脚本作者扎实的代码功底和缜密的逻辑，虽然是“过时”的工具了却有很多值得学习的地方。另外，这个过程是参考&lt;a href=&#34;https://paper.seebug.org/517/&#34;&gt;Equation Group泄露工具之vBulletin无文件后门分析&lt;/a&gt;进行的，只是把其中碰到的一些问题梳理一下，大家可以结合着看，希望能起到帮助。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;vBulletin是国外知名的论坛程序，使用广泛，但在国内见得不多。程序算得上比较古老，披露的漏洞也不算少，但是针对这个系统的集成利用工具还是非方程式这个莫属，攻击工具高度融合论坛本身的代码逻辑，无论是安插后门还是插入代理，全程都是无文件攻击，是真正“高级持续化威胁”的典型例子。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-脚本介绍&#34;&gt;0x02 脚本介绍&lt;/h3&gt;
-
-&lt;p&gt;攻击脚本名为&lt;code&gt;funnelout.pl&lt;/code&gt;，在方程式工具包的&lt;code&gt;linux/up&lt;/code&gt;目录下，&lt;a href=&#34;https://github.com/x0rz/EQGRP&#34;&gt;github&lt;/a&gt;上有完整的解压缩后的文件，本文件&lt;a href=&#34;https://github.com/x0rz/EQGRP/blob/master/Linux/up/funnelout.v4.1.0.1.pl&#34;&gt;地址&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;它一共有三个版本，v3.0.0.1, v4.0.0.1和v4.1.0.1，内容上大同小异，新版本修改和增加了几处代码，我们就选择v4.1.0.1来研究。
-脚本基于perl语言编写，x0rz给它的介绍是&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;FUNNELOUT: database-based web-backdoor for vbulletin&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;可以看出它是基于数据库的后门，也就是说攻击过程中不会生成文件，传统安全评估漏洞扫描之类的很难发现这种后门，再根据脚本生成的攻击代码中出现的一个时间戳&lt;code&gt;1258466920&lt;/code&gt;，推测开发时间大致在2009年11月份，如果真是这样，10年前的攻击工具现在看来依旧非常牛逼，用@风流的话来说“细思极恐”。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h3&gt;
-
-&lt;p&gt;&lt;code&gt;funnelout.pl&lt;/code&gt;中涉及到的&lt;code&gt;vBulletin&lt;/code&gt;版本是3和4，所以我们选择&lt;code&gt;vBulletin v3.8.6&lt;/code&gt;来测试。提一句这套系统的代码好难找，官网仅开放下载给注册会员，而且现在已经更新到v5.x，所以需要代码的同学可以联系我。&lt;/p&gt;
-
-&lt;p&gt;安装时在建立数据库的过程中可能出现设置默认日期&lt;code&gt;0000-00-00&lt;/code&gt;的错误，这应该和mysql的版本有关，可以选择低版本的mysql，也可以修改&lt;code&gt;upload\install\mysql-schema.php&lt;/code&gt;，将默认的&lt;code&gt;0000-00-00&lt;/code&gt;为&lt;code&gt;1000-01-01&lt;/code&gt;。&lt;/p&gt;
-
-&lt;p&gt;另外如果安装过程中设置了数据库表名的前缀，那么需要修改&lt;code&gt;$DB_table&lt;/code&gt;和&lt;code&gt;$DB_datastore&lt;/code&gt;涉及sql语句的部分，例如&lt;code&gt;SELECT title FROM datastore&lt;/code&gt;修改为&lt;code&gt;SELECT title FROM $DB_datastore&lt;/code&gt;，其中&lt;code&gt;$DB_datastore&lt;/code&gt;需要自己声明。&lt;/p&gt;
-
-&lt;p&gt;其它的可以参考说明文档，这里不再赘述。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-复现-分析&#34;&gt;0x04 复现&amp;amp;分析&lt;/h3&gt;
-
-&lt;p&gt;在分析代码之前我们先了解一下&lt;code&gt;vBulletin&lt;/code&gt;的设计逻辑，特别是在模板渲染方面。&lt;/p&gt;
-
-&lt;p&gt;程序在安装过程中会通过&lt;code&gt;includes/adminfunctions_template.php&lt;/code&gt;加载xml文件&lt;code&gt;install/vbulletin-language.xml&lt;/code&gt;，里面定义了基本的样式，根据样式的&lt;code&gt;id&lt;/code&gt;取出对应的内容插入到数据表&lt;code&gt;template&lt;/code&gt;中，渲染过程则是相反，根据模板的&lt;code&gt;title&lt;/code&gt;加载进程序，进行前端渲染，因此才能够被“无文件“安装后门，这算是论坛当初设计时一个比较明显的缺陷吧。将后门代码插入在模板中本身不容易被发现，更何况模板不以文件的方式存在而是储存在数据库中，这也为这个攻击工具提供了很好的隐蔽方式，同时也能解释脚本使用时需要指定数据库连接，因为它本身是直接对数据库进行操作的。&lt;/p&gt;
-
-&lt;p&gt;来看一下脚本的整体功能&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/TbgPz&#34; alt=&#34;funnelout.pl&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;-op&lt;/code&gt;参数展示了可以选择的操作，最主要的是&lt;code&gt;door&lt;/code&gt;,&lt;code&gt;proxy&lt;/code&gt;和&lt;code&gt;tag&lt;/code&gt;功能，以及相应的&lt;code&gt;show&lt;/code&gt;操作，我们也是选择这三部分功能进行分析&lt;/p&gt;
-
-&lt;p&gt;因为脚本是直接对数据库进行操作，所以需要指定数据库的连接信息，也可以指定&lt;code&gt;-conf&lt;/code&gt;参数跟上论坛的配置文件，脚本会自动提取里面的基本信息。其他的参数就是字面意思，包括设置ssl，要包括及排除的用户，设置黑名单等等，可以看出脚本的功能是相当强大的。&lt;/p&gt;
-
-&lt;h4 id=&#34;backdoor-功能分析&#34;&gt;Backdoor 功能分析&lt;/h4&gt;
-
-&lt;p&gt;这应该是脚本最简单粗暴的方法，直接在数据库中插入后门代码，之后通过HTTP请求中的&lt;code&gt;Referrer&lt;/code&gt;字段发送指令，注意此处是&lt;code&gt;Referrer&lt;/code&gt;而不是默认的&lt;code&gt;Referer&lt;/code&gt;，隐蔽性非常好。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/uLFsU&#34; alt=&#34;backdoor&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;看一下插入后门的方法(在脚本中打印了执行的sql语句来方便理解)，可以看到插入后门的操作对页脚模板插入了一段base64编码后的代码&lt;code&gt;eval($_SERVER[&amp;quot;HTTP_REFERRER&amp;quot;]);&lt;/code&gt;，在页面渲染页脚部分时就会加载恶意代码，攻击者就可以通过&lt;code&gt;HTTP_REFERRER&lt;/code&gt;字段下发指令，利用非常简单。我们来看一下它具体是如何实现的&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/TPKug&#34; alt=&#34;op_door&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/J1Q9m&#34; alt=&#34;patch_db&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;很简单的逻辑，将base64编码后的一句话代码插入&lt;code&gt;template&lt;/code&gt;表的&lt;code&gt;footer&lt;/code&gt;模板下，在&lt;code&gt;global.php&lt;/code&gt;调用过程中被加载执行。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/06Abt&#34; alt=&#34;global.php&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/wSBon&#34; alt=&#34;debug&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Eumco&#34; alt=&#34;phpinfo&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;proxy-功能分析&#34;&gt;Proxy 功能分析&lt;/h4&gt;
-
-&lt;p&gt;Proxy功能相对复杂一些，但也离不开对模板的操作，它涉及的是&lt;code&gt;header&lt;/code&gt;模板&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/gGsRT&#34; alt=&#34;proxyTemplate&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KS5ci&#34; alt=&#34;op_proxy&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;使用proxy时需要指定一个&lt;code&gt;tag&lt;/code&gt;，而且tagurl需要符合正则表达式&lt;code&gt;/(.+?)\/.+?\/.+?\/(.+?)\/\d+\/(.+?)\/(.*)/&lt;/code&gt;也就是&lt;code&gt;x.x.x.x/a/b/c/1/d/&lt;/code&gt;的格式，这地方是个坑&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;指定tagurl生成相应的proxy代码&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1UrLg&#34; alt=&#34;proxy&#34; /&gt;
-解码后&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oXMfY&#34; alt=&#34;proxy code&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;$fahost&lt;/code&gt;就是我们指定的tag的ip。当满足if条件——请求路径中含有&lt;code&gt;/&lt;/code&gt;且ip不是&lt;code&gt;64.38.3.50&lt;/code&gt;时，&lt;code&gt;header&lt;/code&gt;渲染过程中会加载这些php代码，构造一个请求发送给我们的tagUrl。值得注意的是这里不仅支持GET请求，同样支持POST请求，也就是说我们可以作为“中间人”的角色时刻监听着用户与论坛之间的通信，实现了真正意义上的代理，而且用户在这过程中完全无法察觉到，细思极恐&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/jEOhg&#34; alt=&#34;proxy request&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可以确定的是&lt;code&gt;64.38.3.50&lt;/code&gt;这个ip一定与攻击组织有关，也许在测试的时候就将此ip排除在外，避免一些麻烦，同时这也是整个脚本泄露的唯一一个确定的ip。&lt;/p&gt;
-
-&lt;h4 id=&#34;tag-功能分析&#34;&gt;Tag 功能分析&lt;/h4&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/NXTqW&#34; alt=&#34;op_tag&#34; /&gt;
-Tag功能更加复杂，操作&lt;code&gt;navbar&lt;/code&gt;模板，使用时有这么几个选项可以指定，&lt;code&gt;-tag&lt;/code&gt;指定标记的url，&lt;code&gt;-nohttp&lt;/code&gt;表示不自动加上&lt;code&gt;http://&lt;/code&gt;，这种情况可以在正常访问时嵌入一个网站本身的url，&lt;code&gt;-f&lt;/code&gt;Force，还有&lt;code&gt;ssl&lt;/code&gt;选项，适用于https的情况。&lt;/p&gt;
-
-&lt;p&gt;我们先用&lt;code&gt;-tag&lt;/code&gt;指定一个&lt;code&gt;tag URL&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/yProo&#34; alt=&#34;tag&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;base64解码后的代码长这样&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kLa7C&#34; alt=&#34;tag code&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当我们访问文章页面&lt;code&gt;http://127.0.0.1/vb3/showthread.php?p=1&lt;/code&gt;或访问私信链接&lt;code&gt;http://127.0.0.1/vb3/private.php?do=showpm&amp;amp;pmid=1&lt;/code&gt;时，就会加载php代码，在&lt;code&gt;datastore&lt;/code&gt;表生成一个“标签”——插入一个序列化后的&lt;code&gt;data&lt;/code&gt;字段，类似&lt;code&gt;a:2:{i:0;i:1517970003;i:1;i:1;}&lt;/code&gt;，其中最后的&lt;code&gt;i&lt;/code&gt;是一个计数器，值在随机数[0,6]之间，每次访问页面时i值递减1，当i减到0时就会触发代码，向我们设置的&lt;code&gt;tag URL&lt;/code&gt;发送用户名经过hex编码后的页面地址&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/FgW6h&#34; alt=&#34;tag code1&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pkQsP&#34; alt=&#34;61646d696e.html&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/qmk8S&#34; alt=&#34;61646d696e req&#34; /&gt;
-(此处便于理解换了一个tag URL，并且新建了61646d696e.html文件)&lt;/p&gt;
-
-&lt;p&gt;同时&lt;code&gt;tag&lt;/code&gt;减至&lt;code&gt;-1&lt;/code&gt;并出于等待重置状态，当我们进行&lt;code&gt;reset&lt;/code&gt;操作时就会清空这条“标签”数据&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/0wgAc&#34; alt=&#34;showTagged&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/szepl&#34; alt=&#34;reset&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;值得注意的是，“标签”功能只在一天内有效，超过一天后就无法触发，只能先进行重置操作&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-nohttp&lt;/code&gt;选项&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;当使用&lt;code&gt;-nohttp&lt;/code&gt;时，生成url后就可以请求网站本身的路径+hex(用户名)的页面，但是这个页面不一定存在，所以一时没想明白为什么这样设置。而没有设置&lt;code&gt;-nohttp&lt;/code&gt;时可以向我们自定义地址发送请求，结合脚本的功能推测是给访问某些特定页面的用户做一个标记，便于以后再定向攻击。&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;-crumb&lt;/code&gt;选项&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;指定了&lt;code&gt;-crumb&lt;/code&gt;选项后则是在页面嵌入一张1x1的图片，加载的是&lt;code&gt;images/&lt;/code&gt;目录下的&lt;code&gt;hex(用户名).gif&lt;/code&gt;，属性设置为不可见，这块的功能也没有理解透彻，总之会传递一个用户名信息，用户不知不觉中就被标记上了，细思极恐again&amp;hellip;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-特征&#34;&gt;0x05 特征&lt;/h3&gt;
-
-&lt;p&gt;截图中也注意到了两个特殊的md5&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;84b8026b3f5e6dcfb29e82e0b0b0f386 Unregistered (EN)
-e6d290a03b70cfa5d4451da444bdea39 dbedd120e3d3cce1 (AR)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这也是攻击脚本中硬编码的“黑名单”，或许理解为“白名单”更合适？&lt;/p&gt;
-
-&lt;p&gt;另外有几个ip段，地理位置分布在各个国家&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&#39;/^(64.38.3.50|195.28.|94.102.|91.93.|41.130.|212.118.|79.173.|85.159.|94.249.|86.108.)/&#39;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;而根据另一个特殊的字符串&lt;code&gt;l9ed39e2fea93e5&lt;/code&gt;搜索，发现网上存在可能被攻击的案例，里面出现了一个域名&lt;code&gt;http://technology-revealed.com&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OFkMN&#34; alt=&#34;technology-revealed&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;这几条线索之间的关系不得而知，或许对威胁情报能起到一起参考作用，虽然这个APT攻击已经过去好多年了。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
-
-&lt;p&gt;方程式泄露的工具包对整个世界带来了巨大的影响，像“永恒之蓝”甚至成为了目前勒索病毒和挖矿木马的标配，而这个针对vb论坛的攻击工具仅仅是里面的一个文件，整个工具包里还隐藏着什么威力巨大的武器，真值得我们好好研究。单从&lt;code&gt;funnelout.v4.1.0.1.pl&lt;/code&gt;这个脚本看虽然它的利用面可能没那么广了，但作者的思维角度和攻击方法依旧没有过时，值得学习。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h3&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://paper.seebug.org/517/&#34;&gt;https://paper.seebug.org/517/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/x0rz/EQGRP&#34;&gt;https://github.com/x0rz/EQGRP&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime&#34;&gt;https://stackoverflow.com/questions/36374335/error-in-mysql-when-setting-default-value-for-date-or-datetime&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
     </item>
     

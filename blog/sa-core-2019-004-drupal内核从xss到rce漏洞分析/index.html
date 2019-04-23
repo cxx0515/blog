@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Mon Apr 22 2019 15:19:04 UTC">Apr 22, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>3月20日，Drupal官方发布SA-CORE-2019-004漏洞预警，修复了一处处理文件名异常，官方描述为中危，因为该漏洞需要作者权限来上传文件</p>
+
+<p>详细参考：<a href="https://www.drupal.org/sa-core-2019-004">https://www.drupal.org/sa-core-2019-004</a></p>
+
+<h3 id="0x02-漏洞分析">0x02 漏洞分析</h3>
+
+<p>根据官方<a href="https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c">补丁</a>，最主要修改了一处<code>preg_replace</code>异常，修改的方法为<code>file.inc:file_create_filename()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422165341.png" alt="" /></p>
+
+<p>该方法的主要功能是将返回上传文件的路径，返回形如<code>public://2019-04/1.png</code>的路径，然后由<code>drupal</code>自身实现的方法将<code>public://</code>路径转换为相对路径。问题出在这行处理<code>utf-8</code>编码的代码上</p>
+
+<p><code>$basename = preg_replace('/[\x00-\x1F]/u', '_', $basename);</code></p>
+
+<p>这行代码的意思的如果文件名中含有<code>0x00-0x1F</code>区间的字符时，将其转换为<code>_</code>。查看标准<code>ASCII</code>码表，字符所对应的十进制数范围为<code>0-127</code>，<code>0x00-0x1F</code>对应的数为<code>0-31</code>，也就是前32个不常见或者说不可显字符。<strong>假如我们传入的字符范围大于128时，<code>preg_replace</code>便会出错</strong>，返回一个<code>NULL</code>值，于是此时的<code>basename</code>便被赋值为空，而下面对<code>basename</code>也没有多余的操作，于是我们就得到了一个没有后缀的文件，而且这个文件的名称也是可以预测的，相关代码如下</p>
+
+<pre><code class="language-php">if (file_exists($destination)) {
+    // Destination file already exists, generate an alternative.
+    $pos = strrpos($basename, '.');
+    if ($pos !== FALSE) {
+      $name = substr($basename, 0, $pos);
+      $ext = substr($basename, $pos);
+    }
+    else {
+      $name = $basename;
+      $ext = '';
+    }
+
+    $counter = 0;
+    do {
+      $destination = $directory . $separator . $name . '_' . $counter++ . $ext;
+    } while (file_exists($destination));
+  }
+</code></pre>
+
+<p>在开始有一个<code>file_exists</code>判断，所以我们需要上传相同文件至少两次，才能进入<code>if</code>分支。由于<code>$basename</code>为空，<code>$name</code>也被赋值为空，接下来进入一个循环，如果文件已经存在，就把文件命名为<code>路径+分隔符+name+_+counter+后缀</code>的形式，也就是说同名文件会加上后缀<code>_0</code> <code>_1</code>等，而此时表达式的值即为<code>下划线+计数器</code>的值，于是我们在<code>/sites/default/files/pictures/&lt;YYYY-MM&gt;/</code>目录下得到类似<code>_0 _1</code>的无后缀文件。</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422171620.png" alt="" /></p>
+
+<p>值得注意的是，上传的文件可以是任意类型，不局限于图片文件，可以通过<code>http://drupal-site/sites/default/files/&lt;YYYY-MM&gt;/_1</code>访问到文件。</p>
+
+<h3 id="0x03-尝试利用">0x03 尝试利用</h3>
+
+<h4 id="初探">初探</h4>
+
+<p>此时我们想到，可以上传一个html文件，诱使管理员点击形成一个XSS漏洞。</p>
+
+<p>但是这里存在一个问题，当通过<code>Home &gt;&gt; Add content &gt;&gt; 上传Image</code>上传文件时，如果传了一个纯HTML文件，是无法上传成功的，因为在<code>core/modules/file/file.module</code>里有一个检查</p>
+
+<p><code>$errors = file_validate($file, $validators);</code></p>
+
+<p><code>file_validate()</code>方法通过下图4个方法检查图片有效性</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111858.png" alt="" /></p>
+
+<p>其中<code>file_validate_is_image</code>方法使用了<code>ImageFactory</code>库，非图片文件无法通过这个检查，于是上传失败，也就无法在<code>sites/default/files/&lt;YYYY-MM&gt;/</code>生成文件。</p>
+
+<p>当然这里是可以绕过的，那就是在上传的内容前加上图片文件头，例如<code>GIF</code>或<code>GIF89a</code>，能够绕过<code>file_validate_is_image</code>检查上传文件，然而这并没有什么用，因为访问<code>http://drupal-site/sites/default/files/&lt;YYYY-MM&gt;/_1</code>时，浏览器无法判断文件类型，所以不会解析&hellip;</p>
+
+<p>也就是说</p>
+
+<ul>
+<li>纯HTML文件无后缀，浏览器可以解析，但是无法上传；</li>
+<li>增加图片文件头，可以上传，但是浏览器不能解析；</li>
+</ul>
+
+<p>于是现在陷入一个尴尬境地，需要找个另外的点。</p>
+
+<h4 id="突破">突破</h4>
+
+<p>我们注意到在<code>新建文章</code>页面除了上传图片外，还有一个编辑器内置的图片上传接口，这个接口是否可以上传html呢</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111342.png" alt="" /></p>
+
+<p>跟入分析一下，之前的流程都是一样的，同样会进入<code>file_validate()</code>方法，同样检测文件合法性，但是此时的<code>$validators</code>有所不一样：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111805.png" alt="" /></p>
+
+<p><code>file_validate_is_image</code>变成了<code>file_validate_image_resolution</code>，这个方法是检测图片是否符合大小，但是对于非图片文件&hellip;直接忽略了，返回一个空数组</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113048.png" alt="" /></p>
+
+<p>方法说明里也说了会忽略非图片文件</p>
+
+<blockquote>
+<p>Non-image files will be ignored.</p>
+</blockquote>
+
+<p>于是<code>file_validate()</code>不报错，校验通过，成功上传文件，目录是<code>sites/default/files/inline-images/</code>，访问文件成功触发</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113606.png" alt="" /></p>
+
+<p>现在可以利用这个漏洞上传一个html文件，攻击面就扩大了许多，简单的可以是一个XSS，复杂的可以是个钓鱼页面(这个漏洞需要作者权限，故可以钓鱼管理员)，再进一步，如何进行命令执行甚至直接反弹一个shell呢？</p>
+
+<h4 id="组合拳">组合拳</h4>
+
+<p>联想到1月份Drupal官方修复的<a href="https://www.drupal.org/sa-core-2019-002">SA-CORE-2019-002</a>漏洞，文件操作函数处理<code>phar</code>文件时反序列化形成代码执行漏洞，在此处正好可以用上。phar反序列化风险影响几乎所有文件操作函数，而在Drupal中<code>File system</code>功能就存在这个缺陷，在设置本地临时文件夹的时候会进行路径检查，相关方法是<code>system_check_directory()</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423135902.png" alt="" /></p>
+
+<p>在这个方法中存在<code>is_dir()</code>函数，当<code>is_dir()</code>函数处理<code>phar:// stream wrapper</code>时，便会触发反序列化，如果传入一个恶意构造的<code>phar</code>文件就可以造成代码执行。</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423140328.png" alt="" /></p>
+
+<p>那么现在的思路是，上传一个<code>phar</code>文件，诱使管理员点击链接把临时文件路径设置为<code>phar://test.phar</code>触发漏洞反弹shell</p>
+
+<h3 id="0x04-漏洞利用">0x04 漏洞利用</h3>
+
+<p>通过上述分析，有几个限制需要突破：</p>
+
+<ol>
+<li>生成的phar文件不能通过图片上传接口上传，否则会失败；</li>
+<li>需要写一个html让管理员打开链接自动发送请求来修改临时文件路径；</li>
+</ol>
+
+<p>因此漏洞利用分为以下几步：</p>
+
+<ol>
+<li><p>生成一个能反弹shell的phar文件；</p>
+
+<p>Drupal反序列化的POP链已经比较多了，可以参考<a href="https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/">这里</a></p>
+
+<p>选择<code>GuzzleHttp\Psr7</code>类，使用<a href="https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/">PHARGGC</a>直接生成phar文件</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423143704.png" alt="" /></p></li>
+
+<li><p>上传phar文件</p>
+
+<p>把<code>out.phar</code>修改为png后缀，通过编辑器的接口上传，获得文件路径</p>
+
+<p><code>http://127.0.0.1/drupal-8.6.5/sites/default/files/inline-images/phar.png</code></p></li>
+
+<li><p>生成一个html文件；</p>
+
+<p>这个html文件需要让管理员打开链接时自动发送请求来修改临时文件路径，与<code>CSRF</code>非常相似，所以直接使用<code>burpsuite</code>抓个包生成<code>CSRF PoC</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423150512.png" alt="" /></p>
+
+<p>然后我们增加一个自动点击提交表单的操作，省去手动submit</p>
+
+<pre><code class="language-html">&lt;script type=&quot;text/javascript&quot;&gt;
+    var a  = document.getElementById('form1')
+    a.submit()
+&lt;/script&gt;
+</code></pre></li>
+
+<li><p>再通过编辑器的接口上传这个html文件，修改文件名的<code>ascii</code>值大于128。<strong>注意需要上传至少两次</strong>，以生成<code>_0、_1</code>文件</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153014.png" alt="" /></p></li>
+
+<li><p>访问<code>http://drupal-site/sites/default/files/inline-images/_0</code>时浏览器解析为html并自动提交表单，触发漏洞</p></li>
+</ol>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153510.png" alt="" /></p>
+
+<p>这里因为反弹shell会把页面卡住，可以增加一个跳转首页，这样可以更隐蔽</p>
+
+<h3 id="0x05-总结">0x05 总结</h3>
+
+<p>这个漏洞由一个<code>preg_replace()</code>引起的，没有正确处理异常，导致可以上传“任意”文件，结合phar反序列化漏洞组合成一条漂亮的攻击链，值得学习。</p>
+
+<p>参考：</p>
+
+<ul>
+<li><p><a href="https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c">https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c</a></p></li>
+
+<li><p><a href="https://www.zerodayinitiative.com/blog/2019/4/11/a-series-of-unfortunate-images-drupal-1-click-to-rce-exploit-chain-detailed">https://www.zerodayinitiative.com/blog/2019/4/11/a-series-of-unfortunate-images-drupal-1-click-to-rce-exploit-chain-detailed</a></p></li>
+
+<li><p><a href="https://paper.seebug.org/897/">https://paper.seebug.org/897/</a></p></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

