@@ -22,7 +22,9 @@
 
 &lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
 
-&lt;p&gt;3月20日，Drupal官方发布SA-CORE-2019-004漏洞预警，修复了一处处理文件名异常，官方描述为中危，因为该漏洞需要作者权限来上传文件&lt;/p&gt;
+&lt;p&gt;3月20日，Drupal官方发布&lt;code&gt;SA-CORE-2019-004&lt;/code&gt;漏洞预警，修复了一处文件名处理异常，当我们上传特殊文件名时可以绕过限制在服务器上创建“无后缀”文件，精心构造的文件经过浏览器解析后可以触发XSS漏洞，再进一步可以达到代码执行的目的。&lt;/p&gt;
+
+&lt;p&gt;官方描述该漏洞为中危影响，因为该漏洞需要登录，并且需要作者权限来上传文件才能触发。&lt;/p&gt;
 
 &lt;p&gt;详细参考：&lt;a href=&#34;https://www.drupal.org/sa-core-2019-004&#34;&gt;https://www.drupal.org/sa-core-2019-004&lt;/a&gt;&lt;/p&gt;
 
@@ -32,7 +34,7 @@
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422165341.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;该方法的主要功能是将返回上传文件的路径，返回形如&lt;code&gt;public://2019-04/1.png&lt;/code&gt;的路径，然后由&lt;code&gt;drupal&lt;/code&gt;自身实现的方法将&lt;code&gt;public://&lt;/code&gt;路径转换为相对路径。问题出在这行处理&lt;code&gt;utf-8&lt;/code&gt;编码的代码上&lt;/p&gt;
+&lt;p&gt;该方法的主要功能是处理上传文件的路径，返回形如&lt;code&gt;public://2019-04/1.png&lt;/code&gt;的路径，然后由&lt;code&gt;drupal&lt;/code&gt;自身实现的方法将&lt;code&gt;public://&lt;/code&gt;路径转换为相对路径。如果文件系统已经存在同名文件，则在文件名会追加&lt;code&gt;_0&lt;/code&gt;, &lt;code&gt;_1&lt;/code&gt;。问题出在这行处理&lt;code&gt;utf-8&lt;/code&gt;编码的代码上&lt;/p&gt;
 
 &lt;p&gt;&lt;code&gt;$basename = preg_replace(&#39;/[\x00-\x1F]/u&#39;, &#39;_&#39;, $basename);&lt;/code&gt;&lt;/p&gt;
 
@@ -57,7 +59,7 @@
   }
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;在开始有一个&lt;code&gt;file_exists&lt;/code&gt;判断，所以我们需要上传相同文件至少两次，才能进入&lt;code&gt;if&lt;/code&gt;分支。由于&lt;code&gt;$basename&lt;/code&gt;为空，&lt;code&gt;$name&lt;/code&gt;也被赋值为空，接下来进入一个循环，如果文件已经存在，就把文件命名为&lt;code&gt;路径+分隔符+name+_+counter+后缀&lt;/code&gt;的形式，也就是说同名文件会加上后缀&lt;code&gt;_0&lt;/code&gt; &lt;code&gt;_1&lt;/code&gt;等，而此时表达式的值即为&lt;code&gt;下划线+计数器&lt;/code&gt;的值，于是我们在&lt;code&gt;/sites/default/files/pictures/&amp;lt;YYYY-MM&amp;gt;/&lt;/code&gt;目录下得到类似&lt;code&gt;_0 _1&lt;/code&gt;的无后缀文件。&lt;/p&gt;
+&lt;p&gt;在开始有一个&lt;code&gt;file_exists&lt;/code&gt;判断，所以我们需要上传相同文件至少两次，才能进入&lt;code&gt;if&lt;/code&gt;分支。由于&lt;code&gt;$basename&lt;/code&gt;为空，&lt;code&gt;$name&lt;/code&gt;也被赋值为空，接下来进入一个循环，如果文件已经存在，就把文件命名为&lt;code&gt;路径+分隔符+name+_+counter+后缀&lt;/code&gt;的形式，也就是同名文件会被加上后缀&lt;code&gt;_0&lt;/code&gt; &lt;code&gt;_1&lt;/code&gt;等，而此时表达式的值即为&lt;code&gt;下划线+计数器&lt;/code&gt;的值，于是我们在&lt;code&gt;/sites/default/files/pictures/&amp;lt;YYYY-MM&amp;gt;/&lt;/code&gt;目录下得到类似&lt;code&gt;_0 _1&lt;/code&gt;的无后缀文件。&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190422171620.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
@@ -88,19 +90,19 @@
 &lt;li&gt;增加图片文件头，可以上传，但是浏览器不能解析；&lt;/li&gt;
 &lt;/ul&gt;
 
-&lt;p&gt;于是现在陷入一个尴尬境地，需要找个另外的点。&lt;/p&gt;
+&lt;p&gt;于是现在陷入一个两难境地，需要找个另外的点。&lt;/p&gt;
 
 &lt;h4 id=&#34;突破&#34;&gt;突破&lt;/h4&gt;
 
-&lt;p&gt;我们注意到在&lt;code&gt;新建文章&lt;/code&gt;页面除了上传图片外，还有一个编辑器内置的图片上传接口，这个接口是否可以上传html呢&lt;/p&gt;
+&lt;p&gt;我们注意到在&lt;code&gt;新建文章&lt;/code&gt;页面除了上传图片外，还有一个编辑器内置的图片上传接口，从这个接口分析一下&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111342.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;跟入分析一下，之前的流程都是一样的，同样会进入&lt;code&gt;file_validate()&lt;/code&gt;方法，同样检测文件合法性，但是此时的&lt;code&gt;$validators&lt;/code&gt;有所不一样：&lt;/p&gt;
+&lt;p&gt;跟入相关方法，之前的流程都是一样的，同样会进入&lt;code&gt;file_validate()&lt;/code&gt;方法，同样检测文件合法性，但是此时的&lt;code&gt;$validators&lt;/code&gt;有所不一样：&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423111805.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;&lt;code&gt;file_validate_is_image&lt;/code&gt;变成了&lt;code&gt;file_validate_image_resolution&lt;/code&gt;，这个方法是检测图片是否符合大小，但是对于非图片文件&amp;hellip;直接忽略了，返回一个空数组&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;file_validate_is_image&lt;/code&gt;变成了&lt;code&gt;file_validate_image_resolution&lt;/code&gt;，这个方法是检测图片是否符合大小，但是对于非图片文件会直接忽略，返回一个空数组&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113048.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
@@ -114,11 +116,11 @@
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423113606.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;现在可以利用这个漏洞上传一个html文件，攻击面就扩大了许多，简单的可以是一个XSS，复杂的可以是个钓鱼页面(这个漏洞需要作者权限，故可以钓鱼管理员)，再进一步，如何进行命令执行甚至直接反弹一个shell呢？&lt;/p&gt;
+&lt;p&gt;现在可以利用这个漏洞上传一个html文件，攻击面就扩大了许多，简单的可以是一个XSS，复杂的可以是个钓鱼页面(这个漏洞需要作者权限，故可以钓鱼管理员)，再进一步，如何进行命令执行甚至反弹一个shell呢？&lt;/p&gt;
 
 &lt;h4 id=&#34;组合拳&#34;&gt;组合拳&lt;/h4&gt;
 
-&lt;p&gt;联想到1月份Drupal官方修复的&lt;a href=&#34;https://www.drupal.org/sa-core-2019-002&#34;&gt;SA-CORE-2019-002&lt;/a&gt;漏洞，文件操作函数处理&lt;code&gt;phar&lt;/code&gt;文件时反序列化形成代码执行漏洞，在此处正好可以用上。phar反序列化风险影响几乎所有文件操作函数，而在Drupal中&lt;code&gt;File system&lt;/code&gt;功能就存在这个缺陷，在设置本地临时文件夹的时候会进行路径检查，相关方法是&lt;code&gt;system_check_directory()&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;联想到1月份Drupal官方修复的&lt;a href=&#34;https://www.drupal.org/sa-core-2019-002&#34;&gt;SA-CORE-2019-002&lt;/a&gt;漏洞，文件操作函数处理&lt;code&gt;phar&lt;/code&gt;文件时会触发反序列化形成代码执行漏洞，在此处正好可以用上。&lt;code&gt;phar&lt;/code&gt;反序列化风险影响几乎所有文件操作函数，而在Drupal中&lt;code&gt;File system&lt;/code&gt;功能就存在这个缺陷，在设置本地临时文件夹的时候会进行路径检查，相关方法是&lt;code&gt;system_check_directory()&lt;/code&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423135902.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
@@ -126,7 +128,9 @@
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423140328.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;那么现在的思路是，上传一个&lt;code&gt;phar&lt;/code&gt;文件，诱使管理员点击链接把临时文件路径设置为&lt;code&gt;phar://test.phar&lt;/code&gt;触发漏洞反弹shell&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190425174400.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此现在的思路是，上传一个&lt;code&gt;phar&lt;/code&gt;文件，诱使管理员点击链接把临时文件路径设置为&lt;code&gt;phar://test.phar&lt;/code&gt;触发漏洞反弹shell&lt;/p&gt;
 
 &lt;h3 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h3&gt;
 
@@ -142,7 +146,7 @@
 &lt;ol&gt;
 &lt;li&gt;&lt;p&gt;生成一个能反弹shell的phar文件；&lt;/p&gt;
 
-&lt;p&gt;Drupal反序列化的POP链已经比较多了，可以参考&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;Drupal反序列化的POP链已经比较多了，可以参考这里&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;由 PHPGGC 理解 PHP 反序列化漏洞&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;选择&lt;code&gt;GuzzleHttp\Psr7&lt;/code&gt;类，使用&lt;a href=&#34;https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/&#34;&gt;PHARGGC&lt;/a&gt;直接生成phar文件&lt;/p&gt;
 
@@ -154,13 +158,13 @@
 
 &lt;p&gt;&lt;code&gt;http://127.0.0.1/drupal-8.6.5/sites/default/files/inline-images/phar.png&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
 
-&lt;li&gt;&lt;p&gt;生成一个html文件；&lt;/p&gt;
+&lt;li&gt;&lt;p&gt;生成一个html文件&lt;/p&gt;
 
-&lt;p&gt;这个html文件需要让管理员打开链接时自动发送请求来修改临时文件路径，与&lt;code&gt;CSRF&lt;/code&gt;非常相似，所以直接使用&lt;code&gt;burpsuite&lt;/code&gt;抓个包生成&lt;code&gt;CSRF PoC&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;这个html文件需要让管理员打开链接时自动发送请求来修改临时文件路径，与&lt;code&gt;CSRF&lt;/code&gt;非常相似，所以直接使用&lt;code&gt;burpsuite&lt;/code&gt;抓包生成&lt;code&gt;CSRF PoC&lt;/code&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423150512.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;然后我们增加一个自动点击提交表单的操作，省去手动submit&lt;/p&gt;
+&lt;p&gt;然后增加一个自动点击提交表单的操作，省去手动submit&lt;/p&gt;
 
 &lt;pre&gt;&lt;code class=&#34;language-html&#34;&gt;&amp;lt;script type=&amp;quot;text/javascript&amp;quot;&amp;gt;
     var a  = document.getElementById(&#39;form1&#39;)
@@ -168,7 +172,7 @@
 &amp;lt;/script&amp;gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
 
-&lt;li&gt;&lt;p&gt;再通过编辑器的接口上传这个html文件，修改文件名的&lt;code&gt;ascii&lt;/code&gt;值大于128。&lt;strong&gt;注意需要上传至少两次&lt;/strong&gt;，以生成&lt;code&gt;_0、_1&lt;/code&gt;文件&lt;/p&gt;
+&lt;li&gt;&lt;p&gt;再通过编辑器的接口上传这个html文件，修改文件名的&lt;code&gt;ascii&lt;/code&gt;值大于128。&lt;strong&gt;注意需要上传至少两次&lt;/strong&gt;，以生成&lt;code&gt;_0&lt;/code&gt;、&lt;code&gt;_1&lt;/code&gt;文件&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153014.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
 
@@ -177,11 +181,11 @@
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190423153510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
 
-&lt;p&gt;这里因为反弹shell会把页面卡住，可以增加一个跳转首页，这样可以更隐蔽&lt;/p&gt;
+&lt;p&gt;这里因为反弹shell会把页面卡住，可以增加一个跳转首页，更隐蔽地触发漏洞。&lt;/p&gt;
 
 &lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
 
-&lt;p&gt;这个漏洞由一个&lt;code&gt;preg_replace()&lt;/code&gt;引起的，没有正确处理异常，导致可以上传“任意”文件，结合phar反序列化漏洞组合成一条漂亮的攻击链，值得学习。&lt;/p&gt;
+&lt;p&gt;这个漏洞由一个&lt;code&gt;preg_replace()&lt;/code&gt;引起，由于没有正确处理异常，导致可以上传“任意”文件；而&lt;code&gt;phar&lt;/code&gt;反序列化漏洞在一年前就已经公布了，把几个漏洞组合在一起形成一条漂亮的攻击链，值得学习。站在管理员角度应该关注安全更新，及时更新应用，而对于开发者来说也要重视安全风险，不可忽视任何一处不起眼的安全隐患。&lt;/p&gt;
 
 &lt;p&gt;参考：&lt;/p&gt;
 
