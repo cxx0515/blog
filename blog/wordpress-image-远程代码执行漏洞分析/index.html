@@ -336,6 +336,34 @@ $this-&gt;image-&gt;readImage( $filename );
 
 <p>要想在<code>Windows</code>下利用漏洞，一个技巧是利用<code>#</code>字符，<code>#</code>在<code>url</code>中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在<code>wordpress</code>中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。</p>
 
+<p><strong>更新：</strong>此处是否检查<code>?</code>等不合法字符与<code>php</code>的线程安全模式相关，具体如下。</p>
+
+<table>
+<thead>
+<tr>
+<th align="center">Windows</th>
+<th align="center"><strong>thread-safe</strong></th>
+<th align="center"><strong>non-thread safe</strong></th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td align="center"><strong>recursive=false</strong></td>
+<td align="center">fail (No error)</td>
+<td align="center"><strong>success</strong></td>
+</tr>
+
+<tr>
+<td align="center"><strong>recursive=true</strong></td>
+<td align="center">fail (Invalid path)</td>
+<td align="center">fail (Invalid path)</td>
+</tr>
+</tbody>
+</table>
+
+<p>关于这块的详细分析可以参考 <a href="https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/">对PHP中的mkdir()函数的研究</a></p>
+
 <h3 id="0x06-poc">0x06 PoC</h3>
 
 <p>见上面分析</p>

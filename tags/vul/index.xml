@@ -590,6 +590,34 @@ $this-&amp;gt;image-&amp;gt;readImage( $filename );
 
 &lt;p&gt;要想在&lt;code&gt;Windows&lt;/code&gt;下利用漏洞，一个技巧是利用&lt;code&gt;#&lt;/code&gt;字符，&lt;code&gt;#&lt;/code&gt;在&lt;code&gt;url&lt;/code&gt;中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在&lt;code&gt;wordpress&lt;/code&gt;中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。&lt;/p&gt;
 
+&lt;p&gt;&lt;strong&gt;更新：&lt;/strong&gt;此处是否检查&lt;code&gt;?&lt;/code&gt;等不合法字符与&lt;code&gt;php&lt;/code&gt;的线程安全模式相关，具体如下。&lt;/p&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th align=&#34;center&#34;&gt;Windows&lt;/th&gt;
+&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;thread-safe&lt;/strong&gt;&lt;/th&gt;
+&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;non-thread safe&lt;/strong&gt;&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=false&lt;/strong&gt;&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (No error)&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;success&lt;/strong&gt;&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=true&lt;/strong&gt;&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
+&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;关于这块的详细分析可以参考 &lt;a href=&#34;https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/&#34;&gt;对PHP中的mkdir()函数的研究&lt;/a&gt;&lt;/p&gt;
+
 &lt;h3 id=&#34;0x06-poc&#34;&gt;0x06 PoC&lt;/h3&gt;
 
 &lt;p&gt;见上面分析&lt;/p&gt;
