@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</loc>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
+  </url>
+  
+  <url>
     <loc>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</loc>
     <lastmod>2019-04-22T15:19:04+00:00</lastmod>
   </url>
@@ -266,7 +271,7 @@
   
   <url>
     <loc>https://kylingit.com/blog/</loc>
-    <lastmod>2019-04-22T15:19:04+00:00</lastmod>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -314,6 +319,12 @@
   <url>
     <loc>https://kylingit.com/tags/dedecms/</loc>
     <lastmod>2018-01-19T15:20:32+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://kylingit.com/tags/deserialization/</loc>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -509,13 +520,13 @@
   
   <url>
     <loc>https://kylingit.com/tags/sec/</loc>
-    <lastmod>2019-04-22T15:19:04+00:00</lastmod>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
     <loc>https://kylingit.com/categories/security/</loc>
-    <lastmod>2019-04-22T15:19:04+00:00</lastmod>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -568,7 +579,7 @@
   
   <url>
     <loc>https://kylingit.com/tags/vul/</loc>
-    <lastmod>2019-04-22T15:19:04+00:00</lastmod>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -580,7 +591,7 @@
   
   <url>
     <loc>https://kylingit.com/tags/weblogic/</loc>
-    <lastmod>2018-01-09T10:45:49+00:00</lastmod>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -603,12 +614,18 @@
   </url>
   
   <url>
+    <loc>https://kylingit.com/tags/xmldecoder/</loc>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
     <loc>https://kylingit.com/about/</loc>
   </url>
   
   <url>
     <loc>https://kylingit.com/</loc>
-    <lastmod>2019-04-22T15:19:04+00:00</lastmod>
+    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
     <priority>0</priority>
   </url>
   

@@ -10,6 +10,81 @@
     <atom:link href="https://kylingit.com/tags/weblogic/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>CVE-2019-2729 Weblogic XMLDecoder反序列化漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 19 Jun 2019 12:26:39 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h3 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;该漏洞是&lt;code&gt;CVE-2019-2725&lt;/code&gt;的绕过，因此前面的流程都是一样的，经过21个&lt;code&gt;handler&lt;/code&gt;处理，最终进入&lt;code&gt;WorkAreaHeader&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123830.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在4月份&lt;code&gt;oracle&lt;/code&gt;对2725紧急补丁中，过滤了&lt;code&gt;class&lt;/code&gt;元素，因此不能再通过&lt;code&gt;class&lt;/code&gt;创建对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123907.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这次的绕过实际上就是找到另外的元素代替&lt;code&gt;class&lt;/code&gt;进而绕过补丁。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;jdk7&lt;/code&gt;中解析&lt;code&gt;xml&lt;/code&gt;时获取&lt;code&gt;element&lt;/code&gt;元素的相关类为&lt;code&gt;com.sun.beans.decoder.DocumentHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;当传入&lt;code&gt;array&lt;/code&gt;标签，进入&lt;code&gt;ArrayElementHandler&lt;/code&gt;，为&lt;code&gt;array&lt;/code&gt;元素添加属性时，只能从&lt;code&gt;length&lt;/code&gt;，&lt;code&gt;class&lt;/code&gt;，&lt;code&gt;id&lt;/code&gt;中选择，唯一能创建类的&lt;code&gt;class&lt;/code&gt;已经加入了黑名单，所以在&lt;code&gt;jdk1.7&lt;/code&gt;下不受此漏洞影响，这次的绕过出现在低于&lt;code&gt;jdk1.7&lt;/code&gt;的&lt;code&gt;java&lt;/code&gt;版本上。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;weblogic 10.3.6.0&lt;/code&gt;自带的&lt;code&gt;jdk&lt;/code&gt;版本为1.6，&lt;code&gt;jdk1.6&lt;/code&gt;中解析xml时有很大的不同，相关处理方法在&lt;code&gt;com.sun.beans.ObjectHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;解析时首先进入的是&lt;code&gt;startElement&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;该方法首先获取元素的属性并创建一个&lt;code&gt;hashmap&lt;/code&gt;，当元素含有属性时，会根据属性值进行类/属性/方法的相关操作，当元素没有属性时，调用的是&lt;code&gt;new&lt;/code&gt;方法，例如解析&lt;code&gt;&amp;lt;java&amp;gt;&lt;/code&gt;、&lt;code&gt;&amp;lt;void&amp;gt;&lt;/code&gt;时。而此时如果传入了&lt;code&gt;method&lt;/code&gt;值就会把方法名设置为该值。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123922.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后把方法名设置为我们传入的值，最终通过&lt;code&gt;forName&lt;/code&gt;找到指定的类&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123941.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123956.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后的流程就和2725一样的了&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/20190620124052.png&#34; alt=&#34;1560635046339&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;进入&lt;code&gt;WorkContextXmlInputAdapter:readUTF()&lt;/code&gt;后的调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124309.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;补丁分析&#34;&gt;补丁分析&lt;/h3&gt;
+
+&lt;p&gt;6月19日，&lt;code&gt;Oralce&lt;/code&gt;官方放出了该漏洞的补丁，详情见&lt;a href=&#34;https://www.oracle.com/technetwork/security-advisory/alert-cve-2019-2729-5570780.html&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;分析一下补丁&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.validate(new ByteArrayInputStream(baos.toByteArray()));
+this.validateFormat(new ByteArrayInputStream(baos.toByteArray()));
+this.xmlDecoder = new XMLDecoder(new ByteArrayInputStream(baos.toByteArray()));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在原来&lt;code&gt;validate&lt;/code&gt;过滤的基础上又增加了一次&lt;code&gt;validateFormat&lt;/code&gt;过滤，过滤方法如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124924.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这回终于是采用了白名单方式，&lt;code&gt;allowedName&lt;/code&gt;如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124935.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;allowedName&lt;/code&gt;严格限制了可以使用的标签，并且也限制了标签可以拥有的属性，值得注意的是&lt;code&gt;allowedName&lt;/code&gt;不再允许&lt;code&gt;field&lt;/code&gt;标签了，emmm&amp;hellip;&lt;/p&gt;
+
+&lt;h3 id=&#34;总结&#34;&gt;总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞是当时应急时简单分析的，后续有时间会详细整理一下。&lt;/p&gt;
+
+&lt;p&gt;从整个&lt;code&gt;XMLDecoder&lt;/code&gt;反序列化漏洞的来看（CVE-2017-3506 -&amp;gt; CVE-2017-10271(10352) -&amp;gt; CVE-2019-2725 -&amp;gt; CVE-2019-2729），使用黑名单修补漏洞是不靠谱的，永远不知道下一次绕过是在什么时候，而这次的白名单修复方式会不会还存在缺陷呢？此处还得打一个问号。&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
       <title>Weblogic XMLDecoder RCE之RMI利用</title>
       <link>https://kylingit.com/blog/weblogic-xmldecoder-rce%E4%B9%8Brmi%E5%88%A9%E7%94%A8/</link>
       <pubDate>Tue, 09 Jan 2018 10:45:49 +0000</pubDate>

