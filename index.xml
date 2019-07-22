@@ -7,8 +7,317 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Wed, 19 Jun 2019 12:26:39 +0000</lastBuildDate>
+    <lastBuildDate>Fri, 19 Jul 2019 10:27:05 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>SA-CORE-2019-008 Drupal访问绕过漏洞分析</title>
+      <link>https://kylingit.com/blog/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 19 Jul 2019 10:27:05 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;7月17日，Drupal官方发布Drupal核心安全更新公告，修复了一个访问绕过漏洞，攻击者可以在未授权的情况下发布/修改/删除文章，CVE编号&lt;code&gt;CVE-2019-6342&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;公告地址：&lt;a href=&#34;https://www.drupal.org/sa-core-2019-008&#34;&gt;https://www.drupal.org/sa-core-2019-008&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-受影响的版本&#34;&gt;0x02 受影响的版本&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Drupal Version == 8.7.4&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;0x03-漏洞复现&#34;&gt;0x03 漏洞复现&lt;/h3&gt;
+
+&lt;p&gt;安装&lt;code&gt;Drupal 8.7.4&lt;/code&gt;版本，登录管理员账户，进入后台&lt;code&gt;/admin/modules&lt;/code&gt;，勾选&lt;code&gt;Workspaces&lt;/code&gt;模块并安装&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719101447.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在页面上方出现如下页面则安装成功，管理员可以切换&lt;code&gt;Stage&lt;/code&gt;模式或者&lt;code&gt;Live&lt;/code&gt;模式&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104359.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;另外开启一个浏览器访问首页（未登录任何账户），访问&lt;a href=&#34;http://127.0.0.1/drupal-8.7.4/node/add/article&#34;&gt;http://127.0.0.1/drupal-8.7.4/node/add/article&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;可直接添加文章，无需作者或管理员权限。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104407.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;受影响操作包括基本文章操作（添加、修改、删除、上传附件等）&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;workspaces的功能&#34;&gt;Workspaces的功能&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;Workspaces&lt;/code&gt;是&lt;code&gt;Drupal 8.6&lt;/code&gt;核心新增的实验模块，主要功能是方便管理员一次性发布/修改多个内容。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Workspaces&lt;/code&gt;有两种模式，分别为&lt;code&gt;Stage&lt;/code&gt;模式和&lt;code&gt;Live&lt;/code&gt;模式，，默认为&lt;code&gt;Live&lt;/code&gt;模式，两者的区别在于：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Stage&lt;/code&gt;模式下修改内容不会及时更新，所有文章修改完毕后管理员可以通过&lt;code&gt;Deploy to Live&lt;/code&gt;发布到实际环境，相当于一个暂存区；&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104412.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Live&lt;/code&gt;下更新是即时的，发布后站点内容立即更新。&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;在这两种模式下，由于编码失误导致存在一个缺陷：匿名用户无需登录即可创建/发布/修改/删除文章，问题点出现在权限鉴定模块&lt;code&gt;EntityAccess&lt;/code&gt;下。&lt;/p&gt;
+
+&lt;h4 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;当用户发起请求时，会根据当前操作回调相关权限检查模块对当前用户权限进行检查，请求调用为事件监听器(&lt;code&gt;EventListener&lt;/code&gt;)的&lt;code&gt;RouterListener&lt;/code&gt;类，在其&lt;code&gt;onKernelRequest()&lt;/code&gt;方法中调用&lt;code&gt;AccessAwareRouter&lt;/code&gt;类的&lt;code&gt;matchRequest()&lt;/code&gt;方法，随后调用&lt;code&gt;AccessManager-&amp;gt;checkRequest()&lt;/code&gt;方法，最后在&lt;code&gt;AccessManager-&amp;gt;performCheck()&lt;/code&gt;方法中通过&lt;code&gt;call_user_func_array&lt;/code&gt;回调对应的操作进入到具体的操作权限检查&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104431.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;例如发布文章时回调的是&lt;code&gt;access_check.node.add&lt;/code&gt;，相关方法在&lt;code&gt;NodeAccessControlHandler&lt;/code&gt;控制器中定义，这个控制器继承自&lt;code&gt;EntityAccessControlHandler&lt;/code&gt;，在父类的&lt;code&gt;createAccess()&lt;/code&gt;方法中回调对应操作的&lt;code&gt;create_access&lt;/code&gt;权限，过程中会拼接上模块名和相应钩子作为回调函数，&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$function = module . &#39;_&#39; . $hook
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;例如此处回调的是&lt;code&gt;workspaces_entity_create_access()&lt;/code&gt;方法，进入到Workspaces中。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104438.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在调用&lt;code&gt;entityCreateAccess()&lt;/code&gt;方法时有一个关键操作&lt;code&gt;bypassAccessResult&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104445.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;bypassAccessResult()&lt;/code&gt;方法是一个检查用户是否有&lt;code&gt;&amp;quot;绕过节点访问权限(bypass node access)&amp;quot;&lt;/code&gt;的操作，是Workspaces中特有的，这个方法决定了&amp;rdquo;如果用户在各自的激活的工作区中，那么他将拥有所有权限&amp;rdquo;，这里的所有权限指文章相关的增删改操作。&lt;/p&gt;
+
+&lt;p&gt;这个权限虽然奇怪但确实是一个设计好的功能，正常操作应该在后台&lt;code&gt;admin/people/permissions&lt;/code&gt;中配置好用户是否拥有这个权限，默认情况下匿名用户和认证用户都没有权限&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104451.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;当开启了&lt;code&gt;Bypass content entity access in own workspace&lt;/code&gt;权限后用户才可以在未登录的情况下发布/删除文章，而此次漏洞就绕过了这个配置，默认情况下进行了越权操作。&lt;/p&gt;
+
+&lt;p&gt;具体分析一下&lt;code&gt;bypassAccessResult()&lt;/code&gt;的实现，整个过程返回的是&lt;code&gt;AccessResultAllowed&lt;/code&gt;对象或者&lt;code&gt;AccessResultNeutral&lt;/code&gt;对象，所谓&amp;rdquo;中立&amp;rdquo;是因为后续还可能会对结果再做判断，但在这个漏洞中其实就是&lt;code&gt;access&lt;/code&gt;和&lt;code&gt;forbidden&lt;/code&gt;的区别：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104457.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;首先获取了当前激活的工作区，然后通过&lt;code&gt;allowedIf&lt;/code&gt;判断当前用户是否有权限，随后这些数据存入缓存，包括缓存内容、缓存标签和过期时间。然后再经过一次&lt;code&gt;allowedIfHasPermission&lt;/code&gt;判断，这个方法的作用是，如果权限不对就设置一个&lt;code&gt;reason&lt;/code&gt;，在这个漏洞中没有起到作用，到目前为止权限校验都是正常的，在没有配置后台工作区匿名权限的时候，返回的是一个&lt;code&gt;AccessResultNeutral&lt;/code&gt;对象，也就是&amp;rdquo;禁止&amp;rdquo;。&lt;/p&gt;
+
+&lt;p&gt;接下来就是出现问题的地方&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$owner_has_access-&amp;gt;orIf(access_bypass);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过补丁可以发现漏洞就修补了这行语句，把&lt;code&gt;orIf&lt;/code&gt;换成了&lt;code&gt;andIf&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104509.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这两个方法的设计逻辑比较复杂，最主要的功能是对一个如果返回为&amp;rdquo;中立&amp;rdquo;的结果做后续判断，如果采用orIf方法合并，那么是否允许由调用者决定；如果以andIf方法合并，则被当做禁止。&lt;/p&gt;
+
+&lt;p&gt;具体到此次漏洞上的区别如下方图片所示：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;orIf()&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104515.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;返回的是&lt;code&gt;AccessResultAllowed&lt;/code&gt;对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104520.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;andIf()&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104525.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;返回的是&lt;code&gt;AccessResultNeutral&lt;/code&gt;对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104529.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在检查完毕后会回到&lt;code&gt;AccessAwareRouter-&amp;gt;checkAccess()&lt;/code&gt;方法，在该方法中对返回结果进行了判断，&lt;code&gt;AccessResultNeutral&lt;/code&gt;的&lt;code&gt;isAllowed()&lt;/code&gt;返回&lt;code&gt;false&lt;/code&gt;，因此会抛出异常&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104536.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;返回到页面上则是&lt;code&gt;Access denied&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104542.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;更新补丁后只有在开启后台匿名用户权限后才能进行文章操作，该选项默认不开启。&lt;/p&gt;
+
+&lt;p&gt;相关调用栈为&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Drupal\workspaces\EntityAccess-&amp;gt;bypassAccessResult()
+
+Drupal\workspaces\EntityAccess-&amp;gt;entityCreateAccess()
+
+...
+
+Drupal\Core\Extension\ModuleHandler-&amp;gt;invokeAll()
+
+Drupal\node\NodeAccessControlHandler-&amp;gt;createAccess()
+
+Drupal\node\Access\NodeAddAccessCheck-&amp;gt;access()
+
+Drupal\Core\Access\AccessManager-&amp;gt;performCheck()
+
+Drupal\Core\Routing\AccessAwareRouter-&amp;gt;checkAccess()
+
+Drupal\Core\Routing\AccessAwareRouter-&amp;gt;matchRequest()
+
+Symfony\Component\HttpKernel\EventListener\RouterListener-&amp;gt;onKernelRequest()
+
+...
+
+DrupalKernel.php:693, Drupal\Core\DrupalKernel-&amp;gt;handle()
+
+index.php:19, {main}()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+
+&lt;p&gt;此次漏洞出现在设计过程的一个疏忽，在默认没有分配权限的情况下用户可以绕过权限检查进行发布/删除/修改文章操作，但由于该漏洞仅影响Drupal 8.7.4版本，并且需要开启&lt;code&gt;Workspaces&lt;/code&gt;模块，这又是一个实验功能，默认不启用，因此漏洞影响减弱了不少，用户可以升级&lt;code&gt;Drupal&lt;/code&gt;版本或者关闭&lt;code&gt;Workspaces&lt;/code&gt;模块以消除漏洞影响。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>CVE-2019-11581 Atlassian Jira未授权模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 17 Jul 2019 10:52:08 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;7月10日，&lt;code&gt;Atlassian&lt;/code&gt;官方发布安全公告，修复了&lt;code&gt;Jira Server&lt;/code&gt;和&lt;code&gt;Jira Data Center&lt;/code&gt;的一个模板注入漏洞，CVE编号&lt;code&gt;CVE-2019-11581&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;公告地址：&lt;a href=&#34;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&#34;&gt;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;使用&lt;code&gt;atlas-debug&lt;/code&gt;调试&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;下载安装Atlassian SDK，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/install-the-atlassian-sdk-on-a-windows-system/&#34;&gt;地址&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-create-jira-plugin&lt;/code&gt;创建一个插件，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;参考&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-debug&lt;/code&gt;开启调试，http端口2990，调试端口5005；&lt;/li&gt;
+&lt;li&gt;IDEA打开MyPlugin，把&lt;code&gt;WEB-INF/classes&lt;/code&gt;和&lt;code&gt;WEB-INF/lib&lt;/code&gt;加入library；&lt;/li&gt;
+&lt;li&gt;新建Remote调试；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;其他：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;如果没有设置%JAVA_HOME%可以通过&lt;code&gt;SET JAVA_HOME=d:\jdk1.8&lt;/code&gt;设置；&lt;/li&gt;
+&lt;li&gt;默认不开启电子邮件发送，通过&lt;code&gt;atlas-debug --jvmargs -Datlassian.mail.senddisabled=false&lt;/code&gt;开启；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;第一部分-注入代码并生成邮件&#34;&gt;第一部分：注入代码并生成邮件&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246860552.png&#34; alt=&#34;1563246860552&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;post&lt;/code&gt;的数据通过&lt;code&gt;JiraSafeActionParameterSetter-&amp;gt;setActionProperty()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563271320369.png&#34; alt=&#34;1563271320369&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过反射调用到&lt;code&gt;ContactAdministrators.setSubject()&lt;/code&gt;方法，把&lt;code&gt;ContactAdministrators&lt;/code&gt;对象的&lt;code&gt;subject&lt;/code&gt;属性设置为传入的&lt;code&gt;subject&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;随后通过&lt;code&gt;ContactAdministrators.doExecute()&lt;/code&gt;调用&lt;code&gt;send()&lt;/code&gt;方法，在这个方法中会查找系统中已激活的管理员，通过&lt;code&gt;this.sendTo(administrator)&lt;/code&gt;将邮件发送给该管理员&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247236827.png&#34; alt=&#34;1563247236827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;sendTo()&lt;/code&gt;流程中，&lt;code&gt;Jira&lt;/code&gt;需要通过&lt;code&gt;EmailBuilder()&lt;/code&gt;方法创建一个邮件队列对象，随后将该对象放入邮件发送队列中。由于队列等待原因，所以触发&lt;code&gt;payload&lt;/code&gt;可能需要等待一段时间，并且当邮件发送失败时系统会继续尝试发送邮件，所以&lt;code&gt;payload&lt;/code&gt;可能会触发多次。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247471810.png&#34; alt=&#34;1563247471810&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;创建队列的方法有点长，精简一下就是这个样子&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;MailQueueItem item = (new EmailBuilder()).withSubject(this.subject).withBodyFromFile().addParameters().renderLater();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过&lt;code&gt;EmailBuilder&lt;/code&gt;的&lt;code&gt;withSubject()&lt;/code&gt;方法，创建一个&lt;code&gt;TemplateSources$fragment&lt;/code&gt;对象，参数即是我们传入的&lt;code&gt;payload&lt;/code&gt;，随后调用&lt;code&gt;renderLater()&lt;/code&gt;方法创建出&lt;code&gt;EmailBuilder&lt;/code&gt;对象，再将该对象作为参数传递给&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;类，&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;的继承关系是如下图，于是最终创建出一个&lt;code&gt;MailQueueItem&lt;/code&gt;对象，并将该对象放入邮件发送队列。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563248388715.png&#34; alt=&#34;1563248388715&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;第二部分-发送邮件&#34;&gt;第二部分：发送邮件&lt;/h4&gt;
+
+&lt;p&gt;当我们把&lt;code&gt;payload&lt;/code&gt;注入到模板中之后，邮件进入待发送队列，Jira中处理邮件队列的具体流程如下：&lt;/p&gt;
+
+&lt;p&gt;通过模板引擎&lt;code&gt;(getTemplatingEngine)&lt;/code&gt;生成一个&lt;code&gt;Velocity&lt;/code&gt;模板，通过&lt;code&gt;applying()&lt;/code&gt;方法生成&lt;code&gt;RenderRequest&lt;/code&gt;对象，之后根据该对象成员变量&lt;code&gt;source&lt;/code&gt;的类型，调用不同的方法解析模板，漏洞的产生正是由于这个差异造成的，下面详细分析一下。&lt;/p&gt;
+
+&lt;p&gt;首先进入&lt;code&gt;RenderingMailQueueItem().send()&lt;/code&gt;方法，调用&lt;code&gt;this.emailRenderer.render()&lt;/code&gt;，随后调用&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.getTemplatingEngine().render(this.subjectTemplate).applying(contextParams).asPlainText();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个过程中前面是为了获取模板解析引擎&lt;code&gt;（VelocityTemplatingEngine）&lt;/code&gt;并传入主题模板（此处为payload数据），通过&lt;code&gt;applying()&lt;/code&gt;方法创建&lt;code&gt;VelocityContext&lt;/code&gt;对象并把&lt;code&gt;payload&lt;/code&gt;赋值给成员变量&lt;code&gt;source&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563267497538.png&#34; alt=&#34;1563267497538&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后重写了抽象类&lt;code&gt;StringRepresentation&lt;/code&gt;的&lt;code&gt;with()&lt;/code&gt;方法，在&lt;code&gt;with()&lt;/code&gt;方法中调用了&lt;code&gt;asPlainText()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;DefaultRenderRequest.this.asPlainText(sw)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;的作用是通过&lt;code&gt;Velocity&lt;/code&gt;模板引擎解析模板，其中的调用链是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;toWriterImpl()-&amp;gt;writeEncodedBodyForContent()-&amp;gt;evaluate()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;而在&lt;code&gt;evaluate()&lt;/code&gt;方法中生成了&lt;code&gt;AST&lt;/code&gt;结构，随后通过反射调用传入的&lt;code&gt;payload&lt;/code&gt;，完成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563245970455.png&#34; alt=&#34;1563245970455&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;之后的调用栈如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246607016.png&#34; alt=&#34;1563246607016&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在处理完Object模板后会调用父类&lt;code&gt;SingleMailQueueItem&lt;/code&gt;的send()方法，通过&lt;code&gt;smtpMailServer.sendWithMessageId()&lt;/code&gt;发送邮件，由于没有正确配置&lt;code&gt;SMTP&lt;/code&gt;服务会抛出异常，但在连接&lt;code&gt;SMTP&lt;/code&gt;服务之前漏洞已经触发了，控制台也能看到&lt;code&gt;MailQueue&lt;/code&gt;执行的过程。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563257377543.png&#34; alt=&#34;1563257377543&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;思考&#34;&gt;思考&lt;/h3&gt;
+
+&lt;p&gt;上述漏洞流程走完了，但还有一个关键问题没有解决：为什么邮件主题&lt;code&gt;Subject&lt;/code&gt;会被解析成&lt;code&gt;AST&lt;/code&gt;结构并被执行呢？按照正常发送反馈的逻辑，一封邮件的主题（字符串）似乎没有必要解析成&lt;code&gt;AST&lt;/code&gt;，导致差异的原因是什么？&lt;/p&gt;
+
+&lt;p&gt;发送一封正常的“联系管理员”邮件，走一遍流程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268202907.png&#34; alt=&#34;1563268202907&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268493868.png&#34; alt=&#34;1563268493868&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;对比一下两个处理流程，当发送正常反馈时，&lt;code&gt;writeEncodedBody()&lt;/code&gt;中调用的是&lt;code&gt;this.getVe().mergeTemplate&lt;/code&gt;，通过&lt;code&gt;Velocity&lt;/code&gt;引擎的&lt;code&gt;ClasspathResourceLoader()&lt;/code&gt;类的&lt;code&gt;getResourceStream()&lt;/code&gt;方法加载模板文件，此处的模板是&lt;code&gt;templates/email/html/contactadministrator.vm&lt;/code&gt;，随后还会进行&lt;code&gt;header&lt;/code&gt;、&lt;code&gt;footer&lt;/code&gt;等正常加载流程，最终渲染出整个页面。而发送&lt;code&gt;payload&lt;/code&gt;时，通过asPlainText()创建出TemplateSource$Fragment对象，再通过DefaultRenderRequest构造方法把&lt;code&gt;source&lt;/code&gt;成员变量赋值为这个&lt;code&gt;Fragment&lt;/code&gt;对象，于是进入第一个分支，调用的是&lt;code&gt;this.getVe().evaluate()&lt;/code&gt;，最终调用&lt;code&gt;ASTMethod.execute()&lt;/code&gt;，这正是前面说的差异性导致的两个不同处理逻辑。&lt;/p&gt;
+
+&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为AST结构，并对AST中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为AST的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取text内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的，漏洞利用十分精巧。&lt;/p&gt;
+
+&lt;p&gt;补充：严格意义上讲这不属于一个模板注入漏洞，因为代码并没有“注入”到某一个模板中，漏洞触发过程是在解析模板文件之前，利用的是解析模板的过程，恶意代码并没有真正落地也没有插入到某个模板里面，所以称之为“代码注入”也许更合适。&lt;/p&gt;
+
+&lt;h3 id=&#34;参考&#34;&gt;参考&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&#34;&gt;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&#34;&gt;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>CVE-2019-2729 Weblogic XMLDecoder反序列化漏洞分析</title>
@@ -861,6 +1170,12 @@ $entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity
 &lt;p&gt;发送payload&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223111019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;注意：&lt;/strong&gt;如果返回码为422且报下面这个错误，尝试在&lt;code&gt;/admin/config/development/performance&lt;/code&gt;点击清除缓存&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;{&amp;quot;message&amp;quot;:&amp;quot;Type http:\/\/127.0.0.1\/drupal-8.6.5-1\/rest\/type\/shortcut\/default does not correspond to an entity on this site.&amp;quot;}&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;另外尝试用&lt;code&gt;PoC&lt;/code&gt;脚本利用，每篇文章对应的&lt;code&gt;node id&lt;/code&gt;利用一次就失效了，再次利用需要换一个&lt;code&gt;node id&lt;/code&gt;，暂时没有研究为什么。&lt;/p&gt;
 
 &lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
 
@@ -3416,403 +3731,6 @@ except KeyError as e:
 &lt;li&gt;&lt;a href=&#34;https://docs.djangoproject.com/en/2.0/topics/http/urls/&#34;&gt;https://docs.djangoproject.com/en/2.0/topics/http/urls/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;http://www.lijiejie.com/python-django-directory-traversal/&#34;&gt;http://www.lijiejie.com/python-django-directory-traversal/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html&#34;&gt;https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-7602 Drupal 内核远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Thu, 26 Apr 2018 17:21:11 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;4月25日，Drupal官方发布通告，Drupal Core 存在一个远程代码执行漏洞，影响 7.x 和 8.x 版本。据分析，这个漏洞是&lt;code&gt;CVE-2018-7600&lt;/code&gt;的绕过利用，两个漏洞原理是一样的，通告还称，已经发现了这个漏洞和&lt;code&gt;CVE-2018-7600&lt;/code&gt;的在野利用，详情请看 &lt;a href=&#34;https://www.drupal.org/sa-core-2018-004&#34;&gt;https://www.drupal.org/sa-core-2018-004&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
-
-&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
-
-&lt;p&gt;修复版本
-Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
-
-&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
-
-&lt;p&gt;历史版本
-&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;分析还是以7.57版本为例。跟7600漏洞的7.x版本很相似，只不过入口不一样，可以参考&lt;a href=&#34;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&#34;&gt;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;上回漏洞的关键点是让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，这个form存着我们传入的恶意参数，第二个请求从中取出来然后执行。
-这次的原理还是一样，触发漏洞还是需要发两个post包，一个存入&lt;code&gt;form_build_id&lt;/code&gt;一个取出后执行。&lt;/p&gt;
-
-&lt;p&gt;这次的问题出在删除文章的时候，因此需要文章删除权限，我们先走一遍正常删除文章的逻辑&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/VGL3Y&#34; alt=&#34;delete&#34; /&gt;
-请求中每个node即代表一篇文章。
-可以看到是会重定向到文章页面的，根据上个漏洞的分析我们猜测，一定还是走到了&lt;code&gt;drupal_redirect_form()&lt;/code&gt;，我们已经知道如果走到&lt;code&gt;drupal_redirect_form()&lt;/code&gt;分支，是不会往数据库缓存&lt;code&gt;form_build_id&lt;/code&gt;的，我们的目的还是让程序不满足一定条件从而不进行表单提交后重定向，所以还是跟着&lt;code&gt;CVE-2018-7600&lt;/code&gt;的套路来走&lt;/p&gt;
-
-&lt;p&gt;从代码层面看一下&lt;/p&gt;
-
-&lt;p&gt;之前的流程还是一样，直接跳到&lt;code&gt;drupal_build_form()&lt;/code&gt;方法第386行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;drupal_process_form($form_id, $form, $form_state);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟入&lt;code&gt;drupal_process_form()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/w0cQZ&#34; alt=&#34;drupal_process_form&#34; /&gt;
-还是一样，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
-
-&lt;p&gt;回到902行&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;
-条件被满足，进入这个分支便会执行&lt;code&gt;drupal_redirect_form()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aoYne&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;而在这一步之前需要经过的判断是&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;
-所以回到一开始的问题，构造一个&lt;code&gt;_triggering_element_value&lt;/code&gt;使得键值对相等，从而不进行rebuild&lt;/p&gt;
-
-&lt;p&gt;我们传入&lt;code&gt;_triggering_element_name=form_id&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/UBCWM&#34; alt=&#34;post&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Rbrm4&#34; alt=&#34;form_id&#34; /&gt;
-可以看到条件被满足，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;没有被设置为true，还是保持默认值false&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/UYLtu&#34; alt=&#34;submitted&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/o98bE&#34; alt=&#34;submitted&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;进入&lt;code&gt;drupal_rebuild_form()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/WdeFV&#34; alt=&#34;drupal_rebuild_form&#34; /&gt;
-表单被缓存&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/MCCPJ&#34; alt=&#34;form_set_cache&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/U5Tej&#34; alt=&#34;cache_form&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后我们发送第二个post包来取出我们构造好的form，向&lt;strong&gt;&lt;code&gt;file/ajax/actions/cancel/%23options/path&lt;/code&gt;&lt;/strong&gt;发起请求&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/voiue&#34; alt=&#34;post2&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;参数传递进去&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/luJMk&#34; alt=&#34;file_ajax_upload&#34; /&gt;
-最终还是跟入到
-&lt;code&gt;$output = drupal_render($form);&lt;/code&gt;
-根据前几次的经验，我们还是选择&lt;code&gt;&#39;#post_render&#39;&lt;/code&gt;参数，&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/GV3Rc&#34; alt=&#34;post_render&#34; /&gt;
-假如我们能控制这个参数，在&lt;code&gt;drupal_render()&lt;/code&gt;方法里就会把这个参数作为&lt;code&gt;$function&lt;/code&gt;函数名，而传给它的参数则是&lt;code&gt;[%23markup]&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;所以问题回到了一开始，我们需要传递什么样的恶意参数，可以让系统直接接收而不经过过滤，还是之前的套路，搜索module下删除文章的相关操作&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/niMWz&#34; alt=&#34;node_form_delete_submit&#34; /&gt;
-可以看到&lt;code&gt;node_form_delete_submit()&lt;/code&gt;方法从get方法直接接收参数&lt;code&gt;destination&lt;/code&gt;，与最初分析正常删除文章的参数正是同一个，那么我们就可以利用&lt;code&gt;destination&lt;/code&gt;传进恶意参数&lt;/p&gt;
-
-&lt;p&gt;构造如下
-&lt;strong&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%2523type]=markup%26q[%2523markup]=dir&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;注意此处需要转义百分号，对&lt;code&gt;#&lt;/code&gt;进行二次编码，以绕过&lt;code&gt;CVE-2018-7600&lt;/code&gt;的补丁，不然在取值时会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
-
-&lt;p&gt;原因：
-&lt;code&gt;includes/common.inc&lt;/code&gt;的&lt;code&gt;drupal_parse_url()&lt;/code&gt;方法对url进行了解析，而在url传入到Drupal内部的时候已经经过一层解码，也就是说&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%2523type]=markup%26q[%2523markup]=dir
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在进入Drupal时已经被解码成&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;destination=a?q[%23post_render][]=passthru%26q[%23type]=markup%26q[%23markup]=dir
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;然后经过&lt;code&gt;parse_url()&lt;/code&gt;方法对url结构进行解析&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1530254681531.png&#34; alt=&#34;parse_url&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;a&lt;/code&gt;参数是次要的，主要是&lt;code&gt;q&lt;/code&gt;参数，因为在&lt;code&gt;drupal_parse_url()&lt;/code&gt;下半部分从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/s4o7s&#34; alt=&#34;options&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;foreach ($form_parents as $parent) {
-    $form = $form[$parent];
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;遍历叶子节点取出参数&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Wgz3w&#34; alt=&#34;parent&#34; /&gt;
-进入&lt;code&gt;drupal_render()&lt;/code&gt;执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/SsmNM&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h4&gt;
-
-&lt;p&gt;略&lt;/p&gt;
-
-&lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
-
-&lt;p&gt;7.x的补丁&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&#34;&gt;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2Zhjq&#34; alt=&#34;patch&#34; /&gt;
-其中一个重要操作就是对&lt;code&gt;destination&lt;/code&gt;参数进行了净化&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/CaZPF&#34; alt=&#34;cleanDestination&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
-
-&lt;p&gt;总的来说这个漏洞是CVE-2018-7600的另一个利用点，只是入口方式不一样，最终执行点还是相同的，所以还是那句话，一旦参数可控并且没有经过正确的过滤，就很有可能出问题。&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-7600 Drupal 7.x 版本代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Fri, 20 Apr 2018 23:05:34 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;CVE-2018-7600影响范围包括了Drupal 6.x，7.x，8.x版本，前几天8.x版本的PoC出来之后大家都赶紧分析了一波，然后热度似乎慢慢退去了。两天前&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;Drupalgeddon2&lt;/a&gt;项目更新了7.x版本的exp，实际环境也出现了利用，下面就简单来看一下&lt;/p&gt;
-
-&lt;p&gt;看到项目上这样写&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Drupal &amp;lt; 7.58 ~ user/password URL, attacking triggering_element_name form &amp;amp; #post_render parameter, using PHP&amp;rsquo;s passthru function&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;提示了问题出在&lt;code&gt;user/password&lt;/code&gt;路径下，通过&lt;code&gt;#post_render&lt;/code&gt;传递恶意参数，问题出现在&lt;code&gt;triggering_element_name&lt;/code&gt;表单处理下&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;我们从三个问题入手，为什么PoC发了两个包，第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，以及为什么选择&lt;code&gt;user/password&lt;/code&gt;这个入口&lt;/p&gt;
-
-&lt;p&gt;先分析第一个post，照例还是先看一下Drupal 7的表单处理流程，跟8版本不太一样，但是入口还是相似的。
-根据文档描述，当我们提交一个表单(例如找回密码)时，系统会通过&lt;code&gt;form_builder()&lt;/code&gt;方法创建一个form
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/lffx4.jpg&#34; alt=&#34;user/passwd&#34; /&gt;
-一系列预处理后，会由&lt;code&gt;drupal_build_form
-()&lt;/code&gt;方法创建一个表单，在第386行调用&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，
-跟进&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，这时候默认的&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/dd7fx.png&#34; alt=&#34;submitted&#34; /&gt;
-不满足if条件，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kqijr.png&#34; alt=&#34;true&#34; /&gt;
-于是进入这个分支，最终被&lt;code&gt;drupal_redirect_form&lt;/code&gt;重定向&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/so5l4.jpg&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;我们的目的是要让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，以便后面拿出来用。要想form被缓存，就得想办法让&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;不成立，也就是说要使&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false
-从而进入下面的&lt;code&gt;drupal_rebuild_form&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;那么如何让&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false呢？&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;includes/form.inc&lt;/code&gt;第886行
-&lt;code&gt;$form = form_builder($form_id, $form, $form_state);&lt;/code&gt;
-跟进&lt;code&gt;form_builder&lt;/code&gt;方法，第1987行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;])) {
-  $form_state[&#39;submitted&#39;] = TRUE;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;当&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;存在值的时候就为true，那么我们就想办法让这个值为空
-往上看第1972行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$form_state[&#39;programmed&#39;] &amp;amp;&amp;amp; !isset($form_state[&#39;triggering_element&#39;]) &amp;amp;&amp;amp; !empty($form_state[&#39;buttons&#39;])) {
-  $form_state[&#39;triggering_element&#39;] = $form_state[&#39;buttons&#39;][0];
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;如果没有设置&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;，那么&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;就设置为第一个button的值，所以正常传递表单的时候&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;就总会有值&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1do73.jpg&#34; alt=&#34;button&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;现在问题来了，如何构造一个form能够确保&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;为空或者说不存在这个数组呢？&lt;/p&gt;
-
-&lt;p&gt;我们注意到第1864行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($element[&#39;#input&#39;])) {
-  _form_builder_handle_input_element($form_id, $element, $form_state);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;_form_builder_handle_input_element()&lt;/code&gt;方法对表单先进行了处理，跟进去看一下&lt;/p&gt;
-
-&lt;p&gt;第2144行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;// Determine which element (if any) triggered the submission of the form and
-// keep track of all the clickable buttons in the form for
-// form_state_values_clean(). Enforce the same input processing restrictions
-// as above.
-if ($process_input) {
-  // Detect if the element triggered the submission via Ajax.
-  if (_form_element_triggered_scripted_submission($element, $form_state)) {
-    $form_state[&#39;triggering_element&#39;] = $element;
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这里&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;被设置为&lt;code&gt;$element&lt;/code&gt;，前提是满足&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;方法，继续跟入
-第2180行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function _form_element_triggered_scripted_submission($element, &amp;amp;$form_state) {
-  if (!empty($form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) &amp;amp;&amp;amp; $element[&#39;#name&#39;] == $form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) {
-    if (empty($form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;]) || $form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;] == $element[&#39;#value&#39;]) {
-      return TRUE;
-    }
-  }
-  return FALSE;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这个方法的意思是说如果&lt;code&gt;_triggering_element_value&lt;/code&gt;和&lt;code&gt;$element&lt;/code&gt;的键值都相等的话，返回true
-&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;赋值为&lt;code&gt;$element&lt;/code&gt;，其中不含&lt;code&gt;[&#39;#executes_submit_callback&#39;]&lt;/code&gt;，一开始的条件就成立了&lt;/p&gt;
-
-&lt;p&gt;根据PoC，我们传入&lt;code&gt;_triggering_element_name=name&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3c6kh.jpg&#34; alt=&#34;element&#34; /&gt;
-看到进入这个分支，进入&lt;code&gt;form_set_cache()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cn1jh.jpg&#34; alt=&#34;&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/lskgu.png&#34; alt=&#34;&#34; /&gt;
-数据库中插入缓存&lt;code&gt;form_build_id&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/odfo8.png&#34; alt=&#34;&#34; /&gt;
-成功写入缓存&lt;/p&gt;
-
-&lt;p&gt;接下去来看一下这个缓存有什么用&lt;/p&gt;
-
-&lt;p&gt;分析PoC的第二个包，请求参数是这样&lt;code&gt;q=file/ajax/name/%23value/form_build_id&lt;/code&gt;
-&lt;code&gt;form_build_id&lt;/code&gt;即我们上一个写入数据库的缓存表单&lt;/p&gt;
-
-&lt;p&gt;首先请求会进入&lt;code&gt;includes/menu.inc&lt;/code&gt;的&lt;code&gt;menu_get_item()&lt;/code&gt;方法，&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function menu_get_item($path = NULL, $router_item = NULL) {
-  $router_items = &amp;amp;drupal_static(__FUNCTION__);
-  if (!isset($path)) {
-    $path = $_GET[&#39;q&#39;];
-  }
-  if (isset($router_item)) {
-    $router_items[$path] = $router_item;
-  }
-  if (!isset($router_items[$path])) {
-    // Rebuild if we know it&#39;s needed, or if the menu masks are missing which
-    // occurs rarely, likely due to a race condition of multiple rebuilds.
-    if (variable_get(&#39;menu_rebuild_needed&#39;, FALSE) || !variable_get(&#39;menu_masks&#39;, array())) {
-      if (_menu_check_rebuild()) {
-        menu_rebuild();
-      }
-    }
-    $original_map = arg(NULL, $path);
-
-    $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
-    $ancestors = menu_get_ancestors($parts);
-    $router_item = db_query_range(&#39;SELECT * FROM {menu_router} WHERE path IN (:ancestors) ORDER BY fit DESC&#39;, 0, 1, array(&#39;:ancestors&#39; =&amp;gt; $ancestors))-&amp;gt;fetchAssoc();
-
-    if ($router_item) {
-      // Allow modules to alter the router item before it is translated and
-      // checked for access.
-      drupal_alter(&#39;menu_get_item&#39;, $router_item, $path, $original_map);
-
-      $map = _menu_translate($router_item, $original_map);
-      $router_item[&#39;original_map&#39;] = $original_map;
-      if ($map === FALSE) {
-        $router_items[$path] = FALSE;
-        return FALSE;
-      }
-      if ($router_item[&#39;access&#39;]) {
-        $router_item[&#39;map&#39;] = $map;
-        $router_item[&#39;page_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;page_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
-        $router_item[&#39;theme_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;theme_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
-      }
-    }
-    $router_items[$path] = $router_item;
-  }
-  return $router_items[$path];
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;$path&lt;/code&gt;即我们传进去的q参数，经过一系列处理传给&lt;code&gt;menu_get_ancestors()&lt;/code&gt;方法，该方法把path重新组合成一堆router，也就是Drupal处理路由到具体url的传参方式，最终被&lt;code&gt;db_query_range()&lt;/code&gt;带入数据库查询
-我们关注查询结果&lt;code&gt;$router_item&lt;/code&gt;的&lt;code&gt;page_callback&lt;/code&gt;值，因为这个值最终会作为参数被带入&lt;code&gt;call_user_func_array()&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($page_callback_result == MENU_SITE_ONLINE) {
-  if ($router_item = menu_get_item($path)) {
-    if ($router_item[&#39;access&#39;]) {
-      if ($router_item[&#39;include_file&#39;]) {
-        require_once DRUPAL_ROOT . &#39;/&#39; . $router_item[&#39;include_file&#39;];
-      }
-      $page_callback_result = call_user_func_array($router_item[&#39;page_callback&#39;], $router_item[&#39;page_arguments&#39;]);
-    }
-    else {
-      $page_callback_result = MENU_ACCESS_DENIED;
-    }
-  }
-  else {
-    $page_callback_result = MENU_NOT_FOUND;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/qvqwz.png&#34; alt=&#34;call_user_func_array&#34; /&gt;
-到这里就跟8版本的情况有点类似了&lt;/p&gt;
-
-&lt;p&gt;跟入回调函数&lt;code&gt;file_ajax_upload()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/tij37.jpg&#34; alt=&#34;file_ajax_upload&#34; /&gt;
-还是一样，把&lt;code&gt;$form_parents&lt;/code&gt;完整取出赋值给&lt;code&gt;$form&lt;/code&gt;，加上一些前缀后缀后最终进入&lt;code&gt;drupal_render()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;最终得到执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/rpwrs.jpg&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;到目前为止我们分析清楚了为什么PoC要发两次包，以及第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，现在来想一想为什么要请求&lt;code&gt;user/password&lt;/code&gt;这个路径呢？
-在user这个module下的&lt;code&gt;user_pass()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function user_pass() {
-  global $user;
-
-  $form[&#39;name&#39;] = array(
-    &#39;#type&#39; =&amp;gt; &#39;textfield&#39;,
-    &#39;#title&#39; =&amp;gt; t(&#39;Username or e-mail address&#39;),
-    &#39;#size&#39; =&amp;gt; 60,
-    &#39;#maxlength&#39; =&amp;gt; max(USERNAME_MAX_LENGTH, EMAIL_MAX_LENGTH),
-    &#39;#required&#39; =&amp;gt; TRUE,
-    &#39;#default_value&#39; =&amp;gt; isset($_GET[&#39;name&#39;]) ? $_GET[&#39;name&#39;] : &#39;&#39;,
-  );
-  ...
-  return $form;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;看到这里是不是感觉跟8版本很相似，&lt;code&gt;#default_value&lt;/code&gt;从get的&lt;code&gt;name&lt;/code&gt;参数里取值，而name可以作为数组传入，它的属性在下面正好可以被利用，一个巧妙的利用链就串起来了。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x03-总结&#34;&gt;0x03 总结&lt;/h4&gt;
-
-&lt;p&gt;Drupal 7.x的利用比8.x要复杂一些，但触发点和一开始的风险因素还是类似的，一是接收参数过滤不当，而是可控参数进入危险方法。官方补丁把入口处的&lt;code&gt;#&lt;/code&gt;全给过滤了，简单粗暴又有效，估计再利用框架本身的特性想传递进一些数组或元素就很难了。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x04-参考&#34;&gt;0x04 参考&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;https://github.com/dreadlocked/Drupalgeddon2&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;

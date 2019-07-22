@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="SA-CORE-2019-008 Drupal访问绕过漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - SA-CORE-2019-008 Drupal访问绕过漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    SA-CORE-2019-008 Drupal访问绕过漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Fri Jul 19 2019 10:27:05 UTC">Jul 19, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>7月17日，Drupal官方发布Drupal核心安全更新公告，修复了一个访问绕过漏洞，攻击者可以在未授权的情况下发布/修改/删除文章，CVE编号<code>CVE-2019-6342</code></p>
+
+<p>公告地址：<a href="https://www.drupal.org/sa-core-2019-008">https://www.drupal.org/sa-core-2019-008</a></p>
+
+<h3 id="0x02-受影响的版本">0x02 受影响的版本</h3>
+
+<ul>
+<li>Drupal Version == 8.7.4</li>
+</ul>
+
+<h3 id="0x03-漏洞复现">0x03 漏洞复现</h3>
+
+<p>安装<code>Drupal 8.7.4</code>版本，登录管理员账户，进入后台<code>/admin/modules</code>，勾选<code>Workspaces</code>模块并安装</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719101447.png" alt="" /></p>
+
+<p>在页面上方出现如下页面则安装成功，管理员可以切换<code>Stage</code>模式或者<code>Live</code>模式</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104359.png" alt="" /></p>
+
+<p>另外开启一个浏览器访问首页（未登录任何账户），访问<a href="http://127.0.0.1/drupal-8.7.4/node/add/article">http://127.0.0.1/drupal-8.7.4/node/add/article</a></p>
+
+<p>可直接添加文章，无需作者或管理员权限。</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104407.png" alt="" /></p>
+
+<p>受影响操作包括基本文章操作（添加、修改、删除、上传附件等）</p>
+
+<h3 id="0x04-漏洞分析">0x04 漏洞分析</h3>
+
+<h4 id="workspaces的功能">Workspaces的功能</h4>
+
+<p><code>Workspaces</code>是<code>Drupal 8.6</code>核心新增的实验模块，主要功能是方便管理员一次性发布/修改多个内容。</p>
+
+<p><code>Workspaces</code>有两种模式，分别为<code>Stage</code>模式和<code>Live</code>模式，，默认为<code>Live</code>模式，两者的区别在于：</p>
+
+<ul>
+<li><code>Stage</code>模式下修改内容不会及时更新，所有文章修改完毕后管理员可以通过<code>Deploy to Live</code>发布到实际环境，相当于一个暂存区；</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104412.png" alt="" /></p>
+
+<ul>
+<li><code>Live</code>下更新是即时的，发布后站点内容立即更新。</li>
+</ul>
+
+<p>在这两种模式下，由于编码失误导致存在一个缺陷：匿名用户无需登录即可创建/发布/修改/删除文章，问题点出现在权限鉴定模块<code>EntityAccess</code>下。</p>
+
+<h4 id="漏洞分析">漏洞分析</h4>
+
+<p>当用户发起请求时，会根据当前操作回调相关权限检查模块对当前用户权限进行检查，请求调用为事件监听器(<code>EventListener</code>)的<code>RouterListener</code>类，在其<code>onKernelRequest()</code>方法中调用<code>AccessAwareRouter</code>类的<code>matchRequest()</code>方法，随后调用<code>AccessManager-&gt;checkRequest()</code>方法，最后在<code>AccessManager-&gt;performCheck()</code>方法中通过<code>call_user_func_array</code>回调对应的操作进入到具体的操作权限检查</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104431.png" alt="" /></p>
+
+<p>例如发布文章时回调的是<code>access_check.node.add</code>，相关方法在<code>NodeAccessControlHandler</code>控制器中定义，这个控制器继承自<code>EntityAccessControlHandler</code>，在父类的<code>createAccess()</code>方法中回调对应操作的<code>create_access</code>权限，过程中会拼接上模块名和相应钩子作为回调函数，</p>
+
+<pre><code class="language-php">$function = module . '_' . $hook
+</code></pre>
+
+<p>例如此处回调的是<code>workspaces_entity_create_access()</code>方法，进入到Workspaces中。</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104438.png" alt="" /></p>
+
+<p>在调用<code>entityCreateAccess()</code>方法时有一个关键操作<code>bypassAccessResult</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104445.png" alt="" /></p>
+
+<p><code>bypassAccessResult()</code>方法是一个检查用户是否有<code>&quot;绕过节点访问权限(bypass node access)&quot;</code>的操作，是Workspaces中特有的，这个方法决定了&rdquo;如果用户在各自的激活的工作区中，那么他将拥有所有权限&rdquo;，这里的所有权限指文章相关的增删改操作。</p>
+
+<p>这个权限虽然奇怪但确实是一个设计好的功能，正常操作应该在后台<code>admin/people/permissions</code>中配置好用户是否拥有这个权限，默认情况下匿名用户和认证用户都没有权限</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104451.png" alt="" /></p>
+
+<p>当开启了<code>Bypass content entity access in own workspace</code>权限后用户才可以在未登录的情况下发布/删除文章，而此次漏洞就绕过了这个配置，默认情况下进行了越权操作。</p>
+
+<p>具体分析一下<code>bypassAccessResult()</code>的实现，整个过程返回的是<code>AccessResultAllowed</code>对象或者<code>AccessResultNeutral</code>对象，所谓&rdquo;中立&rdquo;是因为后续还可能会对结果再做判断，但在这个漏洞中其实就是<code>access</code>和<code>forbidden</code>的区别：</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104457.png" alt="" /></p>
+
+<p>首先获取了当前激活的工作区，然后通过<code>allowedIf</code>判断当前用户是否有权限，随后这些数据存入缓存，包括缓存内容、缓存标签和过期时间。然后再经过一次<code>allowedIfHasPermission</code>判断，这个方法的作用是，如果权限不对就设置一个<code>reason</code>，在这个漏洞中没有起到作用，到目前为止权限校验都是正常的，在没有配置后台工作区匿名权限的时候，返回的是一个<code>AccessResultNeutral</code>对象，也就是&rdquo;禁止&rdquo;。</p>
+
+<p>接下来就是出现问题的地方</p>
+
+<pre><code class="language-php">$owner_has_access-&gt;orIf(access_bypass);
+</code></pre>
+
+<p>通过补丁可以发现漏洞就修补了这行语句，把<code>orIf</code>换成了<code>andIf</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104509.png" alt="" /></p>
+
+<p>这两个方法的设计逻辑比较复杂，最主要的功能是对一个如果返回为&rdquo;中立&rdquo;的结果做后续判断，如果采用orIf方法合并，那么是否允许由调用者决定；如果以andIf方法合并，则被当做禁止。</p>
+
+<p>具体到此次漏洞上的区别如下方图片所示：</p>
+
+<ul>
+<li><code>orIf()</code></li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104515.png" alt="" /></p>
+
+<p>返回的是<code>AccessResultAllowed</code>对象</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104520.png" alt="" /></p>
+
+<ul>
+<li><code>andIf()</code></li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104525.png" alt="" /></p>
+
+<p>返回的是<code>AccessResultNeutral</code>对象</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104529.png" alt="" /></p>
+
+<p>在检查完毕后会回到<code>AccessAwareRouter-&gt;checkAccess()</code>方法，在该方法中对返回结果进行了判断，<code>AccessResultNeutral</code>的<code>isAllowed()</code>返回<code>false</code>，因此会抛出异常</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104536.png" alt="" /></p>
+
+<p>返回到页面上则是<code>Access denied</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104542.png" alt="" /></p>
+
+<p>更新补丁后只有在开启后台匿名用户权限后才能进行文章操作，该选项默认不开启。</p>
+
+<p>相关调用栈为</p>
+
+<pre><code>Drupal\workspaces\EntityAccess-&gt;bypassAccessResult()
+
+Drupal\workspaces\EntityAccess-&gt;entityCreateAccess()
+
+...
+
+Drupal\Core\Extension\ModuleHandler-&gt;invokeAll()
+
+Drupal\node\NodeAccessControlHandler-&gt;createAccess()
+
+Drupal\node\Access\NodeAddAccessCheck-&gt;access()
+
+Drupal\Core\Access\AccessManager-&gt;performCheck()
+
+Drupal\Core\Routing\AccessAwareRouter-&gt;checkAccess()
+
+Drupal\Core\Routing\AccessAwareRouter-&gt;matchRequest()
+
+Symfony\Component\HttpKernel\EventListener\RouterListener-&gt;onKernelRequest()
+
+...
+
+DrupalKernel.php:693, Drupal\Core\DrupalKernel-&gt;handle()
+
+index.php:19, {main}()
+</code></pre>
+
+<h3 id="0x05-总结">0x05 总结</h3>
+
+<p>此次漏洞出现在设计过程的一个疏忽，在默认没有分配权限的情况下用户可以绕过权限检查进行发布/删除/修改文章操作，但由于该漏洞仅影响Drupal 8.7.4版本，并且需要开启<code>Workspaces</code>模块，这又是一个实验功能，默认不启用，因此漏洞影响减弱了不少，用户可以升级<code>Drupal</code>版本或者关闭<code>Workspaces</code>模块以消除漏洞影响。</p>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'SA-CORE-2019-008 Drupal访问绕过漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

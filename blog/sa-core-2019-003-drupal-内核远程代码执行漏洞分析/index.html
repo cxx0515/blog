@@ -272,6 +272,12 @@ $entity_type = $this-&gt;getEntityTypeDefinition($typed_data_ids['entity_type'])
 
 <p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223111019.png" alt="" /></p>
 
+<p><strong>注意：</strong>如果返回码为422且报下面这个错误，尝试在<code>/admin/config/development/performance</code>点击清除缓存</p>
+
+<p><code>{&quot;message&quot;:&quot;Type http:\/\/127.0.0.1\/drupal-8.6.5-1\/rest\/type\/shortcut\/default does not correspond to an entity on this site.&quot;}</code></p>
+
+<p>另外尝试用<code>PoC</code>脚本利用，每篇文章对应的<code>node id</code>利用一次就失效了，再次利用需要换一个<code>node id</code>，暂时没有研究为什么。</p>
+
 <h3 id="0x06-总结">0x06 总结</h3>
 
 <p>这个漏洞触发点并不复杂，但是调用链相当深，利用条件则是开启了<code>REST Web services</code>，并且允许用户通过<code>rest api</code>注册，在一些功能比较齐全的站点或者方便插件调用时可能会开启，影响面减小了不少，但并不影响这依然是个非常巧妙的漏洞，也进一步说明了开发时考虑不周全的话，风险点就在那里，被利用只是时间问题。</p>

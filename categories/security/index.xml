@@ -10,6 +10,315 @@
     <atom:link href="https://kylingit.com/categories/security/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>SA-CORE-2019-008 Drupal访问绕过漏洞分析</title>
+      <link>https://kylingit.com/blog/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 19 Jul 2019 10:27:05 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;7月17日，Drupal官方发布Drupal核心安全更新公告，修复了一个访问绕过漏洞，攻击者可以在未授权的情况下发布/修改/删除文章，CVE编号&lt;code&gt;CVE-2019-6342&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;公告地址：&lt;a href=&#34;https://www.drupal.org/sa-core-2019-008&#34;&gt;https://www.drupal.org/sa-core-2019-008&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-受影响的版本&#34;&gt;0x02 受影响的版本&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Drupal Version == 8.7.4&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;0x03-漏洞复现&#34;&gt;0x03 漏洞复现&lt;/h3&gt;
+
+&lt;p&gt;安装&lt;code&gt;Drupal 8.7.4&lt;/code&gt;版本，登录管理员账户，进入后台&lt;code&gt;/admin/modules&lt;/code&gt;，勾选&lt;code&gt;Workspaces&lt;/code&gt;模块并安装&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719101447.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在页面上方出现如下页面则安装成功，管理员可以切换&lt;code&gt;Stage&lt;/code&gt;模式或者&lt;code&gt;Live&lt;/code&gt;模式&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104359.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;另外开启一个浏览器访问首页（未登录任何账户），访问&lt;a href=&#34;http://127.0.0.1/drupal-8.7.4/node/add/article&#34;&gt;http://127.0.0.1/drupal-8.7.4/node/add/article&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;可直接添加文章，无需作者或管理员权限。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104407.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;受影响操作包括基本文章操作（添加、修改、删除、上传附件等）&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;workspaces的功能&#34;&gt;Workspaces的功能&lt;/h4&gt;
+
+&lt;p&gt;&lt;code&gt;Workspaces&lt;/code&gt;是&lt;code&gt;Drupal 8.6&lt;/code&gt;核心新增的实验模块，主要功能是方便管理员一次性发布/修改多个内容。&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Workspaces&lt;/code&gt;有两种模式，分别为&lt;code&gt;Stage&lt;/code&gt;模式和&lt;code&gt;Live&lt;/code&gt;模式，，默认为&lt;code&gt;Live&lt;/code&gt;模式，两者的区别在于：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Stage&lt;/code&gt;模式下修改内容不会及时更新，所有文章修改完毕后管理员可以通过&lt;code&gt;Deploy to Live&lt;/code&gt;发布到实际环境，相当于一个暂存区；&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104412.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Live&lt;/code&gt;下更新是即时的，发布后站点内容立即更新。&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;在这两种模式下，由于编码失误导致存在一个缺陷：匿名用户无需登录即可创建/发布/修改/删除文章，问题点出现在权限鉴定模块&lt;code&gt;EntityAccess&lt;/code&gt;下。&lt;/p&gt;
+
+&lt;h4 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h4&gt;
+
+&lt;p&gt;当用户发起请求时，会根据当前操作回调相关权限检查模块对当前用户权限进行检查，请求调用为事件监听器(&lt;code&gt;EventListener&lt;/code&gt;)的&lt;code&gt;RouterListener&lt;/code&gt;类，在其&lt;code&gt;onKernelRequest()&lt;/code&gt;方法中调用&lt;code&gt;AccessAwareRouter&lt;/code&gt;类的&lt;code&gt;matchRequest()&lt;/code&gt;方法，随后调用&lt;code&gt;AccessManager-&amp;gt;checkRequest()&lt;/code&gt;方法，最后在&lt;code&gt;AccessManager-&amp;gt;performCheck()&lt;/code&gt;方法中通过&lt;code&gt;call_user_func_array&lt;/code&gt;回调对应的操作进入到具体的操作权限检查&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104431.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;例如发布文章时回调的是&lt;code&gt;access_check.node.add&lt;/code&gt;，相关方法在&lt;code&gt;NodeAccessControlHandler&lt;/code&gt;控制器中定义，这个控制器继承自&lt;code&gt;EntityAccessControlHandler&lt;/code&gt;，在父类的&lt;code&gt;createAccess()&lt;/code&gt;方法中回调对应操作的&lt;code&gt;create_access&lt;/code&gt;权限，过程中会拼接上模块名和相应钩子作为回调函数，&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$function = module . &#39;_&#39; . $hook
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;例如此处回调的是&lt;code&gt;workspaces_entity_create_access()&lt;/code&gt;方法，进入到Workspaces中。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104438.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在调用&lt;code&gt;entityCreateAccess()&lt;/code&gt;方法时有一个关键操作&lt;code&gt;bypassAccessResult&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104445.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;bypassAccessResult()&lt;/code&gt;方法是一个检查用户是否有&lt;code&gt;&amp;quot;绕过节点访问权限(bypass node access)&amp;quot;&lt;/code&gt;的操作，是Workspaces中特有的，这个方法决定了&amp;rdquo;如果用户在各自的激活的工作区中，那么他将拥有所有权限&amp;rdquo;，这里的所有权限指文章相关的增删改操作。&lt;/p&gt;
+
+&lt;p&gt;这个权限虽然奇怪但确实是一个设计好的功能，正常操作应该在后台&lt;code&gt;admin/people/permissions&lt;/code&gt;中配置好用户是否拥有这个权限，默认情况下匿名用户和认证用户都没有权限&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104451.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;当开启了&lt;code&gt;Bypass content entity access in own workspace&lt;/code&gt;权限后用户才可以在未登录的情况下发布/删除文章，而此次漏洞就绕过了这个配置，默认情况下进行了越权操作。&lt;/p&gt;
+
+&lt;p&gt;具体分析一下&lt;code&gt;bypassAccessResult()&lt;/code&gt;的实现，整个过程返回的是&lt;code&gt;AccessResultAllowed&lt;/code&gt;对象或者&lt;code&gt;AccessResultNeutral&lt;/code&gt;对象，所谓&amp;rdquo;中立&amp;rdquo;是因为后续还可能会对结果再做判断，但在这个漏洞中其实就是&lt;code&gt;access&lt;/code&gt;和&lt;code&gt;forbidden&lt;/code&gt;的区别：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104457.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;首先获取了当前激活的工作区，然后通过&lt;code&gt;allowedIf&lt;/code&gt;判断当前用户是否有权限，随后这些数据存入缓存，包括缓存内容、缓存标签和过期时间。然后再经过一次&lt;code&gt;allowedIfHasPermission&lt;/code&gt;判断，这个方法的作用是，如果权限不对就设置一个&lt;code&gt;reason&lt;/code&gt;，在这个漏洞中没有起到作用，到目前为止权限校验都是正常的，在没有配置后台工作区匿名权限的时候，返回的是一个&lt;code&gt;AccessResultNeutral&lt;/code&gt;对象，也就是&amp;rdquo;禁止&amp;rdquo;。&lt;/p&gt;
+
+&lt;p&gt;接下来就是出现问题的地方&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$owner_has_access-&amp;gt;orIf(access_bypass);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过补丁可以发现漏洞就修补了这行语句，把&lt;code&gt;orIf&lt;/code&gt;换成了&lt;code&gt;andIf&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104509.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这两个方法的设计逻辑比较复杂，最主要的功能是对一个如果返回为&amp;rdquo;中立&amp;rdquo;的结果做后续判断，如果采用orIf方法合并，那么是否允许由调用者决定；如果以andIf方法合并，则被当做禁止。&lt;/p&gt;
+
+&lt;p&gt;具体到此次漏洞上的区别如下方图片所示：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;orIf()&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104515.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;返回的是&lt;code&gt;AccessResultAllowed&lt;/code&gt;对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104520.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;andIf()&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104525.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;返回的是&lt;code&gt;AccessResultNeutral&lt;/code&gt;对象&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104529.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在检查完毕后会回到&lt;code&gt;AccessAwareRouter-&amp;gt;checkAccess()&lt;/code&gt;方法，在该方法中对返回结果进行了判断，&lt;code&gt;AccessResultNeutral&lt;/code&gt;的&lt;code&gt;isAllowed()&lt;/code&gt;返回&lt;code&gt;false&lt;/code&gt;，因此会抛出异常&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104536.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;返回到页面上则是&lt;code&gt;Access denied&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190719104542.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;更新补丁后只有在开启后台匿名用户权限后才能进行文章操作，该选项默认不开启。&lt;/p&gt;
+
+&lt;p&gt;相关调用栈为&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Drupal\workspaces\EntityAccess-&amp;gt;bypassAccessResult()
+
+Drupal\workspaces\EntityAccess-&amp;gt;entityCreateAccess()
+
+...
+
+Drupal\Core\Extension\ModuleHandler-&amp;gt;invokeAll()
+
+Drupal\node\NodeAccessControlHandler-&amp;gt;createAccess()
+
+Drupal\node\Access\NodeAddAccessCheck-&amp;gt;access()
+
+Drupal\Core\Access\AccessManager-&amp;gt;performCheck()
+
+Drupal\Core\Routing\AccessAwareRouter-&amp;gt;checkAccess()
+
+Drupal\Core\Routing\AccessAwareRouter-&amp;gt;matchRequest()
+
+Symfony\Component\HttpKernel\EventListener\RouterListener-&amp;gt;onKernelRequest()
+
+...
+
+DrupalKernel.php:693, Drupal\Core\DrupalKernel-&amp;gt;handle()
+
+index.php:19, {main}()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
+
+&lt;p&gt;此次漏洞出现在设计过程的一个疏忽，在默认没有分配权限的情况下用户可以绕过权限检查进行发布/删除/修改文章操作，但由于该漏洞仅影响Drupal 8.7.4版本，并且需要开启&lt;code&gt;Workspaces&lt;/code&gt;模块，这又是一个实验功能，默认不启用，因此漏洞影响减弱了不少，用户可以升级&lt;code&gt;Drupal&lt;/code&gt;版本或者关闭&lt;code&gt;Workspaces&lt;/code&gt;模块以消除漏洞影响。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>CVE-2019-11581 Atlassian Jira未授权模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 17 Jul 2019 10:52:08 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;7月10日，&lt;code&gt;Atlassian&lt;/code&gt;官方发布安全公告，修复了&lt;code&gt;Jira Server&lt;/code&gt;和&lt;code&gt;Jira Data Center&lt;/code&gt;的一个模板注入漏洞，CVE编号&lt;code&gt;CVE-2019-11581&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;公告地址：&lt;a href=&#34;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&#34;&gt;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;使用&lt;code&gt;atlas-debug&lt;/code&gt;调试&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;下载安装Atlassian SDK，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/install-the-atlassian-sdk-on-a-windows-system/&#34;&gt;地址&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-create-jira-plugin&lt;/code&gt;创建一个插件，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;参考&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-debug&lt;/code&gt;开启调试，http端口2990，调试端口5005；&lt;/li&gt;
+&lt;li&gt;IDEA打开MyPlugin，把&lt;code&gt;WEB-INF/classes&lt;/code&gt;和&lt;code&gt;WEB-INF/lib&lt;/code&gt;加入library；&lt;/li&gt;
+&lt;li&gt;新建Remote调试；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;其他：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;如果没有设置%JAVA_HOME%可以通过&lt;code&gt;SET JAVA_HOME=d:\jdk1.8&lt;/code&gt;设置；&lt;/li&gt;
+&lt;li&gt;默认不开启电子邮件发送，通过&lt;code&gt;atlas-debug --jvmargs -Datlassian.mail.senddisabled=false&lt;/code&gt;开启；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;第一部分-注入代码并生成邮件&#34;&gt;第一部分：注入代码并生成邮件&lt;/h4&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246860552.png&#34; alt=&#34;1563246860552&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;post&lt;/code&gt;的数据通过&lt;code&gt;JiraSafeActionParameterSetter-&amp;gt;setActionProperty()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563271320369.png&#34; alt=&#34;1563271320369&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过反射调用到&lt;code&gt;ContactAdministrators.setSubject()&lt;/code&gt;方法，把&lt;code&gt;ContactAdministrators&lt;/code&gt;对象的&lt;code&gt;subject&lt;/code&gt;属性设置为传入的&lt;code&gt;subject&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;随后通过&lt;code&gt;ContactAdministrators.doExecute()&lt;/code&gt;调用&lt;code&gt;send()&lt;/code&gt;方法，在这个方法中会查找系统中已激活的管理员，通过&lt;code&gt;this.sendTo(administrator)&lt;/code&gt;将邮件发送给该管理员&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247236827.png&#34; alt=&#34;1563247236827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;sendTo()&lt;/code&gt;流程中，&lt;code&gt;Jira&lt;/code&gt;需要通过&lt;code&gt;EmailBuilder()&lt;/code&gt;方法创建一个邮件队列对象，随后将该对象放入邮件发送队列中。由于队列等待原因，所以触发&lt;code&gt;payload&lt;/code&gt;可能需要等待一段时间，并且当邮件发送失败时系统会继续尝试发送邮件，所以&lt;code&gt;payload&lt;/code&gt;可能会触发多次。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247471810.png&#34; alt=&#34;1563247471810&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;创建队列的方法有点长，精简一下就是这个样子&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;MailQueueItem item = (new EmailBuilder()).withSubject(this.subject).withBodyFromFile().addParameters().renderLater();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过&lt;code&gt;EmailBuilder&lt;/code&gt;的&lt;code&gt;withSubject()&lt;/code&gt;方法，创建一个&lt;code&gt;TemplateSources$fragment&lt;/code&gt;对象，参数即是我们传入的&lt;code&gt;payload&lt;/code&gt;，随后调用&lt;code&gt;renderLater()&lt;/code&gt;方法创建出&lt;code&gt;EmailBuilder&lt;/code&gt;对象，再将该对象作为参数传递给&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;类，&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;的继承关系是如下图，于是最终创建出一个&lt;code&gt;MailQueueItem&lt;/code&gt;对象，并将该对象放入邮件发送队列。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563248388715.png&#34; alt=&#34;1563248388715&#34; /&gt;&lt;/p&gt;
+
+&lt;h4 id=&#34;第二部分-发送邮件&#34;&gt;第二部分：发送邮件&lt;/h4&gt;
+
+&lt;p&gt;当我们把&lt;code&gt;payload&lt;/code&gt;注入到模板中之后，邮件进入待发送队列，Jira中处理邮件队列的具体流程如下：&lt;/p&gt;
+
+&lt;p&gt;通过模板引擎&lt;code&gt;(getTemplatingEngine)&lt;/code&gt;生成一个&lt;code&gt;Velocity&lt;/code&gt;模板，通过&lt;code&gt;applying()&lt;/code&gt;方法生成&lt;code&gt;RenderRequest&lt;/code&gt;对象，之后根据该对象成员变量&lt;code&gt;source&lt;/code&gt;的类型，调用不同的方法解析模板，漏洞的产生正是由于这个差异造成的，下面详细分析一下。&lt;/p&gt;
+
+&lt;p&gt;首先进入&lt;code&gt;RenderingMailQueueItem().send()&lt;/code&gt;方法，调用&lt;code&gt;this.emailRenderer.render()&lt;/code&gt;，随后调用&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.getTemplatingEngine().render(this.subjectTemplate).applying(contextParams).asPlainText();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个过程中前面是为了获取模板解析引擎&lt;code&gt;（VelocityTemplatingEngine）&lt;/code&gt;并传入主题模板（此处为payload数据），通过&lt;code&gt;applying()&lt;/code&gt;方法创建&lt;code&gt;VelocityContext&lt;/code&gt;对象并把&lt;code&gt;payload&lt;/code&gt;赋值给成员变量&lt;code&gt;source&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563267497538.png&#34; alt=&#34;1563267497538&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后重写了抽象类&lt;code&gt;StringRepresentation&lt;/code&gt;的&lt;code&gt;with()&lt;/code&gt;方法，在&lt;code&gt;with()&lt;/code&gt;方法中调用了&lt;code&gt;asPlainText()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;DefaultRenderRequest.this.asPlainText(sw)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;的作用是通过&lt;code&gt;Velocity&lt;/code&gt;模板引擎解析模板，其中的调用链是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;toWriterImpl()-&amp;gt;writeEncodedBodyForContent()-&amp;gt;evaluate()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;而在&lt;code&gt;evaluate()&lt;/code&gt;方法中生成了&lt;code&gt;AST&lt;/code&gt;结构，随后通过反射调用传入的&lt;code&gt;payload&lt;/code&gt;，完成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563245970455.png&#34; alt=&#34;1563245970455&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;之后的调用栈如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246607016.png&#34; alt=&#34;1563246607016&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在处理完Object模板后会调用父类&lt;code&gt;SingleMailQueueItem&lt;/code&gt;的send()方法，通过&lt;code&gt;smtpMailServer.sendWithMessageId()&lt;/code&gt;发送邮件，由于没有正确配置&lt;code&gt;SMTP&lt;/code&gt;服务会抛出异常，但在连接&lt;code&gt;SMTP&lt;/code&gt;服务之前漏洞已经触发了，控制台也能看到&lt;code&gt;MailQueue&lt;/code&gt;执行的过程。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563257377543.png&#34; alt=&#34;1563257377543&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;思考&#34;&gt;思考&lt;/h3&gt;
+
+&lt;p&gt;上述漏洞流程走完了，但还有一个关键问题没有解决：为什么邮件主题&lt;code&gt;Subject&lt;/code&gt;会被解析成&lt;code&gt;AST&lt;/code&gt;结构并被执行呢？按照正常发送反馈的逻辑，一封邮件的主题（字符串）似乎没有必要解析成&lt;code&gt;AST&lt;/code&gt;，导致差异的原因是什么？&lt;/p&gt;
+
+&lt;p&gt;发送一封正常的“联系管理员”邮件，走一遍流程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268202907.png&#34; alt=&#34;1563268202907&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268493868.png&#34; alt=&#34;1563268493868&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;对比一下两个处理流程，当发送正常反馈时，&lt;code&gt;writeEncodedBody()&lt;/code&gt;中调用的是&lt;code&gt;this.getVe().mergeTemplate&lt;/code&gt;，通过&lt;code&gt;Velocity&lt;/code&gt;引擎的&lt;code&gt;ClasspathResourceLoader()&lt;/code&gt;类的&lt;code&gt;getResourceStream()&lt;/code&gt;方法加载模板文件，此处的模板是&lt;code&gt;templates/email/html/contactadministrator.vm&lt;/code&gt;，随后还会进行&lt;code&gt;header&lt;/code&gt;、&lt;code&gt;footer&lt;/code&gt;等正常加载流程，最终渲染出整个页面。而发送&lt;code&gt;payload&lt;/code&gt;时，通过asPlainText()创建出TemplateSource$Fragment对象，再通过DefaultRenderRequest构造方法把&lt;code&gt;source&lt;/code&gt;成员变量赋值为这个&lt;code&gt;Fragment&lt;/code&gt;对象，于是进入第一个分支，调用的是&lt;code&gt;this.getVe().evaluate()&lt;/code&gt;，最终调用&lt;code&gt;ASTMethod.execute()&lt;/code&gt;，这正是前面说的差异性导致的两个不同处理逻辑。&lt;/p&gt;
+
+&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为AST结构，并对AST中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为AST的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取text内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的，漏洞利用十分精巧。&lt;/p&gt;
+
+&lt;p&gt;补充：严格意义上讲这不属于一个模板注入漏洞，因为代码并没有“注入”到某一个模板中，漏洞触发过程是在解析模板文件之前，利用的是解析模板的过程，恶意代码并没有真正落地也没有插入到某个模板里面，所以称之为“代码注入”也许更合适。&lt;/p&gt;
+
+&lt;h3 id=&#34;参考&#34;&gt;参考&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&#34;&gt;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&#34;&gt;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>CVE-2019-2729 Weblogic XMLDecoder反序列化漏洞分析</title>
       <link>https://kylingit.com/blog/cve-2019-2729-weblogic-xmldecoder%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Wed, 19 Jun 2019 12:26:39 +0000</pubDate>
@@ -433,6 +742,12 @@ $entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity
 &lt;p&gt;发送payload&lt;/p&gt;
 
 &lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190223111019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;注意：&lt;/strong&gt;如果返回码为422且报下面这个错误，尝试在&lt;code&gt;/admin/config/development/performance&lt;/code&gt;点击清除缓存&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;{&amp;quot;message&amp;quot;:&amp;quot;Type http:\/\/127.0.0.1\/drupal-8.6.5-1\/rest\/type\/shortcut\/default does not correspond to an entity on this site.&amp;quot;}&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;另外尝试用&lt;code&gt;PoC&lt;/code&gt;脚本利用，每篇文章对应的&lt;code&gt;node id&lt;/code&gt;利用一次就失效了，再次利用需要换一个&lt;code&gt;node id&lt;/code&gt;，暂时没有研究为什么。&lt;/p&gt;
 
 &lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
 
@@ -3388,278 +3703,6 @@ if ($process_input) {
 &lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-7600 Drupal 内核远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Fri, 13 Apr 2018 23:05:34 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/sa-core-2018-002&#34;&gt;https://www.drupal.org/sa-core-2018-002&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
-
-&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
-
-&lt;p&gt;修复版本
-Drupal 7.58，Drupal 8.5.1&lt;/p&gt;
-
-&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
-
-&lt;p&gt;历史版本
-&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x04-流程梳理&#34;&gt;0x04 流程梳理&lt;/h4&gt;
-
-&lt;p&gt;先来理清一下Drupal处理表单的情况。更详细的可以看&lt;a href=&#34;http://www.thinkindrupal.com/node/1100&#34;&gt;文档&lt;/a&gt;&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Drupal提供了一个应用程序接口（API），用来生成、验证和处理HTML表单。表单API将表单抽象为一个嵌套数组，里面包含了属性和值。在生成页面时，表单呈现引擎会在适当的时候将数组呈现出来。&lt;/p&gt;
-
-&lt;p&gt;模块使用关联数组向Drupal描述表单。Drupal的表单引擎负责为要显示的表单生成HTML，并使用三个阶段来安全的处理提交了的表单：验证、提交、重定向。&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;Drupal比较特殊，它不像大部分cms通过html直接渲染页面，而是把接收的数据交给&lt;code&gt;core/lib/Drupal/Core/Form/FormBuilder.php&lt;/code&gt;的&lt;code&gt;buildForm()&lt;/code&gt;方法处理，&lt;code&gt;buildForm()&lt;/code&gt;经过处理后返回一个结构体(数组)，数组通过引擎生成HTML。&lt;/p&gt;
-
-&lt;p&gt;当我们提交一个表单(例如注册页面)，&lt;code&gt;buildForm()&lt;/code&gt;方法会根据&lt;code&gt;$form_id&lt;/code&gt;取出数据，经过一系列处理后返回一个树形结构，这个结构就是通过数组存储的，就是我们看到的类似&lt;code&gt;[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][]&lt;/code&gt;的结构，数组每个元素作为一个叶子节点，后续就把整个&lt;code&gt;form&lt;/code&gt;结构渲染出页面。&lt;/p&gt;
-
-&lt;p&gt;当我们在注册页面上传一张图片的时候，&lt;code&gt;form&lt;/code&gt;结构被传给&lt;code&gt;core/modules/file/src/Element/ManagedFile.php&lt;/code&gt;的&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;方法，这个方法用来处理上传文件的情况&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt; public static function uploadAjaxCallback(&amp;amp;$form, FormStateInterface &amp;amp;$form_state, Request $request) {
-    /** @var \Drupal\Core\Render\RendererInterface $renderer */
-    $renderer = \Drupal::service(&#39;renderer&#39;);
-
-    $form_parents = explode(&#39;/&#39;, $request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;));
-
-    // Retrieve the element to be rendered.
-    $form = NestedArray::getValue($form, $form_parents);
-
-    // Add the special AJAX class if a new file was added.
-    $current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
-    if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
-      $form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
-    }
-    // Otherwise just add the new content class on a placeholder.
-    else {
-      $form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
-    }
-
-    $status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
-    $form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
-    $output = $renderer-&amp;gt;renderRoot($form);
-
-    $response = new AjaxResponse();
-    $response-&amp;gt;setAttachments($form[&#39;#attached&#39;]);
-
-    return $response-&amp;gt;addCommand(new ReplaceCommand(NULL, $output));
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/8b1t3&#34; alt=&#34;upload&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Q3ys0&#34; alt=&#34;form_parents&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;问题就出现在&lt;code&gt;$request-&amp;gt;query-&amp;gt;get(&#39;element_parents&#39;)&lt;/code&gt;这个地方，&lt;code&gt;$form_parents&lt;/code&gt;父节点的值是从&lt;code&gt;get()&lt;/code&gt;取出&lt;code&gt;element_parents&lt;/code&gt;参数传进去的，进入下面的&lt;code&gt;NestedArray::getValue()&lt;/code&gt;方法，&lt;code&gt;getValue()&lt;/code&gt;的作用是接收一个节点，把这个节点下的叶子节点全部遍历出来，再根据叶子节点的&lt;code&gt;key-value&lt;/code&gt;值进行后续操作。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/39ciX&#34; alt=&#34;getValue&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/f8qiO&#34; alt=&#34;user_picture&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;按理说这样的功能很正常，关键就在于这个&lt;code&gt;element_parents&lt;/code&gt;正是我们可以控制的，也就是说我们可以指定&lt;code&gt;uploadAjaxCallback()&lt;/code&gt;渲染我们给它的参数，而这个参数可以是恶意的。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x05-漏洞分析&#34;&gt;0x05 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;那么我们传进去什么参数呢？我们先来测试一下，正常注册流程，&lt;code&gt;mail&lt;/code&gt;参数传进去一个数组的话会怎么样&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KJE50&#34; alt=&#34;mail&#34; /&gt;
-可以看到我们构造的“子节点”被存储在&lt;code&gt;mail-value&lt;/code&gt;下，如果要取出这个值就得让上面提到的&lt;code&gt;getValue()&lt;/code&gt;接收这个参数，所以我们构造&lt;code&gt;element_parents=account/name/%23value&lt;/code&gt;，这样子&lt;code&gt;getValue()&lt;/code&gt;就会遍历出我们构造的参数&lt;/p&gt;
-
-&lt;p&gt;现在参数已经能够传进去了，那么在哪里执行呢？继续往下跟&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$current_file_count = $form_state-&amp;gt;get(&#39;file_upload_delta_initial&#39;);
-if (isset($form[&#39;#file_upload_delta&#39;]) &amp;amp;&amp;amp; $current_file_count &amp;lt; $form[&#39;#file_upload_delta&#39;]) {
-	$form[$current_file_count][&#39;#attributes&#39;][&#39;class&#39;][] = &#39;ajax-new-content&#39;;
-}
-// Otherwise just add the new content class on a placeholder.
-else {
-	$form[&#39;#suffix&#39;] .= &#39;&amp;lt;span class=&amp;quot;ajax-new-content&amp;quot;&amp;gt;&amp;lt;/span&amp;gt;&#39;;
-}
-
-$status_messages = [&#39;#type&#39; =&amp;gt; &#39;status_messages&#39;];
-$form[&#39;#prefix&#39;] .= $renderer-&amp;gt;renderRoot($status_messages);
-$output = $renderer-&amp;gt;renderRoot($form);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到经过&lt;code&gt;getValue()&lt;/code&gt;遍历出来的叶子节点(就是此时的&lt;code&gt;form&lt;/code&gt;)被传进&lt;code&gt;$renderer-&amp;gt;renderRoot()&lt;/code&gt;方法，跟进去看一下&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;core/lib/Drupal/Core/Render/Renderer.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;  public function render(&amp;amp;$elements, $is_root_call = FALSE) {
-...
-    try {
-      return $this-&amp;gt;doRender($elements, $is_root_call);
-    }
-    catch (\Exception $e) {
-      // Mark the ::rootRender() call finished due to this exception &amp;amp; re-throw.
-      $this-&amp;gt;isRenderingRoot = FALSE;
-      throw $e;
-    }
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;调用&lt;code&gt;doRender()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/6Htxw&#34; alt=&#34;doRender&#34; /&gt;
-这个方法比较长，但是我们从中找到了几处执行&lt;code&gt;call_user_func()&lt;/code&gt;的地方，先看一下第三处&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (isset($elements[&#39;#post_render&#39;])) {
-    foreach ($elements[&#39;#post_render&#39;] as $callable) {
-        if (is_string($callable) &amp;amp;&amp;amp; strpos($callable, &#39;::&#39;) === FALSE) {
-            $callable = $this-&amp;gt;controllerResolver-&amp;gt;getControllerFromDefinition($callable);
-        }
-        $elements[&#39;#children&#39;] = call_user_func($callable, $elements[&#39;#children&#39;], $elements);
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;接收的第一个参数&lt;code&gt;$elements[&#39;#post_render&#39;]&lt;/code&gt;作为函数，第二个参数&lt;code&gt;$elements[&#39;#children&#39;]&lt;/code&gt;作为参数，在上面被赋值&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$theme_is_implemented &amp;amp;&amp;amp; isset($elements[&#39;#markup&#39;])) {
-    $elements[&#39;#children&#39;] = Markup::create($elements[&#39;#markup&#39;] . $elements[&#39;#children&#39;]);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这两个参数都是我们可控的，于是造成一个代码执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/jHlV8&#34; alt=&#34;call_user_func&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;回头看一下这处&lt;code&gt;call_user_func_array&lt;/code&gt;，这里的&lt;code&gt;$callable&lt;/code&gt;和&lt;code&gt;$args&lt;/code&gt;两个参数实际上也是可控的，通过&lt;code&gt;#lazy_builder&lt;/code&gt;属性传进来，checkpoint的分析报告正是分析了这个地方&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Gj3xu&#34; alt=&#34;call_user_func_array&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h4&gt;
-
-&lt;p&gt;关注这个漏洞也是好长时间了，当时粗略看了一下，因为补丁直接对入口进行了过滤，要找到真正触发的地方太难了，所以也迟迟不见PoC出来。checkpoint的分析报告出来后好好跟了一遍，不得不感叹人家真厉害(逃&amp;hellip;&lt;/p&gt;
-
-&lt;p&gt;这个漏洞关键点有两个，一个是&lt;code&gt;uploadAjaxCallback&lt;/code&gt;里&lt;code&gt;$form_parents&lt;/code&gt;由get直接传进参数，这里就存在风险；
-另一处&lt;code&gt;call_user_func&lt;/code&gt;两个参数均可控，两者结合造成一个严重的远程代码执行漏洞，看分析报告如何一步步构造利用链，可谓是十分精彩了。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/a2u/CVE-2018-7600&#34;&gt;https://github.com/a2u/CVE-2018-7600&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-1270 spring-messaging Remote Code Execution 分析</title>
-      <link>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</link>
-      <pubDate>Wed, 11 Apr 2018 11:07:18 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-1270-spring-messaging-remote-code-execution-%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://pivotal.io/security/cve-2018-1270&#34;&gt;CVE-2018-1270: Remote Code Execution with spring-messaging&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;Spring Framework 5.0 to 5.0.4&lt;/li&gt;
-&lt;li&gt;Spring Framework 4.3 to 4.3.15&lt;/li&gt;
-&lt;li&gt;Older unsupported versions are also affected&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
-
-&lt;pre&gt;&lt;code&gt;git clone https://github.com/spring-guides/gs-messaging-stomp-websocket
-git checkout 6958af0b02bf05282673826b73cd7a85e84c12d3
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h4 id=&#34;0x04-漏洞利用&#34;&gt;0x04 漏洞利用&lt;/h4&gt;
-
-&lt;p&gt;在app.js中增加一个header头&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-js&#34;&gt;function connect() {
-    var header  = {&amp;quot;selector&amp;quot;:&amp;quot;T(java.lang.Runtime).getRuntime().exec(&#39;calc.exe&#39;)&amp;quot;};
-    var socket = new SockJS(&#39;/gs-guide-websocket&#39;);
-    stompClient = Stomp.over(socket);
-    stompClient.connect({}, function (frame) {
-        setConnected(true);
-        console.log(&#39;Connected: &#39; + frame);
-        stompClient.subscribe(&#39;/topic/greetings&#39;, function (greeting) {
-            showGreeting(JSON.parse(greeting.body).content);
-        }, header);
-    });
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;spring-boot:run运行，connect建立连接后，点击发送触发漏洞&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kVdWA&#34; alt=&#34;clac&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x05-漏洞分析&#34;&gt;0x05 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;在点击发送消息后，spring-message会对消息头部进行处理，相关方法在&lt;code&gt;org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.java&lt;/code&gt;
-&lt;code&gt;addSubscriptionInternal()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/tvQk8&#34; alt=&#34;selector&#34; /&gt;
-通过&lt;code&gt;sessionId&lt;/code&gt;和&lt;code&gt;subsId&lt;/code&gt;确定一个&lt;code&gt;selector&lt;/code&gt;属性，后续服务端就通过这个&lt;code&gt;subsId&lt;/code&gt;来查找特定会话，也就是从&lt;code&gt;headers&lt;/code&gt;头部信息查找&lt;code&gt;selector&lt;/code&gt;，由&lt;code&gt;selector&lt;/code&gt;的值作为expression被执行&lt;/p&gt;
-
-&lt;p&gt;点击Send后，&lt;code&gt;org/springframework/messaging/simp/broker/SimpleBrokerMessageHandler.java&lt;/code&gt;接收到message，message的headers头部信息包含了selector的属性，message传进&lt;code&gt;this.subscriptionRegistry.findSubscriptions&lt;/code&gt;，由&lt;code&gt;findSubscriptions()&lt;/code&gt;进行处理&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/NUWfs&#34; alt=&#34;sendMessageToSubscribers&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;跟进相关方法
-&lt;code&gt;org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.java&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;@Override
-protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(String destination, Message&amp;lt;?&amp;gt; message) {
-	MultiValueMap&amp;lt;String, String&amp;gt; result = this.destinationCache.getSubscriptions(destination, message);
-	return filterSubscriptions(result, message);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;result的值作为&lt;code&gt;filterSubscriptions()&lt;/code&gt;的&lt;code&gt;allMatches&lt;/code&gt;参数传入，遍历出&lt;code&gt;sessionId&lt;/code&gt;和&lt;code&gt;subsId&lt;/code&gt;，此时的result为&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1AvIp&#34; alt=&#34;result&#34; /&gt;
-跟进&lt;code&gt;filterSubscriptions()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;经过两层for循环，id为&lt;code&gt;sub-0&lt;/code&gt;的subscription被赋值给&lt;code&gt;sub&lt;/code&gt;(P.S. 此图是后来补的，故sessionId不一样)&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/wHSXE&#34; alt=&#34;for&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/QY3Ep&#34; alt=&#34;sub&#34; /&gt;
-通过&lt;code&gt;sub.getSelectorExpression()&lt;/code&gt;得到&lt;code&gt;expression&lt;/code&gt;的值，此时的&lt;code&gt;expression&lt;/code&gt;就包含着我们发送的表达式&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/zwRxS&#34; alt=&#34;expression&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;再往下，执行到&lt;code&gt;expression.getValue()&lt;/code&gt;，SpEL得到执行，触发poc&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/vJ027&#34; alt=&#34;calc&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/spring-projects/spring-framework/commit/e0de9126ed8cf25cf141d3e66420da94e350708a#diff-ca84ec52e20ebb2a3732c6c15f37d37a&#34;&gt;https://github.com/spring-projects/spring-framework/commit/e0de9126ed8cf25cf141d3e66420da94e350708a#diff-ca84ec52e20ebb2a3732c6c15f37d37a&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x07-参考&#34;&gt;0x07 参考&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://chybeta.github.io/2018/04/07/spring-messaging-Remote-Code-Execution-%E5%88%86%E6%9E%90-%E3%80%90CVE-2018-1270%E3%80%91/&#34;&gt;https://chybeta.github.io/2018/04/07/spring-messaging-Remote-Code-Execution-%E5%88%86%E6%9E%90-%E3%80%90CVE-2018-1270%E3%80%91/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;http://blog.nsfocus.net/spring-messaging-analysis/&#34;&gt;http://blog.nsfocus.net/spring-messaging-analysis/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://www.anquanke.com/post/id/104140&#34;&gt;https://www.anquanke.com/post/id/104140&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
 </description>
     </item>
     
