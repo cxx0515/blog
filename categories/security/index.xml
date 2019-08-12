@@ -10,6 +10,148 @@
     <atom:link href="https://kylingit.com/categories/security/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>CVE-2019-0193 Apache Solr远程命令执行漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-0193-apache-solr%E8%BF%9C%E7%A8%8B%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 07 Aug 2019 10:38:17 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-0193-apache-solr%E8%BF%9C%E7%A8%8B%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;8月1日，Apache Solr官方发布了CVE-2019-0193漏洞预警，此漏洞存在于可选模块DataImportHandler中，DataImportHandler是用于从数据库或其他源提取数据的常用模块，该模块中所有DIH配置都可以通过外部请求的dataConfig参数来设置，由于DIH配置可以包含脚本，因此该参数存在安全隐患。&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;a href=&#34;https://issues.apache.org/jira/browse/SOLR-13669&#34;&gt;https://issues.apache.org/jira/browse/SOLR-13669&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;选择Solr 8.1.1二进制版本进行分析和复现&lt;/p&gt;
+
+&lt;p&gt;下载地址：&lt;a href=&#34;https://archive.apache.org/dist/lucene/solr/8.1.1/&#34;&gt;https://archive.apache.org/dist/lucene/solr/8.1.1/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;调试命令&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ cd solr-8.1.1\server
+$ java &amp;quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&amp;quot; -Dsolr.solr.home=&amp;quot;../example/example-DIH/solr/&amp;quot; -jar start.jar --module=http
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;IDEA新建远程调试即可&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-前置概念&#34;&gt;0x03 前置概念&lt;/h3&gt;
+
+&lt;p&gt;solr支持从Dataimport导入自定义数据，dataconfig需要满足一定语法，参考&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://lucene.apache.org/solr/guide/6_6/uploading-structured-data-store-data-with-the-data-import-handler.html&#34;&gt;https://lucene.apache.org/solr/guide/6_6/uploading-structured-data-store-data-with-the-data-import-handler.html&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://cwiki.apache.org/confluence/display/solr/DataImportHandler&#34;&gt;https://cwiki.apache.org/confluence/display/solr/DataImportHandler&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;其中ScriptTransformer可以编写自定义脚本，支持常见的脚本语言如Javascript、JRuby、Jython、Groovy和BeanShell&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;&lt;code&gt;ScriptTransformer&lt;/code&gt;容许用脚本语言如Javascript、JRuby、Jython、Groovy和BeanShell转换，函数应当以行（类型为&lt;code&gt;Map&amp;lt;String,Object&amp;gt;&lt;/code&gt;）为参数，可以修改字段。脚本应当写在数据仓库配置文件顶级的&lt;code&gt;script&lt;/code&gt;元素内，而转换器属性值为&lt;code&gt;script:函数名&lt;/code&gt;。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;使用示例：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;dataconfig&amp;gt;
+  &amp;lt;script&amp;gt;&amp;lt;![CDATA[
+    function f2c(row) {
+      var tempf, tempc;
+      tempf = row.get(&#39;temp_f&#39;);
+      if (tempf != null) {
+        tempc = (tempf - 32.0)*5.0/9.0;
+        row.put(&#39;temp_c&#39;, temp_c);
+      }
+      return row;
+    }
+    ]]&amp;gt;
+  &amp;lt;/script&amp;gt;
+  &amp;lt;document&amp;gt;
+
+    &amp;lt;entity name=&amp;quot;e1&amp;quot; pk=&amp;quot;id&amp;quot; transformer=&amp;quot;script:f2c&amp;quot; query=&amp;quot;select * from X&amp;quot;&amp;gt;
+    &amp;lt;/entity&amp;gt;
+  &amp;lt;/document&amp;gt;
+&amp;lt;/dataConfig&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Nashorn引擎&lt;/p&gt;
+
+&lt;p&gt;在Solr中解析js脚本使用的是Nashorn引擎，可以通过&lt;code&gt;Java.type&lt;/code&gt;API在JavaScript中引用，就像Java的&lt;code&gt;import&lt;/code&gt;一样，例如：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;var MyJavaClass = Java.type(`my.package.MyJavaClass`);
+
+var result = MyJavaClass.sayHello(&#39;Nashorn&#39;);
+print(result);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;p&gt;Solr处理dataimport请求时，首先进入dataimport/DataImportHandler的handleRequestBody方法，当前请求的command为full-import，因此通过maybeReloadConfiguration重新加载配置&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565157550593.png&#34; alt=&#34;1565157550593&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在maybeReloadConfiguration中通过params.getDataConfig()判断了post的数据(dataConfig)是否为空，如果不是则通过loadDataConfig来加载&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565157730103.png&#34; alt=&#34;1565157730103&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后在loadDataConfig中通过readFromXml方法解析提交的配置数据中的各个标签，比如&lt;code&gt;document&lt;/code&gt;，&lt;code&gt;script&lt;/code&gt;，&lt;code&gt;function&lt;/code&gt;，&lt;code&gt;dataSource&lt;/code&gt;等，传入的script自定义脚本即在此处被存入script变量，递归解析完所有标签构建出DIHConfiguration对象并返回。&lt;/p&gt;
+
+&lt;p&gt;获取到配置信息后通过this.importer.runCmd()方法处理导入过程&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.importer.runCmd(requestParams, sw);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565158761569.png&#34; alt=&#34;1565158761569&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在doFullImport中，首先会创建一个DocBuilder对象，DocBuilder的主要功能是从给定配置中创建Solr文档，同时会记录一些状态信息。随后通过execute()方法会通过遍历Entity的所有元素来解析config结构，最终得到是一个EntityProcessorWrapper对象。EntityProcessorWrapper是一个比较关键的类，继承自EntityProcessor，在整个解析过程中起到重要的作用，可以参考&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://lucene.apache.org/solr/8_1_1/solr-dataimporthandler/org/apache/solr/handler/dataimport/EntityProcessorWrapper.html&#34;&gt;https://lucene.apache.org/solr/8_1_1/solr-dataimporthandler/org/apache/solr/handler/dataimport/EntityProcessorWrapper.html&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;在解析完config数据后solr会把最后更新时间记录到配置文件中，这个时间是为了下次进行增量更新的时候用的。接着通过this.dataImporter.getStatus()判断当前数据导入是“全部导入”还是“增量导入”，两个操作对应的方法分别为doDelta()和doFullDump()，此处的操作是full-import，因此调用doFullDump()&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565165153995.png&#34; alt=&#34;1565165153995&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在doFullDump()中调用的是DocBuilder.buildDocument()方法，这个方法会为发送的配置数据的每一个processor做解析，当发送的entity中含有&lt;code&gt;Transformers&lt;/code&gt;时，会进行相应的转换操作，例如转换成日期格式(DateFormatTransformer)、根据正则表达式转换(RegexTransformer)等，这次出现问题的是ScriptTransformer，可以根据用户自定义的脚本进行数据转换。由于脚本内容完全是用户控制的，当指定的script含有恶意代码时就会被执行，下面看一下Solr中如何执行javascript代码：&lt;/p&gt;
+
+&lt;p&gt;在读取EntityProcessorWrapper的每一个元素时，是通过epw.nextRow()调用的，它返回的是一个Map对象，进入EntityProcessorWrapper.nextRow方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565166416846.png&#34; alt=&#34;1565166416846&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过applyTransformer()执行转换，调用的是相应Transformer的transformRow方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565166667450.png&#34; alt=&#34;1565166667450&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;ScriptTransformer&lt;/code&gt;允许多种脚本语言调用，如Javascript、JRuby、Jython、Groovy和BeanShell等，transformRow()方法则会根据指定的语言来初始化对应的解析引擎，例如此处初始化的是scriptEngine，用来解析JavaScript脚本&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565167039401.png&#34; alt=&#34;1565167039401&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Solr中默认的js引擎是Nashorn，Nashorn是于Java 8中用于取代Rhino（Java 6，Java 7）的JavaScript引擎，在js中可以通过&lt;code&gt;Java.type&lt;/code&gt;引用Java类，就像Java的&lt;code&gt;import&lt;/code&gt;一样，此处就可以通过这个语法导入任意Java类。&lt;/p&gt;
+
+&lt;p&gt;随后通过反射调用自定义的函数并执行，例如通过java.lang.Runtime执行系统命令&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565166706725.png&#34; alt=&#34;1565166706725&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;整个漏洞就是因为可以通过&lt;code&gt;&amp;lt;script&amp;gt;&lt;/code&gt;标签指定ScriptTransformer，而在这个标签内可以导入任意的java类，Solr也并没有对标签内容做限制，导致可以执行任意代码。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565167939907.png&#34; alt=&#34;1565167939907&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用栈情况&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1565161745688.png&#34; alt=&#34;1565161745688&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;0x05-补充&#34;&gt;0x05 补充&lt;/h3&gt;
+
+&lt;p&gt;值得注意的是，官方给出的临时修复方案并不能缓解漏洞，当把相应的index core的配置文件置为空时，dataimport的时候只是获取不到默认的配置，但是依然能够通过这个接口发送PoC，漏洞也依然能够触发，解决办法是把相应配置文件中的dataimport requestHandler全部注释并重启Solr服务器，才能彻底关闭这个接口缓解漏洞。&lt;/p&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-008 Drupal访问绕过漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-008-drupal%E8%AE%BF%E9%97%AE%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 19 Jul 2019 10:27:05 +0000</pubDate>
@@ -3462,245 +3604,6 @@ Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
 &lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
 
 &lt;p&gt;总的来说这个漏洞是CVE-2018-7600的另一个利用点，只是入口方式不一样，最终执行点还是相同的，所以还是那句话，一旦参数可控并且没有经过正确的过滤，就很有可能出问题。&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-7600 Drupal 7.x 版本代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Fri, 20 Apr 2018 23:05:34 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-7600-drupal-7.x-%E7%89%88%E6%9C%AC%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;CVE-2018-7600影响范围包括了Drupal 6.x，7.x，8.x版本，前几天8.x版本的PoC出来之后大家都赶紧分析了一波，然后热度似乎慢慢退去了。两天前&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;Drupalgeddon2&lt;/a&gt;项目更新了7.x版本的exp，实际环境也出现了利用，下面就简单来看一下&lt;/p&gt;
-
-&lt;p&gt;看到项目上这样写&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Drupal &amp;lt; 7.58 ~ user/password URL, attacking triggering_element_name form &amp;amp; #post_render parameter, using PHP&amp;rsquo;s passthru function&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;提示了问题出在&lt;code&gt;user/password&lt;/code&gt;路径下，通过&lt;code&gt;#post_render&lt;/code&gt;传递恶意参数，问题出现在&lt;code&gt;triggering_element_name&lt;/code&gt;表单处理下&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;我们从三个问题入手，为什么PoC发了两个包，第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，以及为什么选择&lt;code&gt;user/password&lt;/code&gt;这个入口&lt;/p&gt;
-
-&lt;p&gt;先分析第一个post，照例还是先看一下Drupal 7的表单处理流程，跟8版本不太一样，但是入口还是相似的。
-根据文档描述，当我们提交一个表单(例如找回密码)时，系统会通过&lt;code&gt;form_builder()&lt;/code&gt;方法创建一个form
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/lffx4.jpg&#34; alt=&#34;user/passwd&#34; /&gt;
-一系列预处理后，会由&lt;code&gt;drupal_build_form
-()&lt;/code&gt;方法创建一个表单，在第386行调用&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，
-跟进&lt;code&gt;drupal_process_form()&lt;/code&gt;方法，这时候默认的&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/dd7fx.png&#34; alt=&#34;submitted&#34; /&gt;
-不满足if条件，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/kqijr.png&#34; alt=&#34;true&#34; /&gt;
-于是进入这个分支，最终被&lt;code&gt;drupal_redirect_form&lt;/code&gt;重定向&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/so5l4.jpg&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;我们的目的是要让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，以便后面拿出来用。要想form被缓存，就得想办法让&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;不成立，也就是说要使&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false
-从而进入下面的&lt;code&gt;drupal_rebuild_form&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;那么如何让&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;为false呢？&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;includes/form.inc&lt;/code&gt;第886行
-&lt;code&gt;$form = form_builder($form_id, $form, $form_state);&lt;/code&gt;
-跟进&lt;code&gt;form_builder&lt;/code&gt;方法，第1987行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;])) {
-  $form_state[&#39;submitted&#39;] = TRUE;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;当&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;存在值的时候就为true，那么我们就想办法让这个值为空
-往上看第1972行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!$form_state[&#39;programmed&#39;] &amp;amp;&amp;amp; !isset($form_state[&#39;triggering_element&#39;]) &amp;amp;&amp;amp; !empty($form_state[&#39;buttons&#39;])) {
-  $form_state[&#39;triggering_element&#39;] = $form_state[&#39;buttons&#39;][0];
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;如果没有设置&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;，那么&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;就设置为第一个button的值，所以正常传递表单的时候&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;就总会有值&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1do73.jpg&#34; alt=&#34;button&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;现在问题来了，如何构造一个form能够确保&lt;code&gt;$form_state[&#39;triggering_element&#39;][&#39;#executes_submit_callback&#39;]&lt;/code&gt;为空或者说不存在这个数组呢？&lt;/p&gt;
-
-&lt;p&gt;我们注意到第1864行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (!empty($element[&#39;#input&#39;])) {
-  _form_builder_handle_input_element($form_id, $element, $form_state);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;_form_builder_handle_input_element()&lt;/code&gt;方法对表单先进行了处理，跟进去看一下&lt;/p&gt;
-
-&lt;p&gt;第2144行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;// Determine which element (if any) triggered the submission of the form and
-// keep track of all the clickable buttons in the form for
-// form_state_values_clean(). Enforce the same input processing restrictions
-// as above.
-if ($process_input) {
-  // Detect if the element triggered the submission via Ajax.
-  if (_form_element_triggered_scripted_submission($element, $form_state)) {
-    $form_state[&#39;triggering_element&#39;] = $element;
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这里&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;被设置为&lt;code&gt;$element&lt;/code&gt;，前提是满足&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;方法，继续跟入
-第2180行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function _form_element_triggered_scripted_submission($element, &amp;amp;$form_state) {
-  if (!empty($form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) &amp;amp;&amp;amp; $element[&#39;#name&#39;] == $form_state[&#39;input&#39;][&#39;_triggering_element_name&#39;]) {
-    if (empty($form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;]) || $form_state[&#39;input&#39;][&#39;_triggering_element_value&#39;] == $element[&#39;#value&#39;]) {
-      return TRUE;
-    }
-  }
-  return FALSE;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这个方法的意思是说如果&lt;code&gt;_triggering_element_value&lt;/code&gt;和&lt;code&gt;$element&lt;/code&gt;的键值都相等的话，返回true
-&lt;code&gt;$form_state[&#39;triggering_element&#39;]&lt;/code&gt;赋值为&lt;code&gt;$element&lt;/code&gt;，其中不含&lt;code&gt;[&#39;#executes_submit_callback&#39;]&lt;/code&gt;，一开始的条件就成立了&lt;/p&gt;
-
-&lt;p&gt;根据PoC，我们传入&lt;code&gt;_triggering_element_name=name&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3c6kh.jpg&#34; alt=&#34;element&#34; /&gt;
-看到进入这个分支，进入&lt;code&gt;form_set_cache()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cn1jh.jpg&#34; alt=&#34;&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/lskgu.png&#34; alt=&#34;&#34; /&gt;
-数据库中插入缓存&lt;code&gt;form_build_id&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/odfo8.png&#34; alt=&#34;&#34; /&gt;
-成功写入缓存&lt;/p&gt;
-
-&lt;p&gt;接下去来看一下这个缓存有什么用&lt;/p&gt;
-
-&lt;p&gt;分析PoC的第二个包，请求参数是这样&lt;code&gt;q=file/ajax/name/%23value/form_build_id&lt;/code&gt;
-&lt;code&gt;form_build_id&lt;/code&gt;即我们上一个写入数据库的缓存表单&lt;/p&gt;
-
-&lt;p&gt;首先请求会进入&lt;code&gt;includes/menu.inc&lt;/code&gt;的&lt;code&gt;menu_get_item()&lt;/code&gt;方法，&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function menu_get_item($path = NULL, $router_item = NULL) {
-  $router_items = &amp;amp;drupal_static(__FUNCTION__);
-  if (!isset($path)) {
-    $path = $_GET[&#39;q&#39;];
-  }
-  if (isset($router_item)) {
-    $router_items[$path] = $router_item;
-  }
-  if (!isset($router_items[$path])) {
-    // Rebuild if we know it&#39;s needed, or if the menu masks are missing which
-    // occurs rarely, likely due to a race condition of multiple rebuilds.
-    if (variable_get(&#39;menu_rebuild_needed&#39;, FALSE) || !variable_get(&#39;menu_masks&#39;, array())) {
-      if (_menu_check_rebuild()) {
-        menu_rebuild();
-      }
-    }
-    $original_map = arg(NULL, $path);
-
-    $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
-    $ancestors = menu_get_ancestors($parts);
-    $router_item = db_query_range(&#39;SELECT * FROM {menu_router} WHERE path IN (:ancestors) ORDER BY fit DESC&#39;, 0, 1, array(&#39;:ancestors&#39; =&amp;gt; $ancestors))-&amp;gt;fetchAssoc();
-
-    if ($router_item) {
-      // Allow modules to alter the router item before it is translated and
-      // checked for access.
-      drupal_alter(&#39;menu_get_item&#39;, $router_item, $path, $original_map);
-
-      $map = _menu_translate($router_item, $original_map);
-      $router_item[&#39;original_map&#39;] = $original_map;
-      if ($map === FALSE) {
-        $router_items[$path] = FALSE;
-        return FALSE;
-      }
-      if ($router_item[&#39;access&#39;]) {
-        $router_item[&#39;map&#39;] = $map;
-        $router_item[&#39;page_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;page_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
-        $router_item[&#39;theme_arguments&#39;] = array_merge(menu_unserialize($router_item[&#39;theme_arguments&#39;], $map), array_slice($map, $router_item[&#39;number_parts&#39;]));
-      }
-    }
-    $router_items[$path] = $router_item;
-  }
-  return $router_items[$path];
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;$path&lt;/code&gt;即我们传进去的q参数，经过一系列处理传给&lt;code&gt;menu_get_ancestors()&lt;/code&gt;方法，该方法把path重新组合成一堆router，也就是Drupal处理路由到具体url的传参方式，最终被&lt;code&gt;db_query_range()&lt;/code&gt;带入数据库查询
-我们关注查询结果&lt;code&gt;$router_item&lt;/code&gt;的&lt;code&gt;page_callback&lt;/code&gt;值，因为这个值最终会作为参数被带入&lt;code&gt;call_user_func_array()&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if ($page_callback_result == MENU_SITE_ONLINE) {
-  if ($router_item = menu_get_item($path)) {
-    if ($router_item[&#39;access&#39;]) {
-      if ($router_item[&#39;include_file&#39;]) {
-        require_once DRUPAL_ROOT . &#39;/&#39; . $router_item[&#39;include_file&#39;];
-      }
-      $page_callback_result = call_user_func_array($router_item[&#39;page_callback&#39;], $router_item[&#39;page_arguments&#39;]);
-    }
-    else {
-      $page_callback_result = MENU_ACCESS_DENIED;
-    }
-  }
-  else {
-    $page_callback_result = MENU_NOT_FOUND;
-  }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/qvqwz.png&#34; alt=&#34;call_user_func_array&#34; /&gt;
-到这里就跟8版本的情况有点类似了&lt;/p&gt;
-
-&lt;p&gt;跟入回调函数&lt;code&gt;file_ajax_upload()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/tij37.jpg&#34; alt=&#34;file_ajax_upload&#34; /&gt;
-还是一样，把&lt;code&gt;$form_parents&lt;/code&gt;完整取出赋值给&lt;code&gt;$form&lt;/code&gt;，加上一些前缀后缀后最终进入&lt;code&gt;drupal_render()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;最终得到执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/rpwrs.jpg&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;到目前为止我们分析清楚了为什么PoC要发两次包，以及第二次请求为什么要带上一个&lt;code&gt;form_build_id&lt;/code&gt;，现在来想一想为什么要请求&lt;code&gt;user/password&lt;/code&gt;这个路径呢？
-在user这个module下的&lt;code&gt;user_pass()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function user_pass() {
-  global $user;
-
-  $form[&#39;name&#39;] = array(
-    &#39;#type&#39; =&amp;gt; &#39;textfield&#39;,
-    &#39;#title&#39; =&amp;gt; t(&#39;Username or e-mail address&#39;),
-    &#39;#size&#39; =&amp;gt; 60,
-    &#39;#maxlength&#39; =&amp;gt; max(USERNAME_MAX_LENGTH, EMAIL_MAX_LENGTH),
-    &#39;#required&#39; =&amp;gt; TRUE,
-    &#39;#default_value&#39; =&amp;gt; isset($_GET[&#39;name&#39;]) ? $_GET[&#39;name&#39;] : &#39;&#39;,
-  );
-  ...
-  return $form;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;看到这里是不是感觉跟8版本很相似，&lt;code&gt;#default_value&lt;/code&gt;从get的&lt;code&gt;name&lt;/code&gt;参数里取值，而name可以作为数组传入，它的属性在下面正好可以被利用，一个巧妙的利用链就串起来了。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x03-总结&#34;&gt;0x03 总结&lt;/h4&gt;
-
-&lt;p&gt;Drupal 7.x的利用比8.x要复杂一些，但触发点和一开始的风险因素还是类似的，一是接收参数过滤不当，而是可控参数进入危险方法。官方补丁把入口处的&lt;code&gt;#&lt;/code&gt;全给过滤了，简单粗暴又有效，估计再利用框架本身的特性想传递进一些数组或元素就很难了。&lt;/p&gt;
-
-&lt;h4 id=&#34;0x04-参考&#34;&gt;0x04 参考&lt;/h4&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/dreadlocked/Drupalgeddon2&#34;&gt;https://github.com/dreadlocked/Drupalgeddon2&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://research.checkpoint.com/uncovering-drupalgeddon-2/&#34;&gt;https://research.checkpoint.com/uncovering-drupalgeddon-2/&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
