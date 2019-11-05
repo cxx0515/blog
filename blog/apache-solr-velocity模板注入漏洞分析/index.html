@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Apache Solr Velocity模板注入漏洞分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Apache Solr Velocity模板注入漏洞分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Apache Solr Velocity模板注入漏洞分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Tue Nov 5 2019 09:40:22 UTC">Nov 05, 2019</div>
+                    <div class="reading-time"><div class="middot"></div>1 minute read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h3 id="0x01-概述">0x01 概述</h3>
+
+<p>10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用<code>VelocityResponseWriter</code>插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。</p>
+
+<h3 id="0x02-环境搭建">0x02 环境搭建</h3>
+
+<p>选择Solr 8.2.0二进制版本进行分析和复现</p>
+
+<p>下载地址：<a href="https://archive.apache.org/dist/lucene/solr/8.2.0/">https://archive.apache.org/dist/lucene/solr/8.2.0/</a></p>
+
+<p>调试命令</p>
+
+<pre><code class="language-shell">$ cd solr-8.2.0\server
+$ java &quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&quot; -Dsolr.solr.home=&quot;../example/example-DIH/solr/&quot; -jar start.jar --module=http
+</code></pre>
+
+<p>IDEA新建远程调试即可</p>
+
+<h3 id="0x03-前置概念">0x03 前置概念</h3>
+
+<p><code>VelocityResponseWriter</code>(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。</p>
+
+<p>必须添加它的 JAR 和依赖项（通过<lib>或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png" alt="1572507926900" /></p>
+
+<p>其中有一个属性<code>params.resource.loader.enabled</code>，默认是<code>false</code>，需要手动开启</p>
+
+<p>该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：</p>
+
+<pre><code>http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;wt=velocity&amp;v.template=xxx&amp;v.template.xxx=CUSTOM%3A%20%23core_name
+</code></pre>
+
+<p><code>v.template=xxx</code>表示创建一个名为“xxx”的模板，<code>v.template.xxx</code>则是模板内容</p>
+
+<p>当这个属性设置为<code>true</code>时用户就可以传入任意模板内容进行模板注入，从而执行任意命令</p>
+
+<h3 id="0x04-漏洞分析">0x04 漏洞分析</h3>
+
+<h4 id="设置-params-resource-loader-enabled-属性">设置<code>params.resource.loader.enabled</code>属性</h4>
+
+<p>在Solr的Web.xml文件中能看到所有的请求都交给<code>org.apache.solr.servlet.SolrDispatchFilter</code>来处理</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png" alt="1572508606062" /></p>
+
+<p>具体的则是其中的<code>doFilter()</code>方法。在对路由经过初步处理后，进行两个关键操作：</p>
+
+<pre><code class="language-java">HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
+//...
+SolrDispatchFilter.Action result = call.call();
+</code></pre>
+
+<p>初始化一个<code>HttpSolrCall</code>对象后调用它的<code>call()</code>方法，在<code>call()</code>方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法</p>
+
+<p>在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在<code>org.apache.solr.handler</code>中定义，例如<code>solr/solr/get</code>对应的hendler为<code>RealTimeGetHandler</code></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png" alt="1572515458181" /></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png" alt="1572516210537" /></p>
+
+<p>而<code>/solr/solr/config</code> 由<code>SolrConfigHandler</code>来分别处理GET和POST请求</p>
+
+<pre><code class="language-java">SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
+if (&quot;POST&quot;.equals(httpMethod)) {
+    if (configEditing_disabled || this.isImmutableConfigSet) {
+        String reason = configEditing_disabled ? &quot;due to disable.configEdit&quot; : &quot;because ConfigSet is immutable&quot;;
+        throw new SolrException(ErrorCode.FORBIDDEN, &quot; solrconfig editing is not enabled &quot; + reason);
+    }
+
+    try {
+        command.handlePOST();
+    } finally {
+        RequestHandlerUtils.addExperimentalFormatWarning(rsp);
+    }
+} else {
+    command.handleGET();
+}
+</code></pre>
+
+<p>私有类<code>Command</code>会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过<code>SolrConfigHandler.Command#handlePOST()</code>方法来处理</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png" alt="1572509660264" /></p>
+
+<p>接着调用<code>SolrConfigHandler.Command#handleCommands()</code>，Solr中<code>Config API</code>对应的实现都是由这个方法来完成的，如<code>set-property</code>、<code>unset-property</code>等</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png" alt="1572516461804" /></p>
+
+<p>此处主要关注更新配置的参数</p>
+
+<p>从<a href="https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components">文档</a>可以了解对于<code>responsewriter</code>的操作有下面三个</p>
+
+<ul>
+<li><code>add-queryresponsewriter</code></li>
+<li><code>update-queryresponsewriter</code></li>
+<li><code>delete-queryresponsewriter</code></li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png" alt="1572516621585" /></p>
+
+<p>代码中也能看到对操作名称按<code>-</code>进行分割提取出对应操作，然后由<code>updateNamedPlugin()</code>方法来完成配置文件的创建/覆盖操作，具体跟入看一下</p>
+
+<p>在<code>updateNamedPlugin()</code>中有个<code>verifyClass</code>的调用，当传入参数没有设置<code>runtimeLib</code>时会去创建class字段指定的类，所以当我们传入<code>VelocityResponseWriter</code>时，会在其初始化的时候写入对应的参数</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png" alt="1572518046827" /></p>
+
+<p>然后返回到<code>handleCommands()</code>中把配置写入到<code>configoverlay.json</code>文件</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png" alt="1572518122216" /></p>
+
+<p>因此，通过<code>config api</code>可以重新设置<code>VelocityResponseWriter</code>的属性，为下一步加载模板提供入口</p>
+
+<p>三种命令的区别如下：</p>
+
+<blockquote>
+<p>add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
+update- 命令覆盖configoverlay.json中的现有设置；
+delete-命令从configoverlay.json中删除设置</p>
+</blockquote>
+
+<h4 id="注入自定义模板">注入自定义模板</h4>
+
+<p>在<code>SolrDispatchFilter</code>中有有一个枚举类<code>Action</code>，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是<code>PROCESS</code>，因此会进入<code>HttpSolrCall.call()</code>的<code>PROCESS</code>分支</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png" alt="1572576900618" /></p>
+
+<p>之后通过<code>QueryResponseWriterUtil.writeQueryResponse()</code>进入<code>VelocityResponseWriter.write</code>，在这个方法中完成<code>Velocity</code>的解析</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png" alt="1572577848829" /></p>
+
+<p>首先会初始化一个解析模板的引擎<code>VelocityEngine</code>，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的<code>params.resource.loader.enabled</code>属性值。由于<code>solr.resource.loader.enabled</code>默认是开启的，所以此处只需要设置params的值</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png" alt="1572577993537" /></p>
+
+<p>之后通过<code>Template.getTemplate()</code>设置自定义模板，然后进入<code>Template.merge()</code>进入AST解析，在解析过程中会调用到<code>ASTMethod.execute()</code>方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考<a href="https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/">CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析</a></p>
+
+<blockquote>
+<p>回过头看一下<code>Velocity</code>渲染的大致流程：</p>
+
+<blockquote>
+<p>Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。</p>
+</blockquote>
+
+<p>而<code>ASTMethod.execute()</code>方法设计之初是在<code>Velocity parse</code>解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了<code>java.lang.Runtime.getRuntime</code>，成功达到命令执行的目的</p>
+</blockquote>
+
+<p>调用栈</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png" alt="1572575433979" /></p>
+
+<p>PoC</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png" alt="1572578779708" /></p>
+
+<p>参考</p>
+
+<ul>
+<li><a href="https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components">https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components</a></li>
+<li><a href="https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py">https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py</a></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'Apache Solr Velocity模板注入漏洞分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2019 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

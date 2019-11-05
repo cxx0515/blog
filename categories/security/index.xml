@@ -10,6 +10,180 @@
     <atom:link href="https://kylingit.com/categories/security/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>Apache Solr Velocity模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Tue, 05 Nov 2019 09:40:22 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用&lt;code&gt;VelocityResponseWriter&lt;/code&gt;插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;选择Solr 8.2.0二进制版本进行分析和复现&lt;/p&gt;
+
+&lt;p&gt;下载地址：&lt;a href=&#34;https://archive.apache.org/dist/lucene/solr/8.2.0/&#34;&gt;https://archive.apache.org/dist/lucene/solr/8.2.0/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;调试命令&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ cd solr-8.2.0\server
+$ java &amp;quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&amp;quot; -Dsolr.solr.home=&amp;quot;../example/example-DIH/solr/&amp;quot; -jar start.jar --module=http
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;IDEA新建远程调试即可&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-前置概念&#34;&gt;0x03 前置概念&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;VelocityResponseWriter&lt;/code&gt;(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。&lt;/p&gt;
+
+&lt;p&gt;必须添加它的 JAR 和依赖项（通过&lt;lib&gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png&#34; alt=&#34;1572507926900&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;其中有一个属性&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;，默认是&lt;code&gt;false&lt;/code&gt;，需要手动开启&lt;/p&gt;
+
+&lt;p&gt;该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;amp;wt=velocity&amp;amp;v.template=xxx&amp;amp;v.template.xxx=CUSTOM%3A%20%23core_name
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;v.template=xxx&lt;/code&gt;表示创建一个名为“xxx”的模板，&lt;code&gt;v.template.xxx&lt;/code&gt;则是模板内容&lt;/p&gt;
+
+&lt;p&gt;当这个属性设置为&lt;code&gt;true&lt;/code&gt;时用户就可以传入任意模板内容进行模板注入，从而执行任意命令&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;设置-params-resource-loader-enabled-属性&#34;&gt;设置&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性&lt;/h4&gt;
+
+&lt;p&gt;在Solr的Web.xml文件中能看到所有的请求都交给&lt;code&gt;org.apache.solr.servlet.SolrDispatchFilter&lt;/code&gt;来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png&#34; alt=&#34;1572508606062&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;具体的则是其中的&lt;code&gt;doFilter()&lt;/code&gt;方法。在对路由经过初步处理后，进行两个关键操作：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
+//...
+SolrDispatchFilter.Action result = call.call();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;初始化一个&lt;code&gt;HttpSolrCall&lt;/code&gt;对象后调用它的&lt;code&gt;call()&lt;/code&gt;方法，在&lt;code&gt;call()&lt;/code&gt;方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法&lt;/p&gt;
+
+&lt;p&gt;在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在&lt;code&gt;org.apache.solr.handler&lt;/code&gt;中定义，例如&lt;code&gt;solr/solr/get&lt;/code&gt;对应的hendler为&lt;code&gt;RealTimeGetHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png&#34; alt=&#34;1572515458181&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png&#34; alt=&#34;1572516210537&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而&lt;code&gt;/solr/solr/config&lt;/code&gt; 由&lt;code&gt;SolrConfigHandler&lt;/code&gt;来分别处理GET和POST请求&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
+if (&amp;quot;POST&amp;quot;.equals(httpMethod)) {
+    if (configEditing_disabled || this.isImmutableConfigSet) {
+        String reason = configEditing_disabled ? &amp;quot;due to disable.configEdit&amp;quot; : &amp;quot;because ConfigSet is immutable&amp;quot;;
+        throw new SolrException(ErrorCode.FORBIDDEN, &amp;quot; solrconfig editing is not enabled &amp;quot; + reason);
+    }
+
+    try {
+        command.handlePOST();
+    } finally {
+        RequestHandlerUtils.addExperimentalFormatWarning(rsp);
+    }
+} else {
+    command.handleGET();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;私有类&lt;code&gt;Command&lt;/code&gt;会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过&lt;code&gt;SolrConfigHandler.Command#handlePOST()&lt;/code&gt;方法来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png&#34; alt=&#34;1572509660264&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着调用&lt;code&gt;SolrConfigHandler.Command#handleCommands()&lt;/code&gt;，Solr中&lt;code&gt;Config API&lt;/code&gt;对应的实现都是由这个方法来完成的，如&lt;code&gt;set-property&lt;/code&gt;、&lt;code&gt;unset-property&lt;/code&gt;等&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png&#34; alt=&#34;1572516461804&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;此处主要关注更新配置的参数&lt;/p&gt;
+
+&lt;p&gt;从&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;文档&lt;/a&gt;可以了解对于&lt;code&gt;responsewriter&lt;/code&gt;的操作有下面三个&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;add-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;update-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;delete-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png&#34; alt=&#34;1572516621585&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;代码中也能看到对操作名称按&lt;code&gt;-&lt;/code&gt;进行分割提取出对应操作，然后由&lt;code&gt;updateNamedPlugin()&lt;/code&gt;方法来完成配置文件的创建/覆盖操作，具体跟入看一下&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;updateNamedPlugin()&lt;/code&gt;中有个&lt;code&gt;verifyClass&lt;/code&gt;的调用，当传入参数没有设置&lt;code&gt;runtimeLib&lt;/code&gt;时会去创建class字段指定的类，所以当我们传入&lt;code&gt;VelocityResponseWriter&lt;/code&gt;时，会在其初始化的时候写入对应的参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png&#34; alt=&#34;1572518046827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后返回到&lt;code&gt;handleCommands()&lt;/code&gt;中把配置写入到&lt;code&gt;configoverlay.json&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png&#34; alt=&#34;1572518122216&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此，通过&lt;code&gt;config api&lt;/code&gt;可以重新设置&lt;code&gt;VelocityResponseWriter&lt;/code&gt;的属性，为下一步加载模板提供入口&lt;/p&gt;
+
+&lt;p&gt;三种命令的区别如下：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
+update- 命令覆盖configoverlay.json中的现有设置；
+delete-命令从configoverlay.json中删除设置&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h4 id=&#34;注入自定义模板&#34;&gt;注入自定义模板&lt;/h4&gt;
+
+&lt;p&gt;在&lt;code&gt;SolrDispatchFilter&lt;/code&gt;中有有一个枚举类&lt;code&gt;Action&lt;/code&gt;，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是&lt;code&gt;PROCESS&lt;/code&gt;，因此会进入&lt;code&gt;HttpSolrCall.call()&lt;/code&gt;的&lt;code&gt;PROCESS&lt;/code&gt;分支&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png&#34; alt=&#34;1572576900618&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后通过&lt;code&gt;QueryResponseWriterUtil.writeQueryResponse()&lt;/code&gt;进入&lt;code&gt;VelocityResponseWriter.write&lt;/code&gt;，在这个方法中完成&lt;code&gt;Velocity&lt;/code&gt;的解析&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png&#34; alt=&#34;1572577848829&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;首先会初始化一个解析模板的引擎&lt;code&gt;VelocityEngine&lt;/code&gt;，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性值。由于&lt;code&gt;solr.resource.loader.enabled&lt;/code&gt;默认是开启的，所以此处只需要设置params的值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png&#34; alt=&#34;1572577993537&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后通过&lt;code&gt;Template.getTemplate()&lt;/code&gt;设置自定义模板，然后进入&lt;code&gt;Template.merge()&lt;/code&gt;进入AST解析，在解析过程中会调用到&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考&lt;a href=&#34;https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png&#34; alt=&#34;1572575433979&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;PoC&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png&#34; alt=&#34;1572578779708&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参考&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&#34;&gt;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>CVE-2019-0193 Apache Solr远程命令执行漏洞分析</title>
       <link>https://kylingit.com/blog/cve-2019-0193-apache-solr%E8%BF%9C%E7%A8%8B%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Wed, 07 Aug 2019 10:38:17 +0000</pubDate>
@@ -3446,164 +3620,6 @@ except KeyError as e:
 &lt;li&gt;&lt;a href=&#34;http://www.lijiejie.com/python-django-directory-traversal/&#34;&gt;http://www.lijiejie.com/python-django-directory-traversal/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html&#34;&gt;https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>CVE-2018-7602 Drupal 内核远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Thu, 26 Apr 2018 17:21:11 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/cve-2018-7602-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h4 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h4&gt;
-
-&lt;p&gt;4月25日，Drupal官方发布通告，Drupal Core 存在一个远程代码执行漏洞，影响 7.x 和 8.x 版本。据分析，这个漏洞是&lt;code&gt;CVE-2018-7600&lt;/code&gt;的绕过利用，两个漏洞原理是一样的，通告还称，已经发现了这个漏洞和&lt;code&gt;CVE-2018-7600&lt;/code&gt;的在野利用，详情请看 &lt;a href=&#34;https://www.drupal.org/sa-core-2018-004&#34;&gt;https://www.drupal.org/sa-core-2018-004&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h4&gt;
-
-&lt;p&gt;Drupal 6.x，7.x，8.x&lt;/p&gt;
-
-&lt;p&gt;修复版本
-Drupal 7.59，Drupal 8.4.8，Drupal 8.5.3&lt;/p&gt;
-
-&lt;h4 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h4&gt;
-
-&lt;p&gt;历史版本
-&lt;a href=&#34;https://www.drupal.org/project/drupal/releases&#34;&gt;https://www.drupal.org/project/drupal/releases&lt;/a&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h4&gt;
-
-&lt;p&gt;分析还是以7.57版本为例。跟7600漏洞的7.x版本很相似，只不过入口不一样，可以参考&lt;a href=&#34;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&#34;&gt;http://blog.nsfocus.net/cve-2018-7600-drupal-7-x/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;上回漏洞的关键点是让系统缓存一个&lt;code&gt;form_build_id&lt;/code&gt;，这个form存着我们传入的恶意参数，第二个请求从中取出来然后执行。
-这次的原理还是一样，触发漏洞还是需要发两个post包，一个存入&lt;code&gt;form_build_id&lt;/code&gt;一个取出后执行。&lt;/p&gt;
-
-&lt;p&gt;这次的问题出在删除文章的时候，因此需要文章删除权限，我们先走一遍正常删除文章的逻辑&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/VGL3Y&#34; alt=&#34;delete&#34; /&gt;
-请求中每个node即代表一篇文章。
-可以看到是会重定向到文章页面的，根据上个漏洞的分析我们猜测，一定还是走到了&lt;code&gt;drupal_redirect_form()&lt;/code&gt;，我们已经知道如果走到&lt;code&gt;drupal_redirect_form()&lt;/code&gt;分支，是不会往数据库缓存&lt;code&gt;form_build_id&lt;/code&gt;的，我们的目的还是让程序不满足一定条件从而不进行表单提交后重定向，所以还是跟着&lt;code&gt;CVE-2018-7600&lt;/code&gt;的套路来走&lt;/p&gt;
-
-&lt;p&gt;从代码层面看一下&lt;/p&gt;
-
-&lt;p&gt;之前的流程还是一样，直接跳到&lt;code&gt;drupal_build_form()&lt;/code&gt;方法第386行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;drupal_process_form($form_id, $form, $form_state);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟入&lt;code&gt;drupal_process_form()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/w0cQZ&#34; alt=&#34;drupal_process_form&#34; /&gt;
-还是一样，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;被设置为true&lt;/p&gt;
-
-&lt;p&gt;回到902行&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;if ($form_state[&#39;submitted&#39;] &amp;amp;&amp;amp; !form_get_errors() &amp;amp;&amp;amp; !$form_state[&#39;rebuild&#39;])&lt;/code&gt;
-条件被满足，进入这个分支便会执行&lt;code&gt;drupal_redirect_form()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aoYne&#34; alt=&#34;drupal_redirect_form&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;而在这一步之前需要经过的判断是&lt;code&gt;_form_element_triggered_scripted_submission()&lt;/code&gt;
-所以回到一开始的问题，构造一个&lt;code&gt;_triggering_element_value&lt;/code&gt;使得键值对相等，从而不进行rebuild&lt;/p&gt;
-
-&lt;p&gt;我们传入&lt;code&gt;_triggering_element_name=form_id&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/UBCWM&#34; alt=&#34;post&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Rbrm4&#34; alt=&#34;form_id&#34; /&gt;
-可以看到条件被满足，&lt;code&gt;$form_state[&#39;submitted&#39;]&lt;/code&gt;没有被设置为true，还是保持默认值false&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/UYLtu&#34; alt=&#34;submitted&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/o98bE&#34; alt=&#34;submitted&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;进入&lt;code&gt;drupal_rebuild_form()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/WdeFV&#34; alt=&#34;drupal_rebuild_form&#34; /&gt;
-表单被缓存&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/MCCPJ&#34; alt=&#34;form_set_cache&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/U5Tej&#34; alt=&#34;cache_form&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后我们发送第二个post包来取出我们构造好的form，向&lt;strong&gt;&lt;code&gt;file/ajax/actions/cancel/%23options/path&lt;/code&gt;&lt;/strong&gt;发起请求&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/voiue&#34; alt=&#34;post2&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;参数传递进去&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/luJMk&#34; alt=&#34;file_ajax_upload&#34; /&gt;
-最终还是跟入到
-&lt;code&gt;$output = drupal_render($form);&lt;/code&gt;
-根据前几次的经验，我们还是选择&lt;code&gt;&#39;#post_render&#39;&lt;/code&gt;参数，&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/GV3Rc&#34; alt=&#34;post_render&#34; /&gt;
-假如我们能控制这个参数，在&lt;code&gt;drupal_render()&lt;/code&gt;方法里就会把这个参数作为&lt;code&gt;$function&lt;/code&gt;函数名，而传给它的参数则是&lt;code&gt;[%23markup]&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;所以问题回到了一开始，我们需要传递什么样的恶意参数，可以让系统直接接收而不经过过滤，还是之前的套路，搜索module下删除文章的相关操作&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/niMWz&#34; alt=&#34;node_form_delete_submit&#34; /&gt;
-可以看到&lt;code&gt;node_form_delete_submit()&lt;/code&gt;方法从get方法直接接收参数&lt;code&gt;destination&lt;/code&gt;，与最初分析正常删除文章的参数正是同一个，那么我们就可以利用&lt;code&gt;destination&lt;/code&gt;传进恶意参数&lt;/p&gt;
-
-&lt;p&gt;构造如下
-&lt;strong&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%2523type]=markup%26q[%2523markup]=dir&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;注意此处需要转义百分号，对&lt;code&gt;#&lt;/code&gt;进行二次编码，以绕过&lt;code&gt;CVE-2018-7600&lt;/code&gt;的补丁，不然在取值时会被认为&lt;code&gt;q[&lt;/code&gt;是一个值&lt;/p&gt;
-
-&lt;p&gt;原因：
-&lt;code&gt;includes/common.inc&lt;/code&gt;的&lt;code&gt;drupal_parse_url()&lt;/code&gt;方法对url进行了解析，而在url传入到Drupal内部的时候已经经过一层解码，也就是说&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;destination=a?q[%2523post_render][]=passthru%26q[%2523type]=markup%26q[%2523markup]=dir
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在进入Drupal时已经被解码成&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;destination=a?q[%23post_render][]=passthru%26q[%23type]=markup%26q[%23markup]=dir
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;然后经过&lt;code&gt;parse_url()&lt;/code&gt;方法对url结构进行解析&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1530254681531.png&#34; alt=&#34;parse_url&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;a&lt;/code&gt;参数是次要的，主要是&lt;code&gt;q&lt;/code&gt;参数，因为在&lt;code&gt;drupal_parse_url()&lt;/code&gt;下半部分从q取出值赋给&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;，也就是a被覆盖了，这个时候的&lt;code&gt;$options[&#39;path&#39;]&lt;/code&gt;就是我们传入的数组&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/s4o7s&#34; alt=&#34;options&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;参数缓存进整个form后通过第二个请求取出，同样经过&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;foreach ($form_parents as $parent) {
-    $form = $form[$parent];
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;遍历叶子节点取出参数&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Wgz3w&#34; alt=&#34;parent&#34; /&gt;
-进入&lt;code&gt;drupal_render()&lt;/code&gt;执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/SsmNM&#34; alt=&#34;passthru&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x05-poc&#34;&gt;0x05 PoC&lt;/h4&gt;
-
-&lt;p&gt;略&lt;/p&gt;
-
-&lt;h4 id=&#34;0x06-补丁&#34;&gt;0x06 补丁&lt;/h4&gt;
-
-&lt;p&gt;7.x的补丁&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&#34;&gt;https://github.com/drupal/drupal/commit/080daa38f265ea28444c540832509a48861587d0&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2Zhjq&#34; alt=&#34;patch&#34; /&gt;
-其中一个重要操作就是对&lt;code&gt;destination&lt;/code&gt;参数进行了净化&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/CaZPF&#34; alt=&#34;cleanDestination&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
-
-&lt;p&gt;总的来说这个漏洞是CVE-2018-7600的另一个利用点，只是入口方式不一样，最终执行点还是相同的，所以还是那句话，一旦参数可控并且没有经过正确的过滤，就很有可能出问题。&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

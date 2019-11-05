@@ -10,6 +10,180 @@
     <atom:link href="https://kylingit.com/tags/vul/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
+      <title>Apache Solr Velocity模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Tue, 05 Nov 2019 09:40:22 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+
+&lt;p&gt;10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用&lt;code&gt;VelocityResponseWriter&lt;/code&gt;插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。&lt;/p&gt;
+
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+
+&lt;p&gt;选择Solr 8.2.0二进制版本进行分析和复现&lt;/p&gt;
+
+&lt;p&gt;下载地址：&lt;a href=&#34;https://archive.apache.org/dist/lucene/solr/8.2.0/&#34;&gt;https://archive.apache.org/dist/lucene/solr/8.2.0/&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;调试命令&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ cd solr-8.2.0\server
+$ java &amp;quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&amp;quot; -Dsolr.solr.home=&amp;quot;../example/example-DIH/solr/&amp;quot; -jar start.jar --module=http
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;IDEA新建远程调试即可&lt;/p&gt;
+
+&lt;h3 id=&#34;0x03-前置概念&#34;&gt;0x03 前置概念&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;VelocityResponseWriter&lt;/code&gt;(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。&lt;/p&gt;
+
+&lt;p&gt;必须添加它的 JAR 和依赖项（通过&lt;lib&gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png&#34; alt=&#34;1572507926900&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;其中有一个属性&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;，默认是&lt;code&gt;false&lt;/code&gt;，需要手动开启&lt;/p&gt;
+
+&lt;p&gt;该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;amp;wt=velocity&amp;amp;v.template=xxx&amp;amp;v.template.xxx=CUSTOM%3A%20%23core_name
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;v.template=xxx&lt;/code&gt;表示创建一个名为“xxx”的模板，&lt;code&gt;v.template.xxx&lt;/code&gt;则是模板内容&lt;/p&gt;
+
+&lt;p&gt;当这个属性设置为&lt;code&gt;true&lt;/code&gt;时用户就可以传入任意模板内容进行模板注入，从而执行任意命令&lt;/p&gt;
+
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+
+&lt;h4 id=&#34;设置-params-resource-loader-enabled-属性&#34;&gt;设置&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性&lt;/h4&gt;
+
+&lt;p&gt;在Solr的Web.xml文件中能看到所有的请求都交给&lt;code&gt;org.apache.solr.servlet.SolrDispatchFilter&lt;/code&gt;来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png&#34; alt=&#34;1572508606062&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;具体的则是其中的&lt;code&gt;doFilter()&lt;/code&gt;方法。在对路由经过初步处理后，进行两个关键操作：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
+//...
+SolrDispatchFilter.Action result = call.call();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;初始化一个&lt;code&gt;HttpSolrCall&lt;/code&gt;对象后调用它的&lt;code&gt;call()&lt;/code&gt;方法，在&lt;code&gt;call()&lt;/code&gt;方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法&lt;/p&gt;
+
+&lt;p&gt;在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在&lt;code&gt;org.apache.solr.handler&lt;/code&gt;中定义，例如&lt;code&gt;solr/solr/get&lt;/code&gt;对应的hendler为&lt;code&gt;RealTimeGetHandler&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png&#34; alt=&#34;1572515458181&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png&#34; alt=&#34;1572516210537&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而&lt;code&gt;/solr/solr/config&lt;/code&gt; 由&lt;code&gt;SolrConfigHandler&lt;/code&gt;来分别处理GET和POST请求&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
+if (&amp;quot;POST&amp;quot;.equals(httpMethod)) {
+    if (configEditing_disabled || this.isImmutableConfigSet) {
+        String reason = configEditing_disabled ? &amp;quot;due to disable.configEdit&amp;quot; : &amp;quot;because ConfigSet is immutable&amp;quot;;
+        throw new SolrException(ErrorCode.FORBIDDEN, &amp;quot; solrconfig editing is not enabled &amp;quot; + reason);
+    }
+
+    try {
+        command.handlePOST();
+    } finally {
+        RequestHandlerUtils.addExperimentalFormatWarning(rsp);
+    }
+} else {
+    command.handleGET();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;私有类&lt;code&gt;Command&lt;/code&gt;会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过&lt;code&gt;SolrConfigHandler.Command#handlePOST()&lt;/code&gt;方法来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png&#34; alt=&#34;1572509660264&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接着调用&lt;code&gt;SolrConfigHandler.Command#handleCommands()&lt;/code&gt;，Solr中&lt;code&gt;Config API&lt;/code&gt;对应的实现都是由这个方法来完成的，如&lt;code&gt;set-property&lt;/code&gt;、&lt;code&gt;unset-property&lt;/code&gt;等&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png&#34; alt=&#34;1572516461804&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;此处主要关注更新配置的参数&lt;/p&gt;
+
+&lt;p&gt;从&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;文档&lt;/a&gt;可以了解对于&lt;code&gt;responsewriter&lt;/code&gt;的操作有下面三个&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;add-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;update-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;delete-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png&#34; alt=&#34;1572516621585&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;代码中也能看到对操作名称按&lt;code&gt;-&lt;/code&gt;进行分割提取出对应操作，然后由&lt;code&gt;updateNamedPlugin()&lt;/code&gt;方法来完成配置文件的创建/覆盖操作，具体跟入看一下&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;updateNamedPlugin()&lt;/code&gt;中有个&lt;code&gt;verifyClass&lt;/code&gt;的调用，当传入参数没有设置&lt;code&gt;runtimeLib&lt;/code&gt;时会去创建class字段指定的类，所以当我们传入&lt;code&gt;VelocityResponseWriter&lt;/code&gt;时，会在其初始化的时候写入对应的参数&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png&#34; alt=&#34;1572518046827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;然后返回到&lt;code&gt;handleCommands()&lt;/code&gt;中把配置写入到&lt;code&gt;configoverlay.json&lt;/code&gt;文件&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png&#34; alt=&#34;1572518122216&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此，通过&lt;code&gt;config api&lt;/code&gt;可以重新设置&lt;code&gt;VelocityResponseWriter&lt;/code&gt;的属性，为下一步加载模板提供入口&lt;/p&gt;
+
+&lt;p&gt;三种命令的区别如下：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
+update- 命令覆盖configoverlay.json中的现有设置；
+delete-命令从configoverlay.json中删除设置&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h4 id=&#34;注入自定义模板&#34;&gt;注入自定义模板&lt;/h4&gt;
+
+&lt;p&gt;在&lt;code&gt;SolrDispatchFilter&lt;/code&gt;中有有一个枚举类&lt;code&gt;Action&lt;/code&gt;，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是&lt;code&gt;PROCESS&lt;/code&gt;，因此会进入&lt;code&gt;HttpSolrCall.call()&lt;/code&gt;的&lt;code&gt;PROCESS&lt;/code&gt;分支&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png&#34; alt=&#34;1572576900618&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后通过&lt;code&gt;QueryResponseWriterUtil.writeQueryResponse()&lt;/code&gt;进入&lt;code&gt;VelocityResponseWriter.write&lt;/code&gt;，在这个方法中完成&lt;code&gt;Velocity&lt;/code&gt;的解析&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png&#34; alt=&#34;1572577848829&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;首先会初始化一个解析模板的引擎&lt;code&gt;VelocityEngine&lt;/code&gt;，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性值。由于&lt;code&gt;solr.resource.loader.enabled&lt;/code&gt;默认是开启的，所以此处只需要设置params的值&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png&#34; alt=&#34;1572577993537&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后通过&lt;code&gt;Template.getTemplate()&lt;/code&gt;设置自定义模板，然后进入&lt;code&gt;Template.merge()&lt;/code&gt;进入AST解析，在解析过程中会调用到&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考&lt;a href=&#34;https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析&lt;/a&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;调用栈&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png&#34; alt=&#34;1572575433979&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;PoC&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png&#34; alt=&#34;1572578779708&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;参考&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&#34;&gt;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
+    
+    <item>
       <title>CVE-2019-0193 Apache Solr远程命令执行漏洞分析</title>
       <link>https://kylingit.com/blog/cve-2019-0193-apache-solr%E8%BF%9C%E7%A8%8B%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Wed, 07 Aug 2019 10:38:17 +0000</pubDate>
@@ -2922,197 +3096,6 @@ protected MultiValueMap&amp;lt;String, String&amp;gt; findSubscriptionsInternal(
 &lt;li&gt;&lt;a href=&#34;http://blog.nsfocus.net/spring-messaging-analysis/&#34;&gt;http://blog.nsfocus.net/spring-messaging-analysis/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://www.anquanke.com/post/id/104140&#34;&gt;https://www.anquanke.com/post/id/104140&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>DedeCMS V5.7 SP2 第二处缺陷可重置管理员密码</title>
-      <link>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</link>
-      <pubDate>Fri, 19 Jan 2018 15:20:32 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/dedecms-v5.7-sp2-%E7%AC%AC%E4%BA%8C%E5%A4%84%E7%BC%BA%E9%99%B7%E5%8F%AF%E9%87%8D%E7%BD%AE%E7%AE%A1%E7%90%86%E5%91%98%E5%AF%86%E7%A0%81/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;上回分析的dede重置密码漏洞有一定局限性，一是只能影响没有设置密保问题的用户，二是不能重置管理员admin的密码，原因当时也说了，管理员信息存在另一个表&lt;code&gt;dede_admin&lt;/code&gt;中，而且管理员默认不允许从前台登录，所以就算更改了&lt;code&gt;dede_member&lt;/code&gt;里&lt;code&gt;admin&lt;/code&gt;的密码也没法登录。但是前几天又有一个缺陷被爆出来，可以绕过一些判断条件从而从前台登录管理员账户，配合上一个重置密码漏洞，可以达到从前台修改&lt;code&gt;dede_admin&lt;/code&gt;表里是密码，也就是真正修改了管理员密码。&lt;/p&gt;
-
-&lt;p&gt;下面来简单分析一下&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-漏洞分析&#34;&gt;0x02 漏洞分析&lt;/h3&gt;
-
-&lt;p&gt;先来看一下DedeCMS判断登录用户的逻辑
-&lt;code&gt;include/memberlogin.class.php:292&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;function IsLogin()
-{
-    if($this-&amp;gt;M_ID &amp;gt; 0) return TRUE;
-    else return FALSE;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟进&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;看一下，170行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = $this-&amp;gt;GetNum(GetCookie(&amp;quot;DedeUserID&amp;quot;));
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;GetNum()&lt;code&gt;include/memberlogin.class.php:398&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;/**
-*  获取整数值
-*
-* @access    public
-* @param     string  $fnum  处理的数值
-* @return    string
-*/
-function GetNum($fnum){
-    $fnum = preg_replace(&amp;quot;/[^0-9\.]/&amp;quot;, &#39;&#39;, $fnum);
-    return $fnum;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;正则匹配，去除了数字以外的字符，这里就可以构造一个利用点，一会儿再看&lt;/p&gt;
-
-&lt;p&gt;看一下&lt;code&gt;GetCookie()&lt;/code&gt;
-&lt;code&gt;include/helpers/cookie.helper.php:54&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/IO7Rf&#34; alt=&#34;GetCookie&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;关键点在这个判断条件&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;if($_COOKIE[$key.&#39;__ckMd5&#39;] != substr(md5($cfg_cookie_encode.$_COOKIE[$key]),0,16))
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;就是说从cookie中取到&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，与&lt;code&gt;md5($cfg_cookie_encode.$_COOKIE[$key])&lt;/code&gt;取前16位比较，相等才能进行下一步&lt;/p&gt;
-
-&lt;p&gt;我们知道admin的&lt;code&gt;DedeUserID&lt;/code&gt;为1，现在需要知道&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值&lt;/p&gt;
-
-&lt;p&gt;其实再思考一下，就算我们不知道admin的&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;值，只要能过这个if条件就能绕过接着往下走了，那我们可不可以利用其他用户来绕过if条件呢？&lt;/p&gt;
-
-&lt;p&gt;在本程序中从数据库取用户的过程其实很简单，就是简单的查询语句&lt;code&gt;Select * From #@__member where mid=&#39;$mid&#39;&lt;/code&gt;。当我们利用其他用户的cookie通过了上面的if判断，然后修改mid为admin的id(1)，就可以从前台登录到admin账户。
-那么如何在请求过程中修改&lt;code&gt;DedeUserID&lt;/code&gt;的值让它能和admin的id相等呢？&lt;/p&gt;
-
-&lt;h4 id=&#34;利用点一&#34;&gt;利用点一&lt;/h4&gt;
-
-&lt;p&gt;我们使进入&lt;code&gt;GetNum&lt;/code&gt;方法的参数为&lt;code&gt;数字1+字母&lt;/code&gt;的形式，经过正则替换就会变成&lt;code&gt;1&lt;/code&gt;，也就是&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;的值，然后带入数据库查询&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/4zlB8&#34; alt=&#34;GetNum&#34; /&gt;
-&lt;code&gt;$fnum&lt;/code&gt;为&lt;code&gt;1qqqq&lt;/code&gt;的情况，经过正则替换后值成为了1&lt;/p&gt;
-
-&lt;h4 id=&#34;利用点二&#34;&gt;利用点二&lt;/h4&gt;
-
-&lt;p&gt;在&lt;code&gt;include/memberlogin.class.php:178&lt;/code&gt;有这么一行代码&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;$this-&amp;gt;M_ID = intval($this-&amp;gt;M_ID);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;对&lt;code&gt;$this-&amp;gt;M_ID&lt;/code&gt;进行了整数类型转换，假设注册一个用户名，经过&lt;code&gt;intval&lt;/code&gt;转换后为&lt;code&gt;1&lt;/code&gt;就能使查询条件变成&lt;code&gt;Select * From #@__member where mid=&#39;1&#39;&lt;/code&gt;，也就取出了管理员在&lt;code&gt;dede_member&lt;/code&gt;表里的密码，此时配合上一个漏洞，我们已经修改了&lt;code&gt;dede_member&lt;/code&gt;中管理员的密码，只要在前台再进行一次修改密码操作，就能真正修改admin的密码。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/Av52c&#34; alt=&#34;intval&#34; /&gt;
-这是调试的时候注册用户名为&lt;code&gt;0000001&lt;/code&gt;的情况，经过&lt;code&gt;intval&lt;/code&gt;转换后&lt;code&gt;M_ID&lt;/code&gt;的值变成了1&lt;/p&gt;
-
-&lt;p&gt;下面看一下如何从前台登录admin账户&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;index.php&lt;/code&gt;里有一个&lt;code&gt;最近访客记录&lt;/code&gt;的功能，&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;else
-{
-    require_once(DEDEMEMBER.&#39;/inc/config_space.php&#39;);
-    if($action == &#39;&#39;)
-    {
-        include_once(DEDEINC.&amp;quot;/channelunit.func.php&amp;quot;);
-        $dpl = new DedeTemplate();
-        $tplfile = DEDEMEMBER.&amp;quot;/space/{$_vars[&#39;spacestyle&#39;]}/index.htm&amp;quot;;
-
-        //更新最近访客记录及站点统计记录
-        $vtime = time();
-        $last_vtime = GetCookie(&#39;last_vtime&#39;);
-        $last_vid = GetCookie(&#39;last_vid&#39;);
-        if(empty($last_vtime))
-        {
-            $last_vtime = 0;
-        }
-        if($vtime - $last_vtime &amp;gt; 3600 || !preg_match(&#39;#,&#39;.$uid.&#39;,#i&#39;, &#39;,&#39;.$last_vid.&#39;,&#39;) )
-        {
-            if($last_vid!=&#39;&#39;)
-            {
-                $last_vids = explode(&#39;,&#39;,$last_vid);
-                $i = 0;
-                $last_vid = $uid;
-                foreach($last_vids as $lsid)
-                {
-                    if($i&amp;gt;10)
-                    {
-                        break;
-                    }
-                    else if($lsid != $uid)
-                    {
-                        $i++;
-                        $last_vid .= &#39;,&#39;.$last_vid;
-                    }
-                }
-            }
-            else
-            {
-                $last_vid = $uid;
-            }
-            PutCookie(&#39;last_vtime&#39;, $vtime, 3600*24, &#39;/&#39;);
-            PutCookie(&#39;last_vid&#39;, $last_vid, 3600*24, &#39;/&#39;);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;else条件是当访问页面&lt;code&gt;http://127.0.0.1/dedecms/uploads/member/index.php?uid=1111&lt;/code&gt;传入的uid不为空时进入&lt;/p&gt;
-
-&lt;p&gt;当我们传入的&lt;code&gt;last_vid&lt;/code&gt;为空的时候，&lt;code&gt;$last_vid = $uid;&lt;/code&gt;而&lt;code&gt;uid&lt;/code&gt;是我们能控制的，所以我们就能控制传给&lt;code&gt;PutCookie&lt;/code&gt;的参数，进入&lt;code&gt;PutCookie&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;if ( ! function_exists(&#39;PutCookie&#39;))
-{
-    function PutCookie($key, $value, $kptime=0, $pa=&amp;quot;/&amp;quot;)
-    {
-        global $cfg_cookie_encode,$cfg_domain_cookie;
-        setcookie($key, $value, time()+$kptime, $pa,$cfg_domain_cookie);
-        setcookie($key.&#39;__ckMd5&#39;, substr(md5($cfg_cookie_encode.$value),0,16), time()+$kptime, $pa,$cfg_domain_cookie);
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在这里设置了&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/p&gt;
-
-&lt;p&gt;所以攻击流程已经明确了&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;注册一个普通用户，用户名满足&lt;code&gt;数字1+字母&lt;/code&gt;的形式，或者经过&lt;code&gt;intval()&lt;/code&gt;后值为&lt;code&gt;1&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;访问用户主页，记录cookie中&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值&lt;/li&gt;
-&lt;li&gt;访问index页面，替换cookie中&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值，替换成我们注册的用户名和&lt;code&gt;last_vid__ckMd5&lt;/code&gt;，就能登录到前台admin&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h3 id=&#34;0x03-漏洞利用&#34;&gt;0x03 漏洞利用&lt;/h3&gt;
-
-&lt;ol&gt;
-&lt;li&gt;前台注册普通用户，这里注册一个&lt;code&gt;1qqqq&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;访问&lt;code&gt;/member/index.php?uid=1qqqq&lt;/code&gt;，获取&lt;code&gt;last_vid__ckMd5&lt;/code&gt;的值
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2izw4&#34; alt=&#34;uid&#34; /&gt;&lt;/li&gt;
-&lt;li&gt;访问&lt;code&gt;/member/index.php&lt;/code&gt;，替换&lt;code&gt;DedeUserID&lt;/code&gt;和&lt;code&gt;DedeUserID__ckMd5&lt;/code&gt;的值
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/3uAj1&#34; alt=&#34;admin&#34; /&gt;
-可以发现以admin身份成功登录到了前台
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/aGGc5&#34; alt=&#34;admin&#34; /&gt;&lt;/li&gt;
-&lt;li&gt;同样的，修改密码访问&lt;code&gt;member/edit_baseinfo.php&lt;/code&gt;，还是要修改cookie值
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OacVb&#34; alt=&#34;reset passwd&#34; /&gt;
-原登录密码就是我们利用上一个漏洞修改的密码，也就是&lt;code&gt;dede_member&lt;/code&gt;表中的admin密码，这样就达到了真正修改admin的密码
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/OUrvR&#34; alt=&#34;reset admin passwd&#34; /&gt;
-更新数据库的时候判断如果是管理员，就更新admin表中的数据&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;h3 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h3&gt;
-
-&lt;p&gt;还是判断不够严谨，这回有两处可导致判断条件的绕过，有时候一个漏洞影响力有限的时候也不能轻视，往往配合另一处缺陷就可以造成很大的危害&lt;/p&gt;
-
-&lt;p&gt;参考：
-- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1961&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1961&lt;/a&gt;
-- &lt;a href=&#34;https://xianzhi.aliyun.com/forum/topic/1959&#34;&gt;https://xianzhi.aliyun.com/forum/topic/1959&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
     </item>
     
