@@ -7,8 +7,278 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2020 kylinking</copyright>
-    <lastBuildDate>Wed, 01 Jul 2020 19:59:26 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 15 Sep 2020 16:42:32 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Jenkins 路由解析及沙箱绕过漏洞分析报告(上)</title>
+      <link>https://kylingit.com/blog/jenkins-%E8%B7%AF%E7%94%B1%E8%A7%A3%E6%9E%90%E5%8F%8A%E6%B2%99%E7%AE%B1%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E6%8A%A5%E5%91%8A%E4%B8%8A/</link>
+      <pubDate>Tue, 15 Sep 2020 16:42:32 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/jenkins-%E8%B7%AF%E7%94%B1%E8%A7%A3%E6%9E%90%E5%8F%8A%E6%B2%99%E7%AE%B1%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E6%8A%A5%E5%91%8A%E4%B8%8A/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h1 id=&#34;jenkins-路由解析及沙箱绕过漏洞分析报告-上&#34;&gt;Jenkins 路由解析及沙箱绕过漏洞分析报告(上)&lt;/h1&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://jenkins.io/images/logo-title-opengraph.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&#34;简介&#34;&gt;简介&lt;/h2&gt;
+
+&lt;p&gt;本报告主要研究Jenkins的路由解析机制和Groovy沙箱绕过带来的安全问题，梳理Jenkins官方2018-2019年以来涉及沙箱绕过的安全更新，探讨Java沙箱在Java应用中的安全性。由于篇幅较长，分为上下两篇发表，文中疏漏之处还请批评指正。&lt;/p&gt;
+
+&lt;p&gt;Jenkins是一个开源软件项目，是基于Java开发的一种持续集成工具，用于监控持续重复的工作，旨在提供一个开放易用的软件平台，使软件的持续集成变成可能。Jenkins的目的是持续、自动化地构建/测试软件项目以及监控软件开发流程，快速问题定位及处理，提升开发效率。&lt;/p&gt;
+
+&lt;p&gt;Script Security插件是Jenkins的一个安全插件，可以集成到Jenkins各种功能插件中。它主要支持两个相关系统：脚本批准和Groovy沙箱，分别用来管控脚本是否允许执行以及将脚本限制在安全环境下执行，避免带来不可控风险。&lt;/p&gt;
+
+&lt;h3 id=&#34;环境搭建&#34;&gt;环境搭建&lt;/h3&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;下载相应版本的war包&lt;/p&gt;
+
+&lt;p&gt;地址：&lt;a href=&#34;https://updates.jenkins-ci.org/download/war/&#34;&gt;https://updates.jenkins-ci.org/download/war/&lt;/a&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;设置环境变量JENKINS_HOME&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;set JENKINS_HOME=D:\Jenkins\jenkins_2.137&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;加上调试选项并运行&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -jar jenkins_2.137.war --httpPort=8082&lt;/code&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;安装插件&lt;/p&gt;
+
+&lt;p&gt;国内镜像地址：&lt;a href=&#34;https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json&#34;&gt;https://mirrors.tuna.tsinghua.edu.cn/jenkins/updates/update-center.json&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;Jenkins在安装过程中会自动下载部分插件的最新版，这部分可以先跳过，再在后台上传特定版本的插件（&lt;code&gt;.hpi&lt;/code&gt;文件）进行安装，然后重启Jenkins完成安装&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2 id=&#34;动态路由机制&#34;&gt;动态路由机制&lt;/h2&gt;
+
+&lt;p&gt;首先从WEB-INF/web.xml入手看看Jenkins如何处理路由，可以看到所有请求都交给org.kohsuke.stapler.Stapler，具体是由Stapler:service()方法来处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568171738754.png&#34; alt=&#34;1568171738754&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568171941279.png&#34; alt=&#34;1568171941279&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在service方法中主要调用的是invoke方法，两处调用的区别是invoke的第3和第4个参数不同，分别是根节点root和url路径，在调用之前判断了url路径，如果是&lt;code&gt;/$stapler/bound/&lt;/code&gt;开头，则把根节点设置为&lt;code&gt;boundObjectTable&lt;/code&gt;，否则通过&lt;code&gt;this.webApp.getApp()&lt;/code&gt;把根节点设置为&lt;code&gt;hudson.model.Hudson&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;跟进invoke方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568172501683.png&#34; alt=&#34;1568172501683&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568172552611.png&#34; alt=&#34;1568172552611&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用的是&lt;code&gt;Stapler#tryInvoke()&lt;/code&gt;方法，tryInvoke()方法中对node类型（也就是一开始的root）进行了判断，按先后顺序分别处理三种情况&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;StaplerProxy&lt;/li&gt;
+&lt;li&gt;StaplerOverridable&lt;/li&gt;
+&lt;li&gt;StaplerFallback&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;这三种情况的具体区别可以参考Jenkins关于&lt;a href=&#34;https://jenkins.io/zh/doc/developer/handling-requests/routing/&#34;&gt;路由请求&lt;/a&gt;的文档&lt;/p&gt;
+
+&lt;p&gt;这里我们关注中间获取metaClass和调用dispatch的过程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568172929817.png&#34; alt=&#34;1568172929817&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过传入&lt;code&gt;/securityRealm/user/admin/&lt;/code&gt;动态调试来跟踪理解&lt;/p&gt;
+
+&lt;h3 id=&#34;初始化metaclass&#34;&gt;初始化metaClass&lt;/h3&gt;
+
+&lt;p&gt;WebApp中会缓存一个classMap存放MetaClass，无对应缓存则通过&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;mc = new MetaClass(this, c); 
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;进行初始化，这个过程发生在Jenkins刚启动没有缓存时，当建立缓存后则直接从classMap获取相应的MetaClass&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;MetaClass mc = (MetaClass)this.classMap.get(c);
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568188301839.png&#34; alt=&#34;1568188301839&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在MetaClass的构造方法中，会再次调用其父类的&lt;code&gt;getMetaClass()&lt;/code&gt;方法，直到父类为空为止&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568188747361.png&#34; alt=&#34;1568188747361&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而此时的kclass为一开始传入的&lt;code&gt;hudson.model.Hudson&lt;/code&gt;，Hudson继承关系如下图&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568193610000.png&#34; alt=&#34;1568193610000&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此getMetaClass一直调用到class java.lang.Object，然后进行&lt;code&gt;buildDispatchers()&lt;/code&gt;方法并层层返回，因此整个初始化metaClass的过程是一个不断寻找继承树并递归调用buildDispatchers的过程，而buildDispatchers的功能就是提取该类中的所有函数信息存储在&lt;code&gt;MetaClass.dispatchers&lt;/code&gt;中，作为后续与url的映射关系&lt;/p&gt;
+
+&lt;p&gt;buildDispatchers()方法按顺序调用如下：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;this.registerDoToken(node)
+
+&lt;ul&gt;
+&lt;li&gt;do&lt;token&gt;(…)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;node.methods.prefix(&amp;ldquo;js&amp;rdquo;).iterator()
+
+&lt;ul&gt;
+&lt;li&gt;js&lt;token&gt;(…)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;node.methods.annotated(JavaScriptMethod.class).iterator()
+
+&lt;ul&gt;
+&lt;li&gt;@JavaScriptMethod annotation&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;node.methods.prefix(&amp;ldquo;get&amp;rdquo;)
+
+&lt;ul&gt;
+&lt;li&gt;get&lt;token&gt;()&lt;/li&gt;
+&lt;li&gt;get&lt;token&gt;(String)&lt;/li&gt;
+&lt;li&gt;get&lt;token&gt;(Int)&lt;/li&gt;
+&lt;li&gt;get&lt;token&gt;(Long)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;getMethods.signature(new Class[]{StaplerRequest.class}).iterator()
+
+&lt;ul&gt;
+&lt;li&gt;get&lt;token&gt;(StaplerRequest)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;getMethods.signatureStartsWith(new Class[]{String.class}).name(&amp;ldquo;getDynamic&amp;rdquo;).iterator()
+
+&lt;ul&gt;
+&lt;li&gt;getDynamic(&amp;hellip;)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;li&gt;node.methods.name(&amp;ldquo;doDynamic&amp;rdquo;).iterator()
+
+&lt;ul&gt;
+&lt;li&gt;doDynamic(…)&lt;/li&gt;
+&lt;/ul&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;这相当于规定了一个函数命名规则，只要符合这个规则的方法都能被访问到。&lt;/p&gt;
+
+&lt;p&gt;注意此过程中，大部分dispatchers添加的都是&lt;code&gt;NameBasedDispatcher&lt;/code&gt;对象，除了如下几类：&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;DirectoryishDispatcher (url路径相关，如&lt;code&gt;/&lt;/code&gt;、&lt;code&gt;?&lt;/code&gt;、&lt;code&gt;../&lt;/code&gt;等)&lt;/li&gt;
+&lt;li&gt;HttpDeletableDispatcher (&lt;code&gt;DELETE&lt;/code&gt;方法)&lt;/li&gt;
+&lt;li&gt;IndexDispatcher (&lt;code&gt;doIndex(...)&lt;/code&gt;)&lt;/li&gt;
+&lt;li&gt;Dispatcher (&lt;code&gt;getDynamic(…)&lt;/code&gt; &lt;code&gt;doDynamic(…)&lt;/code&gt;)&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;其中&lt;code&gt;js&amp;lt;token&amp;gt;(…)&lt;/code&gt;对应的&lt;code&gt;JavaScriptProxyMethodDispatcher&lt;/code&gt;继承自&lt;code&gt;NameBasedDispatcher&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568196821681.png&#34; alt=&#34;1568196821681&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;hudson.model.Hudson经过递归buildDispatchers，缓存下的dispatchers有220个，根据上面的注意点，其中大部分方法会调用到&lt;code&gt;NameBasedDispatcher#dispatch()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568196931745.png&#34; alt=&#34;1568196931745&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568195521387.png&#34; alt=&#34;1568195521387&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;递归解析路由&#34;&gt;递归解析路由&lt;/h3&gt;
+
+&lt;p&gt;回到org.kohsuke.stapler.Stapler#tryInvoke()，路径&lt;code&gt;/securityRealm/&lt;/code&gt;对应的是&lt;code&gt;hudson.security.SecurityRealm jenkins.model.Jenkins.getSecurityRealm()&lt;/code&gt;，同样也会调用到&lt;code&gt;NameBasedDispatcher#dispatch()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568197833515.png&#34; alt=&#34;1568197833515&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;接下来可以看到&lt;code&gt;ff.invoke()&lt;/code&gt;返回一个&lt;code&gt;hudson.security.HudsonPrivateSecurityRealm&lt;/code&gt;对象，然后重新调用&lt;code&gt;org.kohsuke.stapler.Stapler#invoke()&lt;/code&gt;，这也是一个递归的过程。此时HudsonPrivateSecurityRealm返回的dispatchers有30个，在&lt;code&gt;Stapler#tryInvoke()&lt;/code&gt;中进行循环调用，在每个dispatchers动态生成的dispatch方法中，会根据解析到的url路径与当前的dispatchers进行对比，不一致直接返回false，同时还会判断是否存在下一层路由，如果存在则进入doDispatch&lt;/p&gt;
+
+&lt;p&gt;比如此时解析到的url为/user/，则只有&lt;code&gt;hudson.security.HudsonPrivateSecurityRealm.getUser(String)&lt;/code&gt;方法进入下一步doDispatch&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568254883924.png&#34; alt=&#34;1568254883924&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;当传入一个不存在的url，tryInvoke会返回false，抛出404，也就不继续往下解析了&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568255416381.png&#34; alt=&#34;1568255416381&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;经过上面递归的tryInvoke过程，Jenkins才完成路由解析，调用过程的流程图如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568256409501.png&#34; alt=&#34;1568256409501&#34; /&gt;&lt;/p&gt;
+
+&lt;h2 id=&#34;动态路由绕过&#34;&gt;动态路由绕过&lt;/h2&gt;
+
+&lt;ul&gt;
+&lt;li&gt;公告：&lt;a href=&#34;https://jenkins.io/security/advisory/2018-12-05/#SECURITY-595&#34;&gt;https://jenkins.io/security/advisory/2018-12-05/#SECURITY-595&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;CVE：CVE-2018-1000861&lt;/li&gt;
+&lt;li&gt;影响版本：Jenkins&amp;lt;=2.153 / Jenkins LTS&amp;lt;=2.138.3&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;这是一个动态路由绕过导致未授权访问的问题，由Orange提交：）参考 &lt;a href=&#34;https://devco.re/blog/2019/01/16/hacking-Jenkins-part1-play-with-dynamic-routing/&#34;&gt;Hacking Jenkins Part 1 - Play with Dynamic Routing&lt;/a&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;白名单机制&#34;&gt;白名单机制&lt;/h3&gt;
+
+&lt;p&gt;上面分析了Jenkins构建动态路由的过程，主要调用的是&lt;code&gt;org.kohsuke.stapler.Stapler#tryInvoke()&lt;/code&gt;方法，该方法对所属于&lt;code&gt;StaplerProxy&lt;/code&gt;的类会有一次权限检查，而一开始我们知道除了&lt;code&gt;boundObjectTable&lt;/code&gt;其他的node都被设置为&lt;code&gt;hudson.model.Hudson&lt;/code&gt;，上面也讲到Hudson类继承自Jenkins，而Jenkins的父类&lt;code&gt;AbstractCIBase&lt;/code&gt;是&lt;code&gt;StaplerProxy&lt;/code&gt;的一个接口实现，所以除了&lt;code&gt;boundObjectTable&lt;/code&gt;外所有node都会进行这个权限检查，具体实现在&lt;code&gt;jenkins.model.Jenkins#getTarget()&lt;/code&gt;中&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568259600209.png&#34; alt=&#34;1568259600209&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这个方法会先进行一次checkPermission，如果没有权限则会抛出异常还会再进行一次&lt;code&gt;isSubjectToMandatoryReadPermissionCheck&lt;/code&gt;检查，如果这个检查通过同样会正常返回&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568259863106.png&#34; alt=&#34;1568259863106&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;这个检查中有一个白名单，如果存在于这个白名单中的url路由同样可以直接访问&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568273111696.png&#34; alt=&#34;1568273111696&#34; /&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;ALWAYS_READABLE_PATHS = ImmutableSet.of(&amp;quot;/login&amp;quot;, &amp;quot;/logout&amp;quot;, &amp;quot;/accessDenied&amp;quot;, &amp;quot;/adjuncts/&amp;quot;, &amp;quot;/error&amp;quot;, &amp;quot;/oops&amp;quot;, new String[] {
+    &amp;quot;/signup&amp;quot;,
+    &amp;quot;/tcpSlaveAgentListener&amp;quot;,
+    &amp;quot;/federatedLoginService/&amp;quot;,
+    &amp;quot;/securityRealm&amp;quot;,
+    &amp;quot;/instance-identity&amp;quot;
+});
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;还是以&lt;code&gt;/securityRealm/user/admin/&lt;/code&gt;为例，在解析至&lt;code&gt;securityRealm&lt;/code&gt;的时候命中白名单，正常返回，而解析至&lt;code&gt;admin&lt;/code&gt;的时候因为&lt;code&gt;User&lt;/code&gt;类并非&lt;code&gt;StaplerProxy&lt;/code&gt;子类，所以会跳过getTarget()检查，成功绕过&lt;/p&gt;
+
+&lt;h3 id=&#34;跨物件操作&#34;&gt;跨物件操作&lt;/h3&gt;
+
+&lt;p&gt;接下来关注DescriptorByName&lt;/p&gt;
+
+&lt;p&gt;从继承关系图可以看到User也是&lt;code&gt;DescriptorByNameOwner&lt;/code&gt;接口的实现&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571821898844.png&#34; alt=&#34;1571821898844&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;而&lt;code&gt;DescriptorByNameOwner&lt;/code&gt;接口调用的是 &lt;code&gt;jenkins.model.Jenkins#getDescriptor&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;public interface DescriptorByNameOwner extends ModelObject {
+    default Descriptor getDescriptorByName(String id) {
+        return Jenkins.getInstance().getDescriptorByName(id);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571822175710.png&#34; alt=&#34;1571822175710&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;该方法首先获取了所有的descriptors，如果传入的id匹配到了相应的descriptor就能去调用指定的方法，例如&lt;code&gt;org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript#DescriptorImpl&lt;/code&gt;，&lt;code&gt;getDisplayName()&lt;/code&gt;和&lt;code&gt;doCheckScript()&lt;/code&gt;都是能被调用到的&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571823142780.png&#34; alt=&#34;1571823142780&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此，通过构造&lt;code&gt;/securityRealm/user/DescriptorByName/xxx&lt;/code&gt;的方式就可以调用到任意类的任意方法，只要满足下面两个条件：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;符合上文整理的命名规则；&lt;/li&gt;
+&lt;li&gt;目标类继承了&lt;code&gt;Descriptor&lt;/code&gt;；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;利用链：&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;Jenkins-&amp;gt;HudsonPrivateSecurityRealm-&amp;gt;User-&amp;gt;DescriptorByNameOwner-&amp;gt;Jenkins-&amp;gt;Descriptor&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;在这个漏洞修复后还想再利用则必须开启&lt;code&gt;Allow anonymous read access&lt;/code&gt;匿名用户访问权限，否则会抛出404&lt;/p&gt;
+
+&lt;h2 id=&#34;总结&#34;&gt;总结&lt;/h2&gt;
+
+&lt;p&gt;本报告上篇讨论了Jenkins动态路由机制和路由绕过的问题，通过这个脆弱点可以绕过用户权限检查从而访问到特定的物件，为下一步进行远程代码执行漏洞攻击降低了攻击门槛，是一个非常巧妙的入口。下篇将分析Jenkins主流插件Script Security中针对Groovy沙箱的绕过方法，欢迎关注。&lt;/p&gt;
+
+&lt;p&gt;参考&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://jenkins.io/security/advisories/&#34;&gt;https://jenkins.io/security/advisories/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://devco.re/blog/2019/01/16/hacking-Jenkins-part1-play-with-dynamic-routing/&#34;&gt;https://devco.re/blog/2019/01/16/hacking-Jenkins-part1-play-with-dynamic-routing/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>Apache Dubbo 2.7.6 反序列化漏洞复现及分析</title>
@@ -2873,349 +3143,6 @@ Payload written to: out.phar
 &lt;h4 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h4&gt;
 
 &lt;p&gt;这个漏洞触发流程并不复杂，几个限制也能简单地绕过，关键在于某些函数没有考虑到传入&lt;code&gt;phar://&lt;/code&gt;的情况，在解析该协议时产生反序列化漏洞。另外值得注意的是，&lt;code&gt;php.ini&lt;/code&gt;中&lt;code&gt;phar.readonly = On&lt;/code&gt;选项并不会影响&lt;code&gt;phar&lt;/code&gt;解析，没有关闭此选项(默认为&lt;code&gt;On&lt;/code&gt;)依旧会导致漏洞触发，近段时间以来基于&lt;code&gt;phar&lt;/code&gt;的漏洞也在逐渐增加，希望能够引起开发者的重视。&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>由PHPGGC理解PHP反序列化漏洞</title>
-      <link>https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/</link>
-      <pubDate>Mon, 08 Oct 2018 14:43:41 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/%E7%94%B1phpggc%E7%90%86%E8%A7%A3php%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h2 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h2&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/ambionics/phpggc&#34;&gt;PHPGGC&lt;/a&gt;是一款能够自动生成主流框架的序列化测试&lt;code&gt;payload&lt;/code&gt;的工具，类似Java中的&lt;a href=&#34;https://github.com/frohoff/ysoserial&#34;&gt;ysoserial&lt;/a&gt;，当前支持的框架包括&lt;code&gt;Doctrine&lt;/code&gt;, &lt;code&gt;Guzzle&lt;/code&gt;, &lt;code&gt;Laravel&lt;/code&gt;, &lt;code&gt;Magento&lt;/code&gt;, &lt;code&gt;Monolog&lt;/code&gt;, &lt;code&gt;Phalcon&lt;/code&gt;, &lt;code&gt;Slim&lt;/code&gt;, &lt;code&gt;SwiftMailer&lt;/code&gt;, &lt;code&gt;Symfony&lt;/code&gt;, &lt;code&gt;Yii&lt;/code&gt; 和 &lt;code&gt;ZendFramework&lt;/code&gt;，可以说是反序列化的武器库了。本文从该工具出发，以Drupal Yaml反序列化漏洞和Typo3反序列化漏洞为例，分析其中的多种利用方式，并介绍一下今年BlackHat议题关于新型php反序列化攻击的部分。&lt;/p&gt;
-
-&lt;h2 id=&#34;0x02-drupal-yaml反序列化漏洞&#34;&gt;0x02 Drupal Yaml反序列化漏洞&lt;/h2&gt;
-
-&lt;h3 id=&#34;一-介绍&#34;&gt;一、介绍&lt;/h3&gt;
-
-&lt;p&gt;关于&lt;code&gt;Drupal&lt;/code&gt;就不过多介绍了，前阵子两个RCE漏洞杀伤力巨大，这次介绍的是去年披露的关于反序列化的漏洞，&lt;a href=&#34;https://nvd.nist.gov/vuln/detail/CVE-2017-6920&#34;&gt;CVE-2017-6920&lt;/a&gt;，官方描述是YAML解析器处理不当导致的一个远程代码执行漏洞&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;h3 id=&#34;pecl-yaml-parser-unsafe-object-handling-critical-drupal-8-cve-2017-6920&#34;&gt;PECL YAML parser unsafe object handling - Critical - Drupal 8 - CVE-2017-6920&lt;/h3&gt;
-
-&lt;p&gt;PECL YAML parser does not handle PHP objects safely during certain operations within Drupal core. This could lead to remote code execution.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;详情见&lt;a href=&#34;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&#34;&gt;SA-CORE-2017-003&lt;/a&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;二-漏洞分析&#34;&gt;二、漏洞分析&lt;/h3&gt;
-
-&lt;p&gt;先来看一下补丁，diff 8.3.3 和 8.3.4 版本，主要修改点在&lt;code&gt;core/lib/Drupal/Component/Serialization/YamlPecl.php&lt;/code&gt;文件&lt;code&gt;decode&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1538990057077.png&#34; alt=&#34;1538990057077&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可见在&lt;code&gt;yaml_parse&lt;/code&gt;前进行了&lt;code&gt;ini_set(&#39;yaml.decode_php&#39;, 0);&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;用户可控制的参数&lt;code&gt;$raw&lt;/code&gt;直接传给了&lt;code&gt;yaml_parse&lt;/code&gt;函数，而在手册上关于&lt;code&gt;yaml_parse&lt;/code&gt;函数有这么一个注意点：&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Warning&lt;/p&gt;
-
-&lt;p&gt;Processing untrusted user input with yaml_parse() is dangerous if the use of unserialize() is enabled for nodes using the !php/object tag. This behavior can be disabled by using the yaml.decode_php ini setting.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;也就是说，如果使用了&lt;code&gt;yaml&lt;/code&gt;标志&lt;code&gt;!php/object&lt;/code&gt;，那么这个内容会通过&lt;code&gt;unserialize()&lt;/code&gt;进行处理，设置&lt;code&gt;yaml.decode_php&lt;/code&gt;则可以禁止，这就是为什么补丁增加了这行代码。&lt;/p&gt;
-
-&lt;p&gt;看一下调用&lt;code&gt;decode()&lt;/code&gt;方法的地方，&lt;code&gt;core/lib/Drupal/Component/Serialization/Yaml.php&lt;/code&gt;：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public static function decode($raw) {
-    $serializer = static::getSerializer();
-    return $serializer::decode($raw);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在&lt;code&gt;Yaml&lt;/code&gt;类的&lt;code&gt;decode()&lt;/code&gt;方法调用了&lt;code&gt;static::getSerializer()&lt;/code&gt;方法，跟入&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1538993007544.png&#34; alt=&#34;1538993007544&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可以看到加载了&lt;code&gt;yaml&lt;/code&gt;扩展后就会进入&lt;code&gt;YamlPecl&lt;/code&gt;类，进而调用&lt;code&gt;Yaml::decode()&lt;/code&gt;方法，搜索调用&lt;code&gt;Yaml::decode&lt;/code&gt;并且参数能被控制的地方，在&lt;code&gt;core/modules/config/src/Form/ConfigSingleImportForm.php&lt;/code&gt;的&lt;code&gt;validateForm()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$data = Yaml::decode($form_state-&amp;gt;getValue(&#39;import&#39;));
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;validateForm()&lt;/code&gt;的调用处在&lt;code&gt;http://127.0.0.1/drupal-8.3.3/admin/config/development/configuration/single/import&lt;/code&gt;，&lt;code&gt;decode()&lt;/code&gt;的参数直接从表单获取，于是通过&lt;code&gt;import&lt;/code&gt;将恶意参数传递进去。&lt;/p&gt;
-
-&lt;h3 id=&#34;三-漏洞利用&#34;&gt;三、漏洞利用&lt;/h3&gt;
-
-&lt;p&gt;现在我们需要找到一个类，使之在被反序列化的时候执行危险函数，常规搜索&lt;code&gt;_destruct&lt;/code&gt;、&lt;code&gt;_tostring&lt;/code&gt;以及&lt;code&gt;_wakeup&lt;/code&gt;方法，在&lt;code&gt;drupal&lt;/code&gt;核心中有这么三个类可以被利用，其中两个在&lt;code&gt;phpggc&lt;/code&gt;工具中已经集成 ，另一个我们手动加入到&lt;code&gt;phpggc&lt;/code&gt;中&lt;/p&gt;
-
-&lt;h4 id=&#34;1-远程代码执行&#34;&gt;1.  远程代码执行&lt;/h4&gt;
-
-&lt;p&gt;&lt;code&gt;vendor/guzzlehttp/psr7/src/FnStream.php&lt;/code&gt; &lt;code&gt;FnStream&lt;/code&gt;类的&lt;code&gt;__destruct()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;  public function __destruct()
-  {
-      if (isset($this-&amp;gt;_fn_close)) {
-          call_user_func($this-&amp;gt;_fn_close);
-      }
-  }
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;我们通过序列化这个类，传递参数&lt;code&gt;_fn_close&lt;/code&gt;为任意php代码，在&lt;code&gt;yaml_parse&lt;/code&gt;的时候反序列化便可以造成一个任意代码执行。&lt;/p&gt;
-
-&lt;p&gt;在PHPGGC中已经内置这个类，查看信息&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539050117155.png&#34; alt=&#34;1539050117155&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;看一下内部实现&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539050287387.png&#34; alt=&#34;1539050287387&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;phpggc&lt;/code&gt;将&lt;code&gt;_fn_close&lt;/code&gt;参数设置为&lt;code&gt;HandlerStack&lt;/code&gt;类，再在&lt;code&gt;HandlerStack&lt;/code&gt;序列化的时候传入可控参数&lt;code&gt;$handler&lt;/code&gt;，而在这个案例中我们不需要额外的&lt;code&gt;HandlerStack&lt;/code&gt;类了，所以对&lt;code&gt;generate()&lt;/code&gt;方法稍加修改，直接构造一个&lt;code&gt;FnStream&lt;/code&gt;类，注意参数是&lt;code&gt;array&lt;/code&gt;类型：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;return new \GuzzleHttp\Psr7\FnStream([
-    &#39;close&#39; =&amp;gt; $code
-]);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;然后生成序列化数据：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539050803329.png&#34; alt=&#34;1539050803329&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;接着拼接&lt;code&gt;YAML_PHP_TAG&lt;/code&gt;即&lt;code&gt;!php/object&lt;/code&gt;，并且要将字符串转义，注意序列化数据中的空字符，我们将其替换成&lt;code&gt;\0&lt;/code&gt;，最终生成的字符串如下：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;!php/object &amp;quot;O:24:\&amp;quot;GuzzleHttp\\Psr7\\FnStream\&amp;quot;:2:{s:33:\&amp;quot;\0GuzzleHttp\\Psr7\\FnStream\0methods\&amp;quot;;a:1:{s:5:\&amp;quot;close\&amp;quot;;s:7:\&amp;quot;phpinfo\&amp;quot;;}s:9:\&amp;quot;_fn_close\&amp;quot;;s:7:\&amp;quot;phpinfo\&amp;quot;;}&amp;quot;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在&lt;code&gt;http://127.0.0.1/drupal-8.3.3/admin/config/development/configuration/single/import&lt;/code&gt;import序列化后的数据，便可以执行代码&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539051346096.png&#34; alt=&#34;1539051346096&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539051456660.png&#34; alt=&#34;1539051456660&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;2-任意文件写入&#34;&gt;2.  任意文件写入&lt;/h4&gt;
-
-&lt;p&gt;上面&lt;code&gt;call_user_func()&lt;/code&gt;造成了一个任意代码执行，我们再找到一个&lt;code&gt;file_put_contents()&lt;/code&gt;造成任意文件写入&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;vendor/guzzlehttp/guzzle/src/Cookie/FileCookieJar.php&lt;/code&gt;的&lt;code&gt;FileCookieJar&lt;/code&gt;类&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539051809132.png&#34; alt=&#34;1539051809132&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;__destruct()&lt;/code&gt;调用&lt;code&gt;save()&lt;/code&gt;方法，通过&lt;code&gt;file_put_contents()&lt;/code&gt;写入文件内容，而文件名和文件内容均是我们可以控制的，所以此处可以写入一个shell&lt;/p&gt;
-
-&lt;p&gt;同样地看一下&lt;code&gt;phpggc&lt;/code&gt;中有关&lt;code&gt;FileCookieJar&lt;/code&gt;类的部分：&lt;code&gt;gadgetchains/Guzzle/FW/1/chain.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539052187458.png&#34; alt=&#34;1539052187458&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;通过这个类生成序列化数据&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539052263375.png&#34; alt=&#34;1539052263375&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;需要提供远程文件路径和本地文件路径两个参数&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539052815893.png&#34; alt=&#34;1539052815893&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;接着还是拼接和转义，并import数据&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539052742894.png&#34; alt=&#34;1539052742894&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;写入的是整个json字符串，但是不影响代码执行。&lt;/p&gt;
-
-&lt;h4 id=&#34;3-任意文件删除&#34;&gt;3.  任意文件删除&lt;/h4&gt;
-
-&lt;p&gt;另一个类是&lt;code&gt;WindowsPipes&lt;/code&gt;，路径&lt;code&gt;vendor/symfony/process/Pipes/WindowsPipes.php&lt;/code&gt;，该类可以造成文件删除&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539053196182.png&#34; alt=&#34;1539053196182&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;phpggc&lt;/code&gt;中没有内置这个类，于是我们按照这个工具的框架来实现一下，方便理解该工具。&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;lib/PHPGGC/GadgetChain.php&lt;/code&gt;已经有&lt;code&gt;TYPE_FD&lt;/code&gt;这个类型，代表&lt;code&gt;file_delete&lt;/code&gt;，那么我们直接在&lt;code&gt;lib/PHPGGC/GadgetChain/&lt;/code&gt;注册一个&lt;code&gt;FileDelete&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
-
-namespace PHPGGC\GadgetChain;
-
-abstract class FileDelete extends \PHPGGC\GadgetChain
-{
-    public static $type = self::TYPE_FD;
-    public $parameters = [
-        &#39;file_name&#39;
-    ];
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这个类就可以作为POP链拿来使用了&lt;/p&gt;
-
-&lt;p&gt;然后在&lt;code&gt;Symfony&lt;/code&gt;目录下创建&lt;code&gt;RMF/1&lt;/code&gt;，并创建&lt;code&gt;chain&lt;/code&gt;和&lt;code&gt;gadgets&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;gadgetchains/Symfony/RMF/1/chain.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
-
-namespace GadgetChain\Symfony;
-
-class RMF1 extends \PHPGGC\GadgetChain\FileDelete
-{
-    public $version = &#39;2.6 &amp;lt;= 2.8.32&#39;;
-    public $vector = &#39;__destruct&#39;;
-    public $author = &#39;crlf&#39;;
-    public $informations = &#39;Remove remote file.&#39;;
-
-    public function generate(array $parameters)
-    {
-        $input = $parameters[&#39;file_name&#39;];
-
-        return new \Symfony\Component\Process\Pipes\WindowsPipes($input);
-    }
-}
-
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;gadgetchains/Symfony/RMF/1/gadgets.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;&amp;lt;?php
-
-namespace Symfony\Component\Process\Pipes;
-
-
-class WindowsPipes
-{
-    private $files = array();
-
-    public function __construct($input)
-    {
-        $this-&amp;gt;files = array($input);
-    }
-
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;我们直接生成&lt;code&gt;WindowsPipes&lt;/code&gt;的序列化数据，把文件名作为参数传入，在反序列化的时候自动调用&lt;code&gt;removeFiles()&lt;/code&gt;，实现任意文件删除&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539053814915.png&#34; alt=&#34;1539053814915&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;生成序列化字符串&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539053942995.png&#34; alt=&#34;1539053942995&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;import后文件被删除&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539054380813.png&#34; alt=&#34;1539054380813&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;四-总结&#34;&gt;四、总结&lt;/h3&gt;
-
-&lt;p&gt;通过这个漏洞对&lt;code&gt;phpggc&lt;/code&gt;工具有了一定了解，我们可以添加自定义&lt;code&gt;POP&lt;/code&gt;链到工具中，用来丰富这个武器库。&lt;/p&gt;
-
-&lt;p&gt;另外针对这个漏洞，文件写入和文件删除都需要知道网站的绝对路径，加上需要登录后才能利用，一定程度上加大了利用难度。&lt;/p&gt;
-
-&lt;h2 id=&#34;0x03-typo3反序列化漏洞&#34;&gt;0x03 Typo3反序列化漏洞&lt;/h2&gt;
-
-&lt;h3 id=&#34;一-介绍-1&#34;&gt;一、介绍&lt;/h3&gt;
-
-&lt;p&gt;&lt;code&gt;Typo3&lt;/code&gt;也是一款著名的CMS，但是在国内流行程度不如&lt;code&gt;Wordpress&lt;/code&gt;。这个漏洞是今年&lt;code&gt;BlackHat&lt;/code&gt;大会上由&lt;code&gt;Sam Thomas&lt;/code&gt;分享反序列化漏洞议题时作为案例来讲的，该漏洞由&lt;code&gt;phar://&lt;/code&gt;触发，这是一个新型的反序列化利用方式，日常开发中容易忽略这个风险点，在漏洞利用中也用到了&lt;code&gt;phpggc&lt;/code&gt;这个工具，所以一并学习。&lt;/p&gt;
-
-&lt;p&gt;关于该漏洞的官方描述，可以看&lt;a href=&#34;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&#34;&gt;这里&lt;/a&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;二-phar-介绍&#34;&gt;二、phar://介绍&lt;/h3&gt;
-
-&lt;p&gt;在分析漏洞前先介绍一下&lt;code&gt;phar://&lt;/code&gt;伪协议，直接看php手册的&lt;a href=&#34;http://php.net/manual/en/intro.phar.php&#34;&gt;介绍&lt;/a&gt;&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Phar archives are best characterized as a convenient way to group several files into a single file. As such, a phar archive provides a way to distribute a complete PHP application in a single file and run it from that file without the need to extract it to disk. Additionally, phar archives can be executed by PHP as easily as any other file, both on the commandline and from a web server. Phar is kind of like a thumb drive for PHP applications.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;简单来说&lt;code&gt;phar&lt;/code&gt;就是&lt;code&gt;php&lt;/code&gt;压缩文档。它可以把多个文件归档到同一个文件中，而且不经过解压就能被php访问并执行，与&lt;code&gt;file://&lt;/code&gt; &lt;code&gt;php://&lt;/code&gt;等类似，也是一种流包装器。&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;phar&lt;/code&gt;结构由4部分组成&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;stub&lt;/code&gt;  phar文件标识，格式为 &lt;code&gt;xxx&amp;lt;?php xxx; __HALT_COMPILER();?&amp;gt;；&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;manifest&lt;/code&gt;  压缩文件的属性等信息，以&lt;strong&gt;序列化&lt;/strong&gt;存储；&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;contents&lt;/code&gt;  压缩文件的内容；&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;signature&lt;/code&gt;  签名，放在文件末尾；&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;这里有两个关键点，一是文件标识，必须以&lt;code&gt;__HALT_COMPILER();?&amp;gt;&lt;/code&gt;结尾，但前面的内容没有限制，也就是说我们可以轻易伪造一个图片文件或者&lt;code&gt;pdf&lt;/code&gt;文件来绕过一些上传限制；二是反序列化，&lt;code&gt;phar&lt;/code&gt;存储的&lt;code&gt;meta-data&lt;/code&gt;信息以序列化方式存储，当文件操作函数通过&lt;code&gt;phar://&lt;/code&gt;伪协议解析&lt;code&gt;phar&lt;/code&gt;文件时就会将数据反序列化，而这样的文件操作函数有很多，包括下面这些：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539063733837.png&#34; alt=&#34;1539063733837&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;图片来自&lt;a href=&#34;https://paper.seebug.org/680/&#34;&gt;seebug&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;这中间大多数是常用的函数，在一个系统中使用相当广泛，结合文件伪造，使得通过&lt;code&gt;phar://&lt;/code&gt;解析造成的反序列化攻击变得愈加容易。&lt;/p&gt;
-
-&lt;h3 id=&#34;三-漏洞分析&#34;&gt;三、漏洞分析&lt;/h3&gt;
-
-&lt;p&gt;接下来看一下Typo3中存在漏洞的代码&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;typo3/sysext/core/Classes/Database/SoftReferenceIndex.php&lt;/code&gt;的&lt;code&gt;getTypoLinkParts()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539064169518.png&#34; alt=&#34;1539064169518&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;上面说到存在风险的文件操作函数，其中就包括&lt;code&gt;file_exists()&lt;/code&gt;，当传给&lt;code&gt;file_exists()&lt;/code&gt;的参数是&lt;code&gt;phar&lt;/code&gt;压缩文档并通过&lt;code&gt;phar://&lt;/code&gt;伪协议解析时，就会反序列化其中的&lt;code&gt;metadata&lt;/code&gt;数据，一旦该数据被控制，就会形成漏洞。&lt;/p&gt;
-
-&lt;p&gt;下面举一个例子演示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539064567894.png&#34; alt=&#34;1539064567894&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539064633273.png&#34; alt=&#34;1539064633273&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可以看到通过&lt;code&gt;file_exists()&lt;/code&gt;函数判断文件是否存在即对&lt;code&gt;TestObject&lt;/code&gt;类进行了反序列化。&lt;/p&gt;
-
-&lt;p&gt;那么我们可以构造&lt;code&gt;$splitLinkParam&lt;/code&gt;参数为&lt;code&gt;phar&lt;/code&gt;文件，其中包含恶意代码，传递给&lt;code&gt;file_exists()&lt;/code&gt;函数，便会触发漏洞。&lt;/p&gt;
-
-&lt;h3 id=&#34;四-漏洞利用&#34;&gt;四、漏洞利用&lt;/h3&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/s-n-t/phpggc&#34;&gt;pharggc&lt;/a&gt;是在&lt;code&gt;phpggc&lt;/code&gt;的基础上增加了对&lt;code&gt;phar&lt;/code&gt;的支持，能够将序列化后的&lt;code&gt;payload&lt;/code&gt;写入到&lt;code&gt;phar&lt;/code&gt;文件中，通过&lt;code&gt;phar://&lt;/code&gt;解析时触发&lt;code&gt;payload&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;我们已经找到可以触发漏洞的地方，但还需要一个类来执行代码，在Typo3中同样存在&lt;code&gt;FnStream&lt;/code&gt;类，所以我们还是使用&lt;code&gt;guzzle/rce1&lt;/code&gt;载荷将数据写入一张图片中&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539065928944.png&#34; alt=&#34;1539065928944&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539065937046.png&#34; alt=&#34;1539065937046&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后上传这个附件，接着创建一个页面，将Link设置为&lt;code&gt;phar://&lt;/code&gt;，注意需要将&lt;code&gt;:&lt;/code&gt;转义&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539067380611.png&#34; alt=&#34;1539067380611&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;保存后就会触发漏洞&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539067384583.png&#34; alt=&#34;1539067384583&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;调用栈如下图所示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1539070664504.png&#34; alt=&#34;1539070664504&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;五-总结及防御&#34;&gt;五、总结及防御&lt;/h3&gt;
-
-&lt;p&gt;这个漏洞利用的是&lt;code&gt;phar&lt;/code&gt;的特性，在系统未过滤&lt;code&gt;phar://&lt;/code&gt;协议且参数可以控制时，容易引发漏洞，开发时也需要多注意限制使用不必要的流包装器，上传文件也要校验文件内容而不仅仅是文件头。&lt;/p&gt;
-
-&lt;p&gt;防范措施&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;限制PHP流包装器的使用(传递)；&lt;/li&gt;
-&lt;li&gt;控制文件操作函数的参数，过滤特殊字符，例如 phar:// 等；&lt;/li&gt;
-&lt;li&gt;仅在特别请求时才对元数据进行反序列化；&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;h2 id=&#34;0x04-总结&#34;&gt;0x04 总结&lt;/h2&gt;
-
-&lt;p&gt;本文分析了两个漏洞，并结合&lt;code&gt;phpggc&lt;/code&gt;工具梳理了反序列化漏洞常见的攻击方式，以及如何寻找一条可以利用的POP链，也提到了开发中容易忽略的安全风险，希望能给大家起到帮助。&lt;/p&gt;
-
-&lt;p&gt;参考：&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://paper.seebug.org/334/&#34;&gt;https://paper.seebug.org/334/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://paper.seebug.org/680&#34;&gt;https://paper.seebug.org/680&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/ambionics/phpggc&#34;&gt;https://github.com/ambionics/phpggc&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/s-n-t/phpggc&#34;&gt;https://github.com/s-n-t/phpggc&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://php.net/manual/en/function.yaml-parse.php&#34;&gt;http://php.net/manual/en/function.yaml-parse.php&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://php.net/manual/en/intro.phar.php&#34;&gt;http://php.net/manual/en/intro.phar.php&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&#34;&gt;https://www.drupal.org/forum/newsletters/security-advisories-for-drupal-core/2017-06-21/drupal-core-multiple&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&#34;&gt;https://typo3.org/security/advisory/typo3-core-sa-2018-002/&lt;/a&gt;&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

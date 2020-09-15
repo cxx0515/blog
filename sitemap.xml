@@ -2,6 +2,11 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
+    <loc>https://kylingit.com/blog/jenkins-%E8%B7%AF%E7%94%B1%E8%A7%A3%E6%9E%90%E5%8F%8A%E6%B2%99%E7%AE%B1%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E6%8A%A5%E5%91%8A%E4%B8%8A/</loc>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
+  </url>
+  
+  <url>
     <loc>https://kylingit.com/blog/apache-dubbo-2.7.6-%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E5%A4%8D%E7%8E%B0%E5%8F%8A%E5%88%86%E6%9E%90/</loc>
     <lastmod>2020-07-01T19:59:26+00:00</lastmod>
   </url>
@@ -301,7 +306,7 @@
   
   <url>
     <loc>https://kylingit.com/blog/</loc>
-    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -413,6 +418,12 @@
   </url>
   
   <url>
+    <loc>https://kylingit.com/tags/groovy/</loc>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
     <loc>https://kylingit.com/tags/honeypot/</loc>
     <lastmod>2016-09-30T14:32:18+00:00</lastmod>
     <priority>0</priority>
@@ -426,7 +437,13 @@
   
   <url>
     <loc>https://kylingit.com/tags/java/</loc>
-    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://kylingit.com/tags/jenkins/</loc>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -556,13 +573,13 @@
   
   <url>
     <loc>https://kylingit.com/tags/sec/</loc>
-    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
     <priority>0</priority>
   </url>
   
   <url>
     <loc>https://kylingit.com/categories/security/</loc>
-    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -673,7 +690,7 @@
   
   <url>
     <loc>https://kylingit.com/</loc>
-    <lastmod>2020-07-01T19:59:26+00:00</lastmod>
+    <lastmod>2020-09-15T16:42:32+00:00</lastmod>
     <priority>0</priority>
   </url>
   
