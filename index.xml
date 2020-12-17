@@ -3324,6 +3324,128 @@ __attribute__ ((__constructor__)) void exec(void){
     </item>
     
     <item>
+      <title>CVE-2019-11581 Atlassian Jira未授权模板注入漏洞分析</title>
+      <link>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
+      <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
+      
+      <guid>https://kylingit.com/blog/cve-2019-11581-atlassian-jira%E6%9C%AA%E6%8E%88%E6%9D%83%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
+      <description>
+
+&lt;h3 id=&#34;环境搭建&#34;&gt;环境搭建&lt;/h3&gt;
+
+&lt;p&gt;使用&lt;code&gt;atlas-debug&lt;/code&gt;调试&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;下载安装&lt;code&gt;Atlassian SDK&lt;/code&gt;，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/install-the-atlassian-sdk-on-a-windows-system/&#34;&gt;地址&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-create-jira-plugin&lt;/code&gt;创建一个插件，&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;参考&lt;/a&gt;；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;atlas-debug&lt;/code&gt;开启调试，http端口2990，调试端口5005；&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;IDEA&lt;/code&gt;打开&lt;code&gt;MyPlugin&lt;/code&gt;，把&lt;code&gt;WEB-INF/classes&lt;/code&gt;和&lt;code&gt;WEB-INF/lib&lt;/code&gt;加入library；&lt;/li&gt;
+&lt;li&gt;新建&lt;code&gt;Remote&lt;/code&gt;调试；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;其他：&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;如果没有设置&lt;code&gt;%JAVA_HOME%&lt;/code&gt;可以通过&lt;code&gt;SET JAVA_HOME=d:\jdk1.8&lt;/code&gt;设置；&lt;/li&gt;
+&lt;li&gt;默认不开启电子邮件发送，通过&lt;code&gt;atlas-debug --jvmargs -Datlassian.mail.senddisabled=false&lt;/code&gt;开启；&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;第一部分-注入代码并生成邮件&#34;&gt;第一部分：注入代码并生成邮件&lt;/h3&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246860552.png&#34; alt=&#34;1563246860552&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;post&lt;/code&gt;的数据通过&lt;code&gt;JiraSafeActionParameterSetter-&amp;gt;setActionProperty()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563271320369.png&#34; alt=&#34;1563271320369&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;通过反射调用到&lt;code&gt;ContactAdministrators.setSubject()&lt;/code&gt;方法，把&lt;code&gt;ContactAdministrators&lt;/code&gt;对象的&lt;code&gt;subject&lt;/code&gt;属性设置为传入的&lt;code&gt;subject&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;随后通过&lt;code&gt;ContactAdministrators.doExecute()&lt;/code&gt;调用&lt;code&gt;send()&lt;/code&gt;方法，在这个方法中会查找系统中已激活的管理员，通过&lt;code&gt;this.sendTo(administrator)&lt;/code&gt;将邮件发送给该管理员&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247236827.png&#34; alt=&#34;1563247236827&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在&lt;code&gt;sendTo()&lt;/code&gt;流程中，&lt;code&gt;Jira&lt;/code&gt;需要通过&lt;code&gt;EmailBuilder()&lt;/code&gt;方法创建一个邮件队列对象，随后将该对象放入邮件发送队列中。由于队列等待原因，所以触发&lt;code&gt;payload&lt;/code&gt;可能需要等待一段时间，并且当邮件发送失败时系统会继续尝试发送邮件，所以&lt;code&gt;payload&lt;/code&gt;可能会触发多次。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563247471810.png&#34; alt=&#34;1563247471810&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;创建队列的方法有点长，精简一下就是这个样子&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;MailQueueItem item = (new EmailBuilder()).withSubject(this.subject).withBodyFromFile().addParameters().renderLater();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;通过&lt;code&gt;EmailBuilder&lt;/code&gt;的&lt;code&gt;withSubject()&lt;/code&gt;方法，创建一个&lt;code&gt;TemplateSources$fragment&lt;/code&gt;对象，参数即是我们传入的&lt;code&gt;payload&lt;/code&gt;，随后调用&lt;code&gt;renderLater()&lt;/code&gt;方法创建出&lt;code&gt;EmailBuilder&lt;/code&gt;对象，再将该对象作为参数传递给&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;类，&lt;code&gt;RenderingMailQueueItem&lt;/code&gt;的继承关系是如下图，于是最终创建出一个&lt;code&gt;MailQueueItem&lt;/code&gt;对象，并将该对象放入邮件发送队列。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563248388715.png&#34; alt=&#34;1563248388715&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;第二部分-发送邮件&#34;&gt;第二部分：发送邮件&lt;/h3&gt;
+
+&lt;p&gt;当我们把&lt;code&gt;payload&lt;/code&gt;注入到模板中之后，邮件进入待发送队列，&lt;code&gt;Jira&lt;/code&gt;中处理邮件队列的具体流程如下：&lt;/p&gt;
+
+&lt;p&gt;通过模板引擎&lt;code&gt;(getTemplatingEngine)&lt;/code&gt;生成一个Velocity模板，通过&lt;code&gt;applying()&lt;/code&gt;方法生成&lt;code&gt;RenderRequest&lt;/code&gt;对象，之后根据该对象成员变量&lt;code&gt;source&lt;/code&gt;的类型，调用不同的方法解析模板，漏洞的产生正是由于这个差异造成的，下面详细分析一下。&lt;/p&gt;
+
+&lt;p&gt;首先进入&lt;code&gt;RenderingMailQueueItem().send()&lt;/code&gt;方法，调用&lt;code&gt;this.emailRenderer.render()&lt;/code&gt;，随后调用&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;this.getTemplatingEngine().render(this.subjectTemplate).applying(contextParams).asPlainText();
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;这个过程中前面是为了获取模板解析引擎（VelocityTemplatingEngine）并传入主题模板（此处为payload数据），通过&lt;code&gt;applying()&lt;/code&gt;方法创建&lt;code&gt;VelocityContext&lt;/code&gt;对象并把&lt;code&gt;payload&lt;/code&gt;赋值给成员变量&lt;code&gt;source&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563267497538.png&#34; alt=&#34;1563267497538&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;随后重写了抽象类&lt;code&gt;StringRepresentation&lt;/code&gt;的&lt;code&gt;with()&lt;/code&gt;方法，在&lt;code&gt;with()&lt;/code&gt;方法中调用了&lt;code&gt;asPlainText()&lt;/code&gt;方法&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-java&#34;&gt;DefaultRenderRequest.this.asPlainText(sw)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;的作用是通过&lt;code&gt;Velocity&lt;/code&gt;模板引擎解析模板，其中的调用链是&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;toWriterImpl()-&amp;gt;writeEncodedBodyForContent()-&amp;gt;evaluate()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;而在&lt;code&gt;evaluate()&lt;/code&gt;方法中生成了&lt;code&gt;AST&lt;/code&gt;结构，随后通过反射调用传入的&lt;code&gt;payload&lt;/code&gt;，完成代码执行。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563245970455.png&#34; alt=&#34;1563245970455&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;asPlainText()&lt;/code&gt;之后的调用栈如下&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563246607016.png&#34; alt=&#34;1563246607016&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在处理完Object模板后会调用父类&lt;code&gt;SingleMailQueueItem&lt;/code&gt;的send()方法，通过&lt;code&gt;smtpMailServer.sendWithMessageId()&lt;/code&gt;发送邮件，由于没有正确配置&lt;code&gt;SMTP&lt;/code&gt;服务会抛出异常，但在连接&lt;code&gt;SMTP&lt;/code&gt;服务之前漏洞已经触发了，控制台也能看到&lt;code&gt;MailQueue&lt;/code&gt;执行的过程。&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563257377543.png&#34; alt=&#34;1563257377543&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;思考&#34;&gt;思考&lt;/h3&gt;
+
+&lt;p&gt;上述漏洞流程走完了，但还有一个关键问题没有解决：为什么邮件主题&lt;code&gt;Subject&lt;/code&gt;会被解析成&lt;code&gt;AST&lt;/code&gt;结构并被执行呢？按照正常发送反馈的逻辑，一封邮件的主题（字符串）似乎没有必要解析成&lt;code&gt;AST&lt;/code&gt;，导致差异的原因是什么？&lt;/p&gt;
+
+&lt;p&gt;发送一封正常的“联系管理员”邮件，走一遍流程&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268202907.png&#34; alt=&#34;1563268202907&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/1563268493868.png&#34; alt=&#34;1563268493868&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;对比一下两个处理流程，当发送正常反馈时，&lt;code&gt;writeEncodedBody()&lt;/code&gt;中调用的是&lt;code&gt;this.getVe().mergeTemplate&lt;/code&gt;，通过&lt;code&gt;Velocity&lt;/code&gt;引擎的&lt;code&gt;ClasspathResourceLoader()&lt;/code&gt;类的&lt;code&gt;getResourceStream()&lt;/code&gt;方法加载模板文件，此处的模板是&lt;code&gt;templates/email/html/contactadministrator.vm&lt;/code&gt;，随后还会进行&lt;code&gt;header&lt;/code&gt;、&lt;code&gt;footer&lt;/code&gt;等正常加载流程，最终渲染出整个页面。而发送&lt;code&gt;payload&lt;/code&gt;时，通过asPlainText()创建出TemplateSource$Fragment对象，再通过DefaultRenderRequest构造方法把&lt;code&gt;source&lt;/code&gt;成员变量赋值为这个&lt;code&gt;Fragment&lt;/code&gt;对象，于是进入第一个分支，调用的是&lt;code&gt;this.getVe().evaluate()&lt;/code&gt;，最终调用&lt;code&gt;ASTMethod.execute()&lt;/code&gt;，这正是前面说的差异性导致的两个不同处理逻辑。&lt;/p&gt;
+
+&lt;p&gt;回过头看一下Velocity渲染的大致流程：&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Velocity渲染引擎首先磁盘加载模板文件到内存，然后解析模板模板文件为AST结构，并对AST中每个节点进行初始化，第二次加载同一个模板文件时候如果开启了缓存则直接返回模板资源，通过使用资源缓存节省了从磁盘加载并重新解析为AST的开销。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;而&lt;code&gt;ASTMethod.execute()&lt;/code&gt;方法设计之初是在&lt;code&gt;Velocity parse&lt;/code&gt;解析模板的过程中，通过反射调用相关方法完成正常模板渲染动作，例如获取背景颜色、获取text内容、获取页面编码等，但当此处攻击者传入精心构造的数据后，利用反射执行了&lt;code&gt;java.lang.Runtime.getRuntime&lt;/code&gt;，成功达到命令执行的目的，漏洞利用十分精巧。&lt;/p&gt;
+
+&lt;h3 id=&#34;参考&#34;&gt;参考&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&#34;&gt;https://confluence.atlassian.com/jira/jira-security-advisory-2019-07-10-973486595.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/atlas-debug/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&#34;&gt;https://developer.atlassian.com/server/framework/atlassian-sdk/create-a-helloworld-plugin-project/&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&#34;&gt;http://ifeve.com/velocity%E5%8E%9F%E7%90%86%E6%8E%A2%E7%A9%B6/&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
       <title>SA-CORE-2019-003 Drupal 内核远程代码执行漏洞分析</title>
       <link>https://kylingit.com/blog/sa-core-2019-003-drupal-%E5%86%85%E6%A0%B8%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
       <pubDate>Fri, 22 Feb 2019 22:19:04 +0000</pubDate>
@@ -3491,285 +3613,6 @@ $entity_type = $this-&amp;gt;getEntityTypeDefinition($typed_data_ids[&#39;entity
 &lt;h3 id=&#34;0x06-总结&#34;&gt;0x06 总结&lt;/h3&gt;
 
 &lt;p&gt;这个漏洞触发点并不复杂，但是调用链相当深，利用条件则是开启了&lt;code&gt;REST Web services&lt;/code&gt;，并且允许用户通过&lt;code&gt;rest api&lt;/code&gt;注册，在一些功能比较齐全的站点或者方便插件调用时可能会开启，影响面减小了不少，但并不影响这依然是个非常巧妙的漏洞，也进一步说明了开发时考虑不周全的话，风险点就在那里，被利用只是时间问题。&lt;/p&gt;
-
-&lt;script&gt;pangu.spacingPage();&lt;/script&gt;
-</description>
-    </item>
-    
-    <item>
-      <title>Wordpress Image 远程代码执行漏洞分析</title>
-      <link>https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</link>
-      <pubDate>Thu, 21 Feb 2019 14:45:49 +0000</pubDate>
-      
-      <guid>https://kylingit.com/blog/wordpress-image-%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/</guid>
-      <description>
-
-&lt;script src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
-
-&lt;h3 id=&#34;0x01-概述&#34;&gt;0x01 概述&lt;/h3&gt;
-
-&lt;p&gt;2月20日，RIPS披露了&lt;code&gt;Wordpress&lt;/code&gt;内核&lt;code&gt;Image&lt;/code&gt;模块相关的一个高危漏洞，该漏洞由目录穿越和文件包含组成，最终可导致远程代码执行，目前还没有PoC披露。&lt;/p&gt;
-
-&lt;p&gt;从&lt;code&gt;RIPS&lt;/code&gt;描述的细节来看，漏洞出现在&lt;code&gt;wordpress&lt;/code&gt;编辑图片时，由于没有过滤&lt;code&gt;Post Meta&lt;/code&gt; 值导致可以修改数据库中&lt;code&gt;wp_postmeta&lt;/code&gt;表的任意字段，而在加载本地服务器上的文件时没有对路径进行过滤，导致可以传递目录穿越参数，最终保存图片时可以保存至任意目录。当某个主题include了某目录下的文件时，便可以造成代码执行。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x02-环境搭建&#34;&gt;0x02 环境搭建&lt;/h3&gt;
-
-&lt;p&gt;该漏洞影响&lt;code&gt;4.9.9&lt;/code&gt;版本以下的&lt;code&gt;wordpress&lt;/code&gt;程序，&lt;code&gt;4.9.9&lt;/code&gt;引入了过滤函数，对用户输入的&lt;code&gt;post data&lt;/code&gt;进行了检查，不合法的参数被过滤，主要修改如下图：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221162810.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;值得注意的是，在安装低版本时，安装过程中会自动更新核心文件，因此旧版本的&lt;code&gt;wp-admin/includes/post.php&lt;/code&gt;会更新至最新版本，所以安装过程中可以删除自动更新相关模块，或者离线安装。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x03-漏洞分析&#34;&gt;0x03 漏洞分析&lt;/h3&gt;
-
-&lt;h4 id=&#34;漏洞一-数据覆盖&#34;&gt;漏洞一：数据覆盖&lt;/h4&gt;
-
-&lt;p&gt;漏洞出现在wordpress媒体库裁剪图片的过程，当我们上传图片到媒体库时，图片会被保存至&lt;code&gt;wp-content/uploads/yyyy/mm&lt;/code&gt;目录，同时会在数据库中wp_postmeta表插入两个值，分别是&lt;code&gt;_wp_attached_file&lt;/code&gt;和&lt;code&gt;_wp_attachment_metadata&lt;/code&gt;，保存了图片位置和属性相关的序列化信息。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221164008.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;当我们修改图片属性（例如修改标题或者说明）的时候，&lt;code&gt;admin-media-Edit more details&lt;/code&gt; 会调用&lt;code&gt;wp-admin/includes/post.php&lt;/code&gt;的&lt;code&gt;edit_post()&lt;/code&gt;方法，该方法的参数全部来自于&lt;code&gt;$_POST&lt;/code&gt;，没有进行过滤&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221163553.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;然后会调用到&lt;code&gt;update_post_meta()&lt;/code&gt;方法，该方法根据&lt;code&gt;$post_ID&lt;/code&gt;修改&lt;code&gt;post meta field&lt;/code&gt;，接着调用&lt;code&gt;update_metadata()&lt;/code&gt;更新&lt;code&gt;meta&lt;/code&gt;数据，完成之后更新&lt;code&gt;post&lt;/code&gt;数据，调用&lt;code&gt;wp_update_post()&lt;/code&gt;方法&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221165642.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;wp_update_post()&lt;/code&gt;方法中，如果&lt;code&gt;post_type=attachment&lt;/code&gt;，则进入&lt;code&gt;wp_insert_attachment()&lt;/code&gt;，接着调用&lt;code&gt;wp_insert_post()&lt;/code&gt;，在&lt;code&gt;wp_insert_post()&lt;/code&gt;方法中判断了&lt;code&gt;meta_input&lt;/code&gt;参数，如果传入了该参数，就遍历数组用来更新&lt;code&gt;post_meta&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221172343.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;进入&lt;code&gt;update_post_meta()&lt;/code&gt;，调用&lt;code&gt;update_metadata()&lt;/code&gt;，在&lt;code&gt;update_metadata()&lt;/code&gt;方法中对数据库进行更新操作，而在整个过程中对键值没有任何过滤，意味着我们可以传入指定的key来设置它的值，调用栈如下图所示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221165806.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;于是构造数据包更新数据库中&lt;code&gt;_wp_attached_file&lt;/code&gt;的值，插入一个包含&lt;code&gt;../&lt;/code&gt;的值，以便在下面触发目录遍历。&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221183004.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221174154.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;这是第一个漏洞——通过参数覆盖了数据库数据，在补丁处正是对&lt;code&gt;meta_input&lt;/code&gt;这个参数做了过滤，如果包含则通过对比&lt;code&gt;array&lt;/code&gt;舍弃该参数。&lt;/p&gt;
-
-&lt;h4 id=&#34;漏洞二-目录遍历&#34;&gt;漏洞二：目录遍历&lt;/h4&gt;
-
-&lt;p&gt;接着寻找一个获取&lt;code&gt;_wp_attached_file&lt;/code&gt;的值并进行了文件操作相关的方法。&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;wordpress&lt;/code&gt;的&lt;code&gt;图片裁剪&lt;/code&gt;功能中，有这样的功能：&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;图片存在于&lt;code&gt;wp-content\uploads\yyyy\mm&lt;/code&gt;目录，则从该目录读取图片，修改尺寸后另存为一张图片；&lt;/li&gt;
-&lt;li&gt;如果图片在该目录不存在，则通过&lt;strong&gt;本地&lt;/strong&gt;服务器下载该图片，如从&lt;code&gt;http://127.0.0.1/wordpress/wp-content/uploads/2019/02/admin.jpeg&lt;/code&gt;下载，裁剪后重新保存。&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;这个功能是为了方便一些插件动态加载图片时使用。&lt;/p&gt;
-
-&lt;p&gt;然而因为本地读取和通过&lt;code&gt;url&lt;/code&gt;读取的差异性，导致可以构造一个带参数的&lt;code&gt;url&lt;/code&gt;，如&lt;code&gt;http://127.0.0.1/wordpress/wp-content/uploads/2019/02/admin.jpeg?1.png&lt;/code&gt;，在本地读取时会发现找不到&lt;code&gt;admin.jpeg?1.png&lt;/code&gt;，而远程获取时会忽略&lt;code&gt;?&lt;/code&gt;后面的参数部分，照样获取到&lt;code&gt;admin.jpeg&lt;/code&gt;，裁剪后保存。如果构造的url包含路径穿越，例如&lt;code&gt;http://127.0.0.1/wordpress/wp-content/uploads/2019/02/admin.jpeg?../../1/1.png&lt;/code&gt;，&lt;code&gt;wordpress&lt;/code&gt;将裁减后的图片保存至指定的文件夹，当图片包含恶意代码被引用时，就可能造成代码执行。&lt;/p&gt;
-
-&lt;p&gt;图片裁剪功能在&lt;code&gt;wp_crop_image()&lt;/code&gt;方法中，但是该方法不能在页面中触发，需要手动更改相应的&lt;code&gt;action&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;首先在页面裁剪图片，并点击保存&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221233754.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;抓取数据包：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;action=image-editor&amp;amp;_ajax_nonce=4c354c778b&amp;amp;postid=5&amp;amp;history=%5B%7B%22c%22%3A%7B%22x%22%3A0%2C%22y%22%3A5%2C%22w%22%3A347%2C%22h%22%3A335%7D%7D%5D&amp;amp;target=all&amp;amp;context=edit-attachment&amp;amp;do=save
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;code&gt;post body&lt;/code&gt;包含了相应的&lt;code&gt;action&lt;/code&gt;和&lt;code&gt;context&lt;/code&gt;，以及供还原文件的历史文件大小，此处需要修改&lt;code&gt;action&lt;/code&gt;为&lt;code&gt;crop-image&lt;/code&gt;以便触发&lt;code&gt;wp_crop_image()&lt;/code&gt;方法，相关调用如下&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;wp-admin/admin-ajax.php&lt;/code&gt;定义了裁剪图片的操作&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221180906.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;判断了用户权限和&lt;code&gt;action&lt;/code&gt;名称后调用&lt;code&gt;do_action&lt;/code&gt;，最终在&lt;code&gt;apply_filters()&lt;/code&gt;中进入&lt;code&gt;wp_crop_image()&lt;/code&gt;:&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221181053.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221181232.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;进入&lt;code&gt;wp_ajax_crop_image()&lt;/code&gt;方法，在这个方法中进行了多项判断，全部符合才能进入裁剪图片方法，如下图注释所示&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221181644.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;首先计算&lt;code&gt;nonce&lt;/code&gt;和&lt;code&gt;expected&lt;/code&gt;值并对比，如果不一致就验证不通过，相关方法是&lt;code&gt;check_ajax_referer()&lt;/code&gt;&amp;ndash;&amp;gt;&lt;code&gt;wp_verify_nonce()&lt;/code&gt;。注意到传入&lt;code&gt;check_ajax_referer()&lt;/code&gt;的&lt;code&gt;$attachment_id&lt;/code&gt;参数，该参数取自&lt;code&gt;$_POST[&#39;id&#39;]&lt;/code&gt;，并参与后面的&lt;code&gt;expected&lt;/code&gt;计算，因此当我们直接更改&lt;code&gt;action=crop-image&lt;/code&gt;是无法通过校验的，需要传入&lt;code&gt;id&lt;/code&gt;的，即为&lt;code&gt;postid&lt;/code&gt;的值。&lt;/p&gt;
-
-&lt;p&gt;在进入&lt;code&gt;wp_crop_image()&lt;/code&gt;时还需要传递裁剪后的图片宽度和高度信息，所以还需要增加c&lt;code&gt;ropDetails[dst_width]&lt;/code&gt;和&lt;code&gt;cropDetails[dst_height]&lt;/code&gt;两个参数。&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;wp_crop_image()&lt;/code&gt;方法如下&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221183701.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;从数据库取出&lt;code&gt;_wp_attached_file&lt;/code&gt;后并没有做检查，形如&lt;code&gt;2019/02/admin.jpeg?../../1.png&lt;/code&gt;的文件无法被找到，于是进入&lt;code&gt;_load_image_to_edit_path()&lt;/code&gt;通过&lt;code&gt;wp_get_attachment_url()&lt;/code&gt;方法生成本地&lt;code&gt;url&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221184123.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;随后实例化一个&lt;code&gt;WP_Image_Editor&lt;/code&gt;用来裁剪并生成裁剪后的图片，之后调用&lt;code&gt;wp_mkdir_p()&lt;/code&gt;方法创建文件夹，含有&lt;code&gt;../&lt;/code&gt;的参数进入该方法后同样没有经过过滤，最终执行到&lt;code&gt;mkdir&lt;/code&gt;创建文件夹&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;mkdir( $target, $dir_perms, true)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;此时的&lt;code&gt;target&lt;/code&gt;值是这个样子，穿越目录后在&lt;code&gt;2019&lt;/code&gt;目录下创建&lt;code&gt;1&lt;/code&gt;文件夹，并生成&lt;code&gt;cropped-1.png&lt;/code&gt;文件&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;D:\phpStudy\PHPTutorial\WWW\wordpress-4.9.8/wp-content/uploads/2019/02/admin.jpeg?../../../1
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;注意：此处有一个坑，我们观察上面的&lt;code&gt;url&lt;/code&gt;，在&lt;code&gt;mkdir&lt;/code&gt;的时候会把&lt;code&gt;admin.jpeg?../&lt;/code&gt;作为一个目录，而在Windows下的目录不能出现&lt;code&gt;?&lt;/code&gt;，所以上面的payload在Windows下无法成功，经过测试，&lt;code&gt;#&lt;/code&gt;可以存在于Windows目录，因此在Windows下的payload如下所示：&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;meta_input[_wp_attached_file]=2019/02/admin.jpeg#../../../1/1.png
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;写入数据库中即为&lt;code&gt;2019/02/admin.jpeg#../../../1/1.png&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;最终构造第二个数据包触发裁剪图片并保存：&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221182857.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;最终在指定目录下生成裁剪后的图片文件，以&lt;code&gt;cropped-&lt;/code&gt;作为前缀&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190221232341.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;这样子我们可以制作一张图片马，在主题文件夹下生成，或者指定任意目录，被&lt;code&gt;include&lt;/code&gt;后即可造成代码执行。&lt;/p&gt;
-
-&lt;h3 id=&#34;0x04-lfi-to-rce&#34;&gt;0x04 LFI to RCE&lt;/h3&gt;
-
-&lt;p&gt;到目前为止我们可以把含有恶意代码的图片写入任意目录，下一步就是想办法包含这个文件。&lt;/p&gt;
-
-&lt;p&gt;在&lt;code&gt;Wordpress&lt;/code&gt;中，访问一篇文章或者任意页面，都需要从数据库取出相应的模板文件位置并由浏览器渲染出来。注意到上面截图，&lt;code&gt;wp_postmeta&lt;/code&gt;数据库中有个字段名称为&lt;code&gt;_wp_page_template&lt;/code&gt;，这个字段用来保存加载页面所需要的模板文件，默认为&lt;code&gt;default&lt;/code&gt;，&lt;code&gt;wordpress&lt;/code&gt;程序根据需要加载的页面类型从当前主题下选择需要的模板，例如访问一篇单独的文章，这个过程会拼凑出文件名并检查主题下的这些文件是否存在，如果存在则包含进来，相关方法是&lt;code&gt;locate_template()&lt;/code&gt;和&lt;code&gt;load_template()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225145624.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225145650.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;搜索发现实现从数据库取出&lt;code&gt;_wp_page_template&lt;/code&gt;变量的方法是&lt;code&gt;get_page_template_slug()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150445.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;接着发现调用&lt;code&gt;get_page_template_slug()&lt;/code&gt;方法的&lt;code&gt;get_single_template()&lt;/code&gt;方法，其最后返回的是查找模板函数，即&lt;code&gt;get_query_template()&lt;/code&gt;&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150545.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;而正是在&lt;code&gt;get_query_template()&lt;/code&gt;中，执行了定位模板文件的操作&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190225150712.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;至此一条利用链就串起来了，利用第一个漏洞覆盖数据库中的&lt;code&gt;_wp_page_template&lt;/code&gt;值，修改为包含恶意代码的图片所在路径，在页面加载的过程中&lt;code&gt;wordpress&lt;/code&gt;查询并定位该文件，包含后造成代码执行。&lt;/p&gt;
-
-&lt;p&gt;&lt;code&gt;Wordpress&lt;/code&gt;中处理图片相关的库有两个，分别是&lt;code&gt;Imagick&lt;/code&gt;和&lt;code&gt;GD&lt;/code&gt;，优先选择使用&lt;code&gt;Imagick&lt;/code&gt;，而&lt;code&gt;Imagick&lt;/code&gt;处理图片时不处理&lt;code&gt;EXIF&lt;/code&gt;信息，因此可以把恶意代码设置在&lt;code&gt;EXIF&lt;/code&gt;部分，经过裁剪后会保留&lt;code&gt;EXIF&lt;/code&gt;信息，此时再进行包含就能造成代码执行。&lt;/p&gt;
-
-&lt;p&gt;在选择相应图片库处理图片时，如果此时加载的是&lt;code&gt;Imagick&lt;/code&gt;，在&lt;code&gt;$editor-&amp;gt;load()&lt;/code&gt;时会创建&lt;code&gt;Imagick()&lt;/code&gt;对象，然后尝试读取远程图片地址。此时需要注意的是，高版本的&lt;code&gt;Imagick&lt;/code&gt;库不支持远程链接，测试&lt;code&gt;Imagick-6.9.7&lt;/code&gt;版本正常创建并写入图片&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$implementation = _wp_image_editor_choose( $args );
-
-if ( $implementation ) {
-    $editor = new $implementation( $path );
-    $loaded = $editor-&amp;gt;load();
-
-    if ( is_wp_error( $loaded ) )
-        return $loaded;
-
-    return $editor;
-}
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;$this-&amp;gt;image = new Imagick();
-//...
-$this-&amp;gt;image-&amp;gt;readImage( $filename );
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;复现：&lt;/p&gt;
-
-&lt;p&gt;1.上传图片，更新描述信息并保存，抓包修改&lt;code&gt;meta_input[_wp_attached_file]&lt;/code&gt;，目录穿越至当前主题文件夹&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226172313.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;2.裁剪图片并在主题文件夹下生成裁剪后图片&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226173532.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;3.上传一个附件，更新描述信息并抓包，修改&lt;code&gt;meta_input[_wp_page_template]&lt;/code&gt;，加载模板的时候自动包含该图片，代码执行成功&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190226171510.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x05-关于mkdir&#34;&gt;0x05 关于mkdir&lt;/h3&gt;
-
-&lt;p&gt;在漏洞调试过程中最后一步&lt;code&gt;$editor-&amp;gt;save( $dst_file )&lt;/code&gt;过程，最终执行到的是&lt;code&gt;wp_mkdir_p()&lt;/code&gt;方法中的&lt;code&gt;mkdir&lt;/code&gt;函数&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;mkdir( $target, $dir_perms, true)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;关于&lt;code&gt;mkdir()&lt;/code&gt;函数，需要注意的是&lt;code&gt;mode&lt;/code&gt;参数和&lt;code&gt;recursive&lt;/code&gt;参数，分别代表了创建的文件夹权限和是否递归创建，这两个参数的不同导致在&lt;code&gt;Linux&lt;/code&gt;平台和&lt;code&gt;Windows&lt;/code&gt;平台的结果不一致&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222093526.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;在上面漏洞链中，进入最终&lt;code&gt;mkdir()&lt;/code&gt;的参数是这样的&lt;/p&gt;
-
-&lt;pre&gt;&lt;code class=&#34;language-php&#34;&gt;mkdir( &#39;D:\phpStudy\PHPTutorial\WWW\wordpress-4.9.8/wp-content/uploads/2019/02/admin.jpeg?../../../1&#39;, 511, true)
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222094608.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;单独把&lt;code&gt;path&lt;/code&gt;拿出来测试，在第三个参数&lt;code&gt;recursive&lt;/code&gt;分别为&lt;code&gt;true&lt;/code&gt;和&lt;code&gt;false&lt;/code&gt;时，测试结果如下&lt;/p&gt;
-
-&lt;p&gt;&lt;img src=&#34;https://blog-1252261399.cos-website.ap-beijing.myqcloud.com/images/20190222095108.png&#34; alt=&#34;&#34; /&gt;&lt;/p&gt;
-
-&lt;p&gt;这里导致结果不一致是因为Windows下文件夹对&lt;code&gt;?&lt;/code&gt;的处理，当指定递归创建模式时，系统会尝试创建名为&lt;code&gt;admin.jpeg?..&lt;/code&gt;的目录，又因为Windows下的目录不能含有&lt;code&gt;?&lt;/code&gt;，因此&lt;code&gt;recursive=true&lt;/code&gt;时是创建失败的，导致&lt;code&gt;wordpress&lt;/code&gt;最终生成图片也无法成功。而在Linux下可以没有&lt;code&gt;?&lt;/code&gt;的限制，&lt;code&gt;payload&lt;/code&gt;可以成功触发。&lt;/p&gt;
-
-&lt;p&gt;要想在&lt;code&gt;Windows&lt;/code&gt;下利用漏洞，一个技巧是利用&lt;code&gt;#&lt;/code&gt;字符，&lt;code&gt;#&lt;/code&gt;在&lt;code&gt;url&lt;/code&gt;中表示为网页位置指定标识符，只在浏览器中起作用，对解析资源时是忽略后面的字符的，因此在&lt;code&gt;wordpress&lt;/code&gt;中两个方式尝试获取图片资源时同样会出现不一致，导致漏洞产生。&lt;/p&gt;
-
-&lt;p&gt;&lt;strong&gt;更新：&lt;/strong&gt;此处是否检查&lt;code&gt;?&lt;/code&gt;等不合法字符与&lt;code&gt;php&lt;/code&gt;的线程安全模式相关，具体如下。&lt;/p&gt;
-
-&lt;table&gt;
-&lt;thead&gt;
-&lt;tr&gt;
-&lt;th align=&#34;center&#34;&gt;Windows&lt;/th&gt;
-&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;thread-safe&lt;/strong&gt;&lt;/th&gt;
-&lt;th align=&#34;center&#34;&gt;&lt;strong&gt;non-thread safe&lt;/strong&gt;&lt;/th&gt;
-&lt;/tr&gt;
-&lt;/thead&gt;
-
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=false&lt;/strong&gt;&lt;/td&gt;
-&lt;td align=&#34;center&#34;&gt;fail (No error)&lt;/td&gt;
-&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;success&lt;/strong&gt;&lt;/td&gt;
-&lt;/tr&gt;
-
-&lt;tr&gt;
-&lt;td align=&#34;center&#34;&gt;&lt;strong&gt;recursive=true&lt;/strong&gt;&lt;/td&gt;
-&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
-&lt;td align=&#34;center&#34;&gt;fail (Invalid path)&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-
-&lt;p&gt;关于这块的详细分析可以参考 &lt;a href=&#34;https://kylingit.com/blog/%E5%AF%B9php%E4%B8%AD%E7%9A%84mkdir%E5%87%BD%E6%95%B0%E7%9A%84%E7%A0%94%E7%A9%B6/&#34;&gt;对PHP中的mkdir()函数的研究&lt;/a&gt;&lt;/p&gt;
-
-&lt;h3 id=&#34;0x06-poc&#34;&gt;0x06 PoC&lt;/h3&gt;
-
-&lt;p&gt;见上面分析&lt;/p&gt;
-
-&lt;h3 id=&#34;0x07-总结&#34;&gt;0x07 总结&lt;/h3&gt;
-
-&lt;p&gt;在分析过程中踩了不少坑，每一个都浪费了不少时间，简单记录避免再次踩中。主要的有这么几个：&lt;/p&gt;
-
-&lt;ol&gt;
-&lt;li&gt;&lt;code&gt;Wordpress&lt;/code&gt;自动更新；&lt;/li&gt;
-&lt;li&gt;需要手动修改触发裁剪函数的&lt;code&gt;action&lt;/code&gt;；&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;mkdir&lt;/code&gt;创建文件夹时特殊字符的问题；&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;Imagick&lt;/code&gt;读取远程文件的问题；&lt;/li&gt;
-&lt;/ol&gt;
-
-&lt;p&gt;这个漏洞主要成因在于我们可以通过参数传递任意值覆盖数据库中的字段，从而引入&lt;code&gt;../&lt;/code&gt;构成目录穿越，在裁剪图片后保存文件时并没有对文件目录做检查，造成目录穿越漏洞，最终可以写入恶意图片被包含或者通过&lt;code&gt;Imagick&lt;/code&gt;漏洞触发远程代码执行，利用链挺巧妙，值得学习。&lt;/p&gt;
-
-&lt;p&gt;参考：&lt;/p&gt;
-
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;https://blog.ripstech.com/2019/wordpress-image-remote-code-execution/&#34;&gt;https://blog.ripstech.com/2019/wordpress-image-remote-code-execution/&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;https://github.com/WordPress/WordPress/commit/43bdb0e193955145a5ab1137890bb798bce5f0d2#diff-c3d5c535db5622f3b0242411ee5f9dfd&#34;&gt;https://github.com/WordPress/WordPress/commit/43bdb0e193955145a5ab1137890bb798bce5f0d2#diff-c3d5c535db5622f3b0242411ee5f9dfd&lt;/a&gt;&lt;/li&gt;
-&lt;/ul&gt;
 
 &lt;script&gt;pangu.spacingPage();&lt;/script&gt;
 </description>
