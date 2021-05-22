@@ -6,7 +6,7 @@
     <description>Recent content in About on 诗与胡说</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>zh_cn</language>
-    <copyright>Copyright © 2020 kylinking</copyright>
+    <copyright>Copyright © 2021 Kylinking</copyright>
     <atom:link href="https://kylingit.com/about/index.xml" rel="self" type="application/rss+xml" />
     
     <item>
@@ -19,7 +19,7 @@
 
 &lt;script src=&#34;https://blog-1252261399.cos.ap-beijing.myqcloud.com/pangu.js&#34;&gt;&lt;/script&gt;
 
-&lt;iframe src=&#34;https://open.spotify.com/embed/track/0bIGNGUqgpB82sAksxonkZ&#34; width=&#34;750&#34; height=&#34;80&#34; frameborder=&#34;0&#34; allowtransparency=&#34;true&#34; allow=&#34;encrypted-media&#34;&gt;&lt;/iframe&gt;
+&lt;iframe frameborder=&#34;no&#34; border=&#34;0&#34; marginwidth=&#34;0&#34; marginheight=&#34;0&#34; width=750 height=80 src=&#34;https://music.163.com/outchain/player?type=2&amp;id=31738245&amp;auto=1&amp;height=70&#34;&gt;&lt;/iframe&gt;
 
 &lt;h1 id=&#34;诗与胡说-一个孤独散步者的梦&#34;&gt;诗与胡说，一个孤独散步者的梦&lt;/h1&gt;
 
@@ -34,6 +34,9 @@
 &lt;li&gt;CVE-2020-4589    WebSphere JNDI注入漏洞 CVSS 8.1&lt;/li&gt;
 &lt;li&gt;CVE-2020-4643    WebSphere XXE漏洞 CVSS 7.5&lt;/li&gt;
 &lt;li&gt;CVE-2020-4576    WebSphere 信息泄露漏洞 CVSS 5.3&lt;/li&gt;
+&lt;li&gt;CVE-2020-5016 WebSphere 目录穿越漏洞 CVSS 5.3&lt;/li&gt;
+&lt;li&gt;CVE-2021-20354 WebSphere 目录穿越漏洞 CVSS 5.9&lt;/li&gt;
+&lt;li&gt;CVE-2021-20480 WebSphere SSRF漏洞 CVSS 4.3&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;/ul&gt;
 
